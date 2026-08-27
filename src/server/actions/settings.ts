@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { prisma } from '@/server/db/client'
-import { requireSession } from '@/server/session'
+import { normalizeEmail } from '@/auth'
+import { requireAdmin, requireSession } from '@/server/session'
 
 /**
  * Configuration lives in the database, not in code, so onboarding a second company
@@ -154,4 +155,65 @@ export async function saveDocumentType(formData: FormData) {
   }
 
   revalidatePath('/settings/types')
+}
+
+const memberSchema = z.object({
+  email: z.string().trim().email(),
+  name: z.string().trim().optional(),
+  role: z.enum(['OWNER', 'ADMIN', 'OPERATOR', 'PAYER', 'CONFIRMER', 'VIEWER']),
+})
+
+/**
+ * Adds someone to the workspace.
+ *
+ * This is the allowlist that authentication checks against: until an email appears
+ * here, signing in with that Google account is refused. There is no invitation email to
+ * send or accept — the person just signs in with Google once their address is listed.
+ */
+export async function addMember(formData: FormData) {
+  const session = await requireAdmin()
+  const data = memberSchema.parse(Object.fromEntries(formData))
+  const email = normalizeEmail(data.email)
+
+  // Users are global across company groups, so reuse an existing record rather than
+  // creating a second one for the same person.
+  const user = await prisma.user.upsert({
+    where: { email },
+    create: { email, name: data.name || null },
+    update: data.name ? { name: data.name } : {},
+  })
+
+  await prisma.membership.upsert({
+    where: { userId_companyGroupId: { userId: user.id, companyGroupId: session.companyGroupId } },
+    create: { userId: user.id, companyGroupId: session.companyGroupId, role: data.role },
+    update: { role: data.role, isActive: true },
+  })
+
+  revalidatePath('/settings/members')
+}
+
+/**
+ * Revokes access. Deactivating rather than deleting keeps the person resolvable on the
+ * documents they were assigned, and takes effect on their next request rather than when
+ * their session expires.
+ */
+export async function setMemberActive(membershipId: string, isActive: boolean) {
+  const session = await requireAdmin()
+
+  const membership = await prisma.membership.findFirst({
+    where: { id: membershipId, companyGroupId: session.companyGroupId },
+  })
+  if (!membership) throw new Error('Member not found')
+
+  // Refuse to remove the last remaining admin, which would lock everyone out of
+  // configuration with no way back in through the UI.
+  if (!isActive && membership.role === 'OWNER') {
+    const owners = await prisma.membership.count({
+      where: { companyGroupId: session.companyGroupId, role: 'OWNER', isActive: true },
+    })
+    if (owners <= 1) throw new Error('Cannot remove the last owner.')
+  }
+
+  await prisma.membership.update({ where: { id: membershipId }, data: { isActive } })
+  revalidatePath('/settings/members')
 }

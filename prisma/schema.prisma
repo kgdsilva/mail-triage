@@ -55,7 +55,8 @@ model User {
   id          String    @id @default(cuid())
   email       String    @unique
   name        String?
-  avatarUrl   String?   @map("avatar_url")
+  // Named `image` because the Auth.js Prisma adapter writes to that exact field.
+  image       String?   @map("avatar_url")
   emailVerified DateTime? @map("email_verified")
   createdAt   DateTime  @default(now()) @map("created_at")
   lastLoginAt DateTime? @map("last_login_at")

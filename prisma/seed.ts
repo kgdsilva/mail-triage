@@ -132,11 +132,12 @@ async function main() {
   }
   console.log(`✔ ${COLAB_ENTITIES.length} entities with folder trees`)
 
-  // The operator account. Until Auth.js is wired (Phase 2) this is who every audit
-  // event is attributed to — see src/server/session.ts.
+  // The first owner. Authentication is allowlist-based, so this membership is what
+  // makes it possible to sign in at all — see src/auth.ts. Emails are stored lowercased
+  // because that is what Google returns.
   const operator = await prisma.user.upsert({
-    where: { email: 'KG@colabservice.com' },
-    create: { email: 'KG@colabservice.com', name: 'Kauê Guireli' },
+    where: { email: 'kg@colabservice.com' },
+    create: { email: 'kg@colabservice.com', name: 'Kauê Guireli' },
     update: {},
   })
   await prisma.membership.upsert({

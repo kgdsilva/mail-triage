@@ -15,11 +15,47 @@ screen with an in-app PDF viewer and live action-filter suggestions, the master 
 filter/search/CSV export, and admin for entities, document types, vendors and autopay
 rules.
 
-**Not done yet:** authentication. `src/server/session.ts` resolves the seeded operator
-and refuses to run in production — wire Auth.js before this is deployed or shared.
+**Authentication is wired** (Google via Auth.js v5). It needs a Google OAuth client
+before anyone can sign in — see "Google sign-in" below.
 
-Roadmap: 1.5 historical import · 2 role queues + auth · 3 Drive/Box sync · 4 AI-assisted
+Roadmap: 1.5 historical import · 2 role-scoped queues · 3 Drive/Box sync · 4 AI-assisted
 classification · 5 pattern detection.
+
+## Google sign-in
+
+Access is **allowlist-based**. Signing in with Google proves identity; it does not grant
+access. Only an email an admin has added under Settings > Members can get in — everyone
+else is turned away even though their Google login succeeded. Revoking a member takes
+effect on their next request, not when their session expires.
+
+Set up a client in Google Cloud Console (APIs & Services > Credentials > OAuth client ID,
+type "Web application") with these **Authorized redirect URIs**:
+
+| Environment | Redirect URI |
+|---|---|
+| Local | `http://localhost:3000/api/auth/callback/google` |
+| Production | `https://<your-domain>/api/auth/callback/google` |
+
+Then fill `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` in `.env`. The variable names are not
+arbitrary — Auth.js v5 discovers the provider by them.
+
+## Migrations
+
+Prisma cannot represent the CHECK constraints, the generated `search_vector` column, the
+partial index or the trigram indexes in `prisma/sql/invariants.sql`. It therefore reads
+them as drift and **generates `DROP INDEX` statements for them on every migration diff**.
+
+So: always generate with `--create-only`, read the SQL, and delete any statement touching
+those objects before applying.
+
+```bash
+npx prisma migrate dev --name your_change --create-only
+$EDITOR prisma/migrations/*_your_change/migration.sql   # remove drift statements
+npx prisma migrate deploy
+npm run db:repair                                        # re-create anything lost
+```
+
+`npm run db:repair` is idempotent and safe to run at any time.
 
 ## Screens
 

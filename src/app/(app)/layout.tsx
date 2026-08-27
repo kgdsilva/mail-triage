@@ -1,6 +1,7 @@
 import Link from 'next/link'
+import { signOut } from '@/auth'
 import { countUnreviewed } from '@/server/documents'
-import { requireSession } from '@/server/session'
+import { isAdmin, requireSession } from '@/server/session'
 import { prisma } from '@/server/db/client'
 import { NavLink } from '@/components/nav-link'
 
@@ -33,20 +34,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </NavLink>
             <NavLink href="/log">Master log</NavLink>
             <NavLink href="/upload">Upload</NavLink>
-            <NavLink href="/settings">Settings</NavLink>
+            {isAdmin(session.role) && <NavLink href="/settings">Settings</NavLink>}
           </nav>
 
-          <span className="ml-2 hidden text-xs text-neutral-500 md:inline">
-            {session.userName}
-          </span>
+          <div className="ml-2 hidden items-center gap-2 md:flex">
+            <span className="text-xs text-neutral-500" title={session.userEmail}>
+              {session.userName}
+            </span>
+            <form
+              action={async () => {
+                'use server'
+                await signOut({ redirectTo: '/signin' })
+              }}
+            >
+              <button className="text-xs text-neutral-500 underline underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100">
+                Sign out
+              </button>
+            </form>
+          </div>
         </div>
-
-        {session.isDevFallback && (
-          <p className="bg-amber-50 px-5 py-1 text-center text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-            No sign-in configured — running as the seeded operator. Wire Auth.js before
-            anyone else gets a link.
-          </p>
-        )}
       </header>
 
       <main className="mx-auto max-w-[1600px] px-5 py-6">{children}</main>

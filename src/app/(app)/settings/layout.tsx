@@ -9,6 +9,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         <NavLink href="/settings/types">Document types</NavLink>
         <NavLink href="/settings/vendors">Vendors</NavLink>
         <NavLink href="/settings/autopay">Autopay</NavLink>
+        <NavLink href="/settings/members">Members</NavLink>
       </nav>
       {children}
     </div>

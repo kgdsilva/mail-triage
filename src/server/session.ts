@@ -1,16 +1,15 @@
 import { cache } from 'react'
+import { redirect } from 'next/navigation'
+import { auth } from '@/auth'
 import { prisma } from '@/server/db/client'
 
 /**
  * Who is acting, and in which company group.
  *
- * Phase 1 has no sign-in yet: Kauê is the only operator, testing against real historical
- * documents. Rather than scatter that assumption through the app, it is isolated here —
- * every page and action resolves the actor through `requireSession()`, so wiring Auth.js
- * in Phase 2 means changing this file and nothing else.
- *
- * The dev fallback refuses to run in production, so shipping without finishing auth
- * fails loudly instead of silently exposing the log.
+ * Signing in proves identity; membership grants access. Someone with a valid Google
+ * session but no active membership is treated as signed out, so removing a person from
+ * the group takes effect immediately rather than whenever their session happens to
+ * expire.
  */
 
 export type Session = {
@@ -18,32 +17,48 @@ export type Session = {
   companyGroupId: string
   role: string
   userName: string
-  /** True while running on the Phase 1 fallback rather than a real sign-in. */
-  isDevFallback: boolean
+  userEmail: string
+  userImage: string | null
 }
 
-export const requireSession = cache(async (): Promise<Session> => {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'No authentication configured. Wire Auth.js in src/server/session.ts before deploying.',
-    )
-  }
+/** Returns null when nobody is signed in, instead of redirecting. */
+export const getSession = cache(async (): Promise<Session | null> => {
+  const authed = await auth()
+  const userId = authed?.user?.id
+  if (!userId) return null
 
   const membership = await prisma.membership.findFirst({
-    where: { isActive: true },
+    where: { userId, isActive: true },
     include: { user: true },
     orderBy: { createdAt: 'asc' },
   })
-
-  if (!membership) {
-    throw new Error('No membership found — run `npm run db:seed`.')
-  }
+  if (!membership) return null
 
   return {
     userId: membership.userId,
     companyGroupId: membership.companyGroupId,
     role: membership.role,
     userName: membership.user.name ?? membership.user.email,
-    isDevFallback: true,
+    userEmail: membership.user.email,
+    userImage: membership.user.image,
   }
 })
+
+export const requireSession = cache(async (): Promise<Session> => {
+  const session = await getSession()
+  if (!session) redirect('/signin')
+  return session
+})
+
+/** Roles that may change configuration and see every queue. */
+export const ADMIN_ROLES = ['OWNER', 'ADMIN', 'OPERATOR'] as const
+
+export function isAdmin(role: string) {
+  return (ADMIN_ROLES as readonly string[]).includes(role)
+}
+
+export async function requireAdmin(): Promise<Session> {
+  const session = await requireSession()
+  if (!isAdmin(session.role)) redirect('/log')
+  return session
+}
