@@ -1,0 +1,125 @@
+import 'dotenv/config'
+import { PrismaPg } from '@prisma/adapter-pg'
+import { PrismaClient } from '../src/generated/prisma/client'
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
+})
+
+/**
+ * Template document types. Each company group gets its own copy at onboarding and
+ * owns it from then on — a new group can start from this and diverge freely.
+ *
+ * `defaultAction` only pre-fills the classify screen; it never commits a decision.
+ * Two rules from the brief are encoded here and should not be loosened:
+ *   - Deadline-bearing government notices are ACTION, never ARCHIVE, however small
+ *     the dollar amount.
+ *   - BILL is ASK, not ARCHIVE, because whether it archives depends entirely on the
+ *     autopay lookup for that vendor+entity — which the classify screen resolves.
+ */
+const DOCUMENT_TYPES = [
+  { code: 'BILL', label: 'Bill', defaultAction: 'ASK', sortOrder: 10 },
+  { code: 'TAX_NOTICE', label: 'Tax Notice', defaultAction: 'ACTION', sortOrder: 20 },
+  { code: 'IRS_NOTICE', label: 'IRS Notice', defaultAction: 'ACTION', sortOrder: 30 },
+  { code: 'TAX_PR_NOTICE', label: 'Tax / PR Notice', defaultAction: 'ACTION', sortOrder: 40 },
+  { code: 'CHECK', label: 'Check (incoming)', defaultAction: 'ARCHIVE', sortOrder: 50 },
+  { code: 'INSURANCE', label: 'Insurance', defaultAction: 'ASK', sortOrder: 60 },
+  { code: 'STATEMENT', label: 'Statement', defaultAction: 'ARCHIVE', sortOrder: 70 },
+  { code: 'SPAM', label: 'Spam / Solicitation', defaultAction: 'ARCHIVE', sortOrder: 80 },
+  { code: 'OTHER', label: 'Other', defaultAction: 'ASK', sortOrder: 90 },
+] as const
+
+/**
+ * Pilot company group. Entity codes come from the brief; the legal names marked
+ * REVIEW are placeholders — correct them in Settings > Entities before the first
+ * real batch, since the legal name is what appears on filings and exports.
+ */
+const COLAB_ENTITIES = [
+  { code: 'CP', legalName: 'CoLAB Processing', sortOrder: 10 },
+  { code: 'CCS', legalName: 'CoLAB Concierge Service', sortOrder: 20 },
+  { code: 'MM', legalName: 'Marsh & Munar', sortOrder: 30 },
+  { code: 'MMT', legalName: 'REVIEW — MMT', sortOrder: 40 },
+  { code: 'OP', legalName: 'REVIEW — OP', sortOrder: 50 },
+] as const
+
+/** Default folder tree created under each entity, mirroring the current Box layout. */
+const FOLDER_TREE: Record<string, string[]> = {
+  Finances: ['Tax IRS', 'Tax State', 'Bills', 'Bank Statements', 'Checks Received'],
+  Insurance: [],
+  Legal: [],
+  Correspondence: ['Spam'],
+}
+
+async function main() {
+  const group = await prisma.companyGroup.upsert({
+    where: { slug: 'colab' },
+    create: {
+      name: 'CoLAB Lending Franchise',
+      slug: 'colab',
+      timezone: 'America/New_York',
+      settings: {
+        filenameTemplate: '{entity}_{date}_{type}_{amount}',
+        dateFormat: 'MM-DD-YY',
+        currency: 'USD',
+      },
+    },
+    update: {},
+  })
+  console.log(`✔ company group ${group.name}`)
+
+  for (const type of DOCUMENT_TYPES) {
+    await prisma.documentType.upsert({
+      where: { companyGroupId_code: { companyGroupId: group.id, code: type.code } },
+      create: { ...type, companyGroupId: group.id },
+      // Only re-sync ordering. Label and defaultAction are left alone so a seed
+      // re-run never silently reverts a change made in the admin UI.
+      update: { sortOrder: type.sortOrder },
+    })
+  }
+  console.log(`✔ ${DOCUMENT_TYPES.length} document types`)
+
+  for (const e of COLAB_ENTITIES) {
+    const entity = await prisma.entity.upsert({
+      where: { companyGroupId_code: { companyGroupId: group.id, code: e.code } },
+      create: { ...e, companyGroupId: group.id },
+      update: { sortOrder: e.sortOrder },
+    })
+
+    for (const [parentName, children] of Object.entries(FOLDER_TREE)) {
+      const parentPath = `${e.code} > ${parentName}`
+      const parent = await prisma.storageFolder.upsert({
+        where: { companyGroupId_pathCache: { companyGroupId: group.id, pathCache: parentPath } },
+        create: {
+          companyGroupId: group.id,
+          entityId: entity.id,
+          name: parentName,
+          pathCache: parentPath,
+        },
+        update: {},
+      })
+
+      for (const child of children) {
+        const childPath = `${parentPath} > ${child}`
+        await prisma.storageFolder.upsert({
+          where: { companyGroupId_pathCache: { companyGroupId: group.id, pathCache: childPath } },
+          create: {
+            companyGroupId: group.id,
+            entityId: entity.id,
+            parentId: parent.id,
+            name: child,
+            pathCache: childPath,
+          },
+          update: {},
+        })
+      }
+    }
+  }
+  console.log(`✔ ${COLAB_ENTITIES.length} entities with folder trees`)
+}
+
+main()
+  .catch((err) => {
+    console.error(err)
+    process.exit(1)
+  })
+  .finally(() => prisma.$disconnect())

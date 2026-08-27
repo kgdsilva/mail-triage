@@ -1,0 +1,589 @@
+// Mail Triage & Action Tracking Platform
+//
+// Multi-tenant by `companyGroupId` on every tenant-scoped table. Scope is enforced in
+// the repository layer (src/server/db/scope.ts) — never query these models directly.
+//
+// Two invariants worth knowing before you edit this file:
+//   1. `disposition` (ARCHIVE vs ACTION) is separate from `status` (WAITING/DONE).
+//      An archived check is still logged and filed; it just never enters a queue.
+//   2. ARCHIVE always requires a `dispositionReason`. That is what makes "why wasn't
+//      I shown this?" answerable. Enforced by a CHECK constraint in the migration.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// Prisma 7: the connection URL lives in prisma.config.ts, and the runtime client
+// gets a driver adapter (see src/server/db/client.ts). Nothing to configure here.
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy & identity
+// ---------------------------------------------------------------------------
+
+model CompanyGroup {
+  id       String @id @default(cuid())
+  name     String
+  slug     String @unique
+  timezone String @default("America/New_York")
+
+  /// Naming-convention template, date format, feature flags.
+  /// e.g. { "filenameTemplate": "{entity}_{date}_{type}_{amount}", "dateFormat": "MM-DD-YY" }
+  settings Json @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships   Membership[]
+  entities      Entity[]
+  documentTypes DocumentType[]
+  folders       StorageFolder[]
+  vendors       Vendor[]
+  autopayRules  AutopayRule[]
+  routingRules  RoutingRule[]
+  batches       Batch[]
+  documents     Document[]
+
+  @@map("company_group")
+}
+
+/// Global identity. A user can belong to several company groups.
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  name        String?
+  avatarUrl   String?   @map("avatar_url")
+  emailVerified DateTime? @map("email_verified")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  lastLoginAt DateTime? @map("last_login_at")
+
+  memberships       Membership[]
+  accounts          Account[]
+  sessions          Session[]
+  uploadedBatches   Batch[]           @relation("BatchUploader")
+  assignedDocuments Document[]        @relation("DocumentAssignee")
+  reviewedDocuments Document[]        @relation("DocumentReviewer")
+  confirmedAutopay  AutopayRule[]
+  routedTo          RoutingRule[]
+  createdLinks      DocumentLink[]
+  events            DocumentEvent[]
+  notifications     Notification[]
+
+  @@map("app_user")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  OPERATOR
+  PAYER
+  CONFIRMER
+  VIEWER
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  userId         String       @map("user_id")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  role Role
+
+  /// null = every entity in the group. Non-null restricts this member to specific entities.
+  entityScope String[] @map("entity_scope")
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, companyGroupId])
+  @@index([companyGroupId, role])
+  @@map("membership")
+}
+
+// ---------------------------------------------------------------------------
+// Configuration — all of this is data, not hardcoded enums, so a new company
+// group can be onboarded with completely different codes and structures.
+// ---------------------------------------------------------------------------
+
+model Entity {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  code        String
+  legalName   String  @map("legal_name")
+  displayName String? @map("display_name")
+
+  /// View-level separation only — everyone can still see it, it just lives in its
+  /// own tab/folder rather than mixed into the group-wide list. NOT a permission.
+  isSegregated Boolean @default(false) @map("is_segregated")
+
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  /// EIN, state, mailing address — anything useful for matching a scan to this entity.
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  aliases      EntityAlias[]
+  folders      StorageFolder[]
+  autopayRules AutopayRule[]
+  documents    Document[]
+
+  @@unique([companyGroupId, code])
+  @@index([companyGroupId, isActive])
+  @@map("entity")
+}
+
+enum AliasSource {
+  NAME
+  ADDRESS
+  EIN
+  ACCOUNT_NUMBER
+}
+
+/// Helps a human (and later the AI) match "Colab Lending LLC" or an EIN on a scan to CP.
+model EntityAlias {
+  id       String @id @default(cuid())
+  entityId String @map("entity_id")
+  entity   Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  aliasText String      @map("alias_text")
+  source    AliasSource @default(NAME)
+
+  @@unique([entityId, aliasText])
+  @@index([aliasText])
+  @@map("entity_alias")
+}
+
+enum DefaultAction {
+  ARCHIVE
+  ACTION
+  /// Force a human decision every time — never pre-fill a disposition for this type.
+  ASK
+}
+
+/// Bill, Tax Notice, IRS Notice, Check, Insurance, Statement, Spam, Other.
+///
+/// Owned by a company group rather than shared platform-wide: each group seeds its
+/// own copy from the template in prisma/seed.ts and can then rename, reorder, disable
+/// or add types without touching anyone else's taxonomy.
+model DocumentType {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  code  String
+  label String
+
+  /// Pre-fills the disposition on the classify screen. ASK forces a human choice.
+  /// Deadline-bearing government notices should be ACTION or ASK, never ARCHIVE.
+  defaultAction DefaultAction @default(ASK) @map("default_action")
+
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  documents Document[]
+
+  @@unique([companyGroupId, code])
+  @@map("document_type")
+}
+
+/// Virtual folder tree, e.g. "CP > Finances > Tax IRS". Ours, not Box's.
+model StorageFolder {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  entityId String? @map("entity_id")
+  entity   Entity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
+
+  parentId String?         @map("parent_id")
+  parent   StorageFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children StorageFolder[] @relation("FolderTree")
+
+  name String
+
+  /// Denormalized full path ("CP > Finances > Tax IRS"). This is the folder's natural
+  /// key — unique per company group, and what lookups and upserts address it by, since
+  /// a root folder has a null parentId and Prisma cannot match null in a compound key.
+  /// Rebuilt on rename/move by the folder service — do not set it by hand.
+  pathCache String @map("path_cache")
+
+  /// Phase 3 outbound mirror target. Null until a Box sync is configured.
+  boxFolderId String? @map("box_folder_id")
+
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  documents Document[]
+
+  @@unique([companyGroupId, pathCache])
+  @@index([companyGroupId, entityId])
+  @@map("storage_folder")
+}
+
+/// Normalizes "who sent this". Drives autopay lookup and spam detection.
+model Vendor {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  name    String
+  aliases String[]
+
+  /// Labor-law poster mills, LLC "certificate of good standing" resellers, business
+  /// filing centers — solicitations disguised as official notices.
+  knownSpam Boolean @default(false) @map("known_spam")
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  autopayRules AutopayRule[]
+  documents    Document[]
+
+  @@unique([companyGroupId, name])
+  @@index([companyGroupId, knownSpam])
+  @@map("vendor")
+}
+
+/// Which vendor+entity combos are on confirmed autopay. This drives the single most
+/// consequential archive decision, so it is deliberately explicit: a rule must name a
+/// vendor AND an entity, must say who confirmed it, and is time-bounded so that
+/// re-reading an old document still shows what was true when it was filed.
+model AutopayRule {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  vendorId String @map("vendor_id")
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  entityId String @map("entity_id")
+  entity   Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  /// Nullable on purpose: lets you tighten a rule to a single account later without
+  /// a migration, when one entity has several accounts with the same utility.
+  accountLast4 String? @map("account_last4")
+
+  paymentMethod String? @map("payment_method")
+
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+
+  confirmedByUserId String   @map("confirmed_by_user_id")
+  confirmedBy       User     @relation(fields: [confirmedByUserId], references: [id])
+  confirmedAt       DateTime @default(now()) @map("confirmed_at")
+
+  notes String?
+
+  @@unique([vendorId, entityId, effectiveFrom])
+  @@index([companyGroupId, entityId])
+  @@map("autopay_rule")
+}
+
+model RoutingRule {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  /// Lowest number wins. First matching rule assigns the document.
+  priority Int @default(100)
+
+  /// Match predicate, all present keys must hold:
+  /// { documentTypeId?, entityId?, vendorId?, amountGte?, hasDueDate?, keywords?[] }
+  match Json @default("{}")
+
+  routeToRole   Role?   @map("route_to_role")
+  routeToUserId String? @map("route_to_user_id")
+  routeToUser   User?   @relation(fields: [routeToUserId], references: [id], onDelete: SetNull)
+
+  alsoNotifyUserIds String[] @map("also_notify_user_ids")
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([companyGroupId, priority])
+  @@map("routing_rule")
+}
+
+// ---------------------------------------------------------------------------
+// Documents — the master log
+// ---------------------------------------------------------------------------
+
+enum BatchSource {
+  MANUAL_UPLOAD
+  DRIVE_IMPORT
+  BOX_IMPORT
+  EMAIL
+  /// Backfill of the historical spreadsheet log (Phase 1.5).
+  HISTORICAL_IMPORT
+}
+
+/// One scan session / month drop. Scans always arrive as one PDF per document,
+/// already individually named — there is no batch-level PDF to split.
+model Batch {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  label  String
+  source BatchSource @default(MANUAL_UPLOAD)
+
+  uploadedByUserId String @map("uploaded_by_user_id")
+  uploadedBy       User   @relation("BatchUploader", fields: [uploadedByUserId], references: [id])
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  closedAt  DateTime? @map("closed_at")
+
+  documents Document[]
+
+  @@index([companyGroupId, createdAt])
+  @@map("batch")
+}
+
+enum Disposition {
+  UNREVIEWED
+  ARCHIVE
+  ACTION
+}
+
+/// Required whenever disposition = ARCHIVE. This is the audit answer to
+/// "why wasn't I shown this?".
+enum DispositionReason {
+  AUTOPAY
+  INCOMING_CHECK
+  SPAM_SOLICITATION
+  FYI_STATEMENT
+  DEADLINE_NOTICE
+  MANUAL_INVOICE
+  RISK_PENALTY
+  OTHER
+}
+
+enum DocStatus {
+  WAITING
+  IN_PROGRESS
+  DONE
+  ARCHIVED
+  VOID
+}
+
+model Document {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  batchId String? @map("batch_id")
+  batch   Batch?  @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  // --- file ---------------------------------------------------------------
+  /// As it arrived, e.g. "MUNAR_7-5-26_Berkheimer payment.pdf". Kept forever; the
+  /// entity hint in the prefix is a useful pre-fill signal on the classify screen.
+  originalFilename String  @map("original_filename")
+  finalFilename    String? @map("final_filename")
+
+  /// Nullable so a historical log row can exist before its PDF is attached (Phase 1.5).
+  storageKey    String? @map("storage_key")
+  storageBucket String? @map("storage_bucket")
+  mimeType      String? @map("mime_type")
+  byteSize      Int?    @map("byte_size")
+  pageCount     Int?    @map("page_count")
+  /// Content hash — powers duplicate detection in Phase 5.
+  sha256        String? @map("sha256")
+
+  // --- classification -----------------------------------------------------
+  entityId String? @map("entity_id")
+  entity   Entity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
+
+  documentTypeId String?       @map("document_type_id")
+  documentType   DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+
+  vendorId String? @map("vendor_id")
+  vendor   Vendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  documentDate DateTime? @map("document_date") @db.Date
+  dueDate      DateTime? @map("due_date") @db.Date
+
+  amount   Decimal? @db.Decimal(14, 2)
+  currency String   @default("USD")
+
+  // --- decision -----------------------------------------------------------
+  disposition       Disposition        @default(UNREVIEWED)
+  dispositionReason DispositionReason? @map("disposition_reason")
+  status            DocStatus          @default(WAITING)
+
+  // --- routing ------------------------------------------------------------
+  assignedToUserId String? @map("assigned_to_user_id")
+  assignedTo       User?   @relation("DocumentAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedRole     Role?   @map("assigned_role")
+  notifiedAt       DateTime? @map("notified_at")
+
+  // --- filing -------------------------------------------------------------
+  storageFolderId String?        @map("storage_folder_id")
+  storageFolder   StorageFolder? @relation(fields: [storageFolderId], references: [id], onDelete: SetNull)
+  filedAt         DateTime?      @map("filed_at")
+
+  // --- narrative ----------------------------------------------------------
+  /// Plain-language "what this is", written for whoever it routes to.
+  summaryNote   String? @map("summary_note")
+  internalNotes String? @map("internal_notes")
+
+  // --- AI (Phase 4) -------------------------------------------------------
+  /// Full model output, kept even after a human overrides it — this is the eval set.
+  aiSuggestion Json?    @map("ai_suggestion")
+  aiConfidence Decimal? @map("ai_confidence") @db.Decimal(4, 3)
+
+  reviewedByUserId String?   @map("reviewed_by_user_id")
+  reviewedBy       User?     @relation("DocumentReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  reviewedAt       DateTime? @map("reviewed_at")
+
+  /// Generated column + GIN index, created in the migration SQL. Powers log search.
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Soft delete only. Nothing in the master log is ever hard-deleted.
+  deletedAt DateTime? @map("deleted_at")
+
+  linksFrom     DocumentLink[]  @relation("LinkFrom")
+  linksTo       DocumentLink[]  @relation("LinkTo")
+  events        DocumentEvent[]
+  notifications Notification[]
+
+  @@index([companyGroupId, status, disposition])
+  @@index([companyGroupId, entityId, documentDate])
+  @@index([companyGroupId, dueDate])
+  @@index([assignedToUserId, status])
+  @@index([sha256])
+  @@map("document")
+}
+
+enum LinkRelation {
+  /// A later chargeback document pointing back at the original incoming check.
+  CHARGEBACK_OF
+  DUPLICATE_OF
+  SUPERSEDES
+  RELATED_TO
+  /// Same underlying issue across several entities, e.g. one state payroll notice
+  /// landing on CP, MM and MMT in the same quarter.
+  SAME_ISSUE_AS
+}
+
+model DocumentLink {
+  id String @id @default(cuid())
+
+  fromDocumentId String   @map("from_document_id")
+  fromDocument   Document @relation("LinkFrom", fields: [fromDocumentId], references: [id], onDelete: Cascade)
+
+  toDocumentId String   @map("to_document_id")
+  toDocument   Document @relation("LinkTo", fields: [toDocumentId], references: [id], onDelete: Cascade)
+
+  relation LinkRelation
+
+  createdByUserId String   @map("created_by_user_id")
+  createdBy       User     @relation(fields: [createdByUserId], references: [id])
+  createdAt       DateTime @default(now()) @map("created_at")
+  note            String?
+
+  @@unique([fromDocumentId, toDocumentId, relation])
+  @@map("document_link")
+}
+
+/// Append-only audit trail. Never updated, never deleted.
+model DocumentEvent {
+  id         String   @id @default(cuid())
+  documentId String   @map("document_id")
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  /// Null for system actions (import jobs, AI suggestions, scheduled routing).
+  actorUserId String? @map("actor_user_id")
+  actor       User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  /// "uploaded" | "classified" | "routed" | "status_changed" | "note_added" | "file_replaced"
+  action String
+
+  fromValue Json? @map("from_value")
+  toValue   Json? @map("to_value")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([documentId, createdAt])
+  @@map("document_event")
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+}
+
+model Notification {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  documentId String   @map("document_id")
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  channel NotificationChannel @default(EMAIL)
+
+  sentAt DateTime? @map("sent_at")
+  readAt DateTime? @map("read_at")
+  actedAt DateTime? @map("acted_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, readAt])
+  @@map("notification")
+}
+
+// ---------------------------------------------------------------------------
+// Auth.js adapter tables
+// ---------------------------------------------------------------------------
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+  @@map("account")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+
+  @@map("session")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_token")
+}

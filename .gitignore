@@ -1,0 +1,37 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+/coverage
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env — never commit secrets
+.env
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# prisma generated client (build artifact, regenerate with npm run db:generate)
+/src/generated
+
+# local object storage — dev only; real documents live in R2.
+# Scanned mail is confidential, it must never reach the repo.
+/.storage
