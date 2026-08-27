@@ -28,8 +28,10 @@ outbound mirror for external stakeholders (accountant, insurance broker) in Phas
 
 Requires Node 20+ and PostgreSQL 16.
 
+Clone somewhere outside iCloud-synced folders — see Environment gotchas below.
+
 ```bash
-brew install node postgresql@16
+brew install node@24 postgresql@16
 brew services start postgresql@16
 createdb mail_triage
 
@@ -85,6 +87,29 @@ for one entity but not the one on the document is ambiguous, and surfaces to a h
   column and the partial indexes. Prisma cannot express these, so if the initial
   migration is ever recreated they must be re-appended:
   `cat prisma/sql/invariants.sql >> prisma/migrations/<ts>_init/migration.sql`
+
+## Environment gotchas
+
+**Do not put this project under `~/Documents` or `~/Desktop` on a Mac with iCloud
+Drive's "Desktop & Documents" sync enabled.** iCloud evicts `node_modules` files to the
+cloud as *dataless* stubs, so every `require` blocks waiting on a download and some
+reads fail outright with `ECANCELED`. Symptom: `next build` hangs forever without
+printing a single line, main thread parked in `uv_sem_wait`; `npm install` and
+`tsc --noEmit` take many minutes or never finish. Moving the project to `~/Developer`
+took `npm install` from minutes to 9 seconds and `next build` to 3.2 seconds.
+
+To check a directory: `xattr -p com.apple.file-provider-domain-id .` — if that
+attribute exists, the folder is synced. `find node_modules -flags +dataless` lists
+evicted files.
+
+Node is pinned to the LTS line (`.nvmrc`, `engines`). Node 26 is *current*, released
+after Next 16's support matrix.
+
+`next.config` is `.mjs` rather than `.ts`, which avoids Next's TypeScript config
+loader. Not required — it was changed while chasing the hang above — but harmless.
+
+npm 11 blocks package install scripts by default. Prisma needs its engine:
+`npm install-scripts approve @prisma/engines prisma`.
 
 ## Prisma 7 gotchas
 
