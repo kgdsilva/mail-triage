@@ -10,11 +10,28 @@ groups later with different entity codes and folder structures.
 
 ## Status
 
-**Phase 0 (foundation) — complete.** Schema, migration, seed and a smoke page proving
-Next.js → Prisma → Postgres. No auth, no upload, no classification UI yet.
+**Phase 1 complete.** Batch upload into our own storage, a keyboard-driven classify
+screen with an in-app PDF viewer and live action-filter suggestions, the master log with
+filter/search/CSV export, and admin for entities, document types, vendors and autopay
+rules.
 
-Roadmap: Phase 1 master log · 1.5 historical import · 2 role queues · 3 Drive/Box sync
-· 4 AI-assisted classification · 5 pattern detection.
+**Not done yet:** authentication. `src/server/session.ts` resolves the seeded operator
+and refuses to run in production — wire Auth.js before this is deployed or shared.
+
+Roadmap: 1.5 historical import · 2 role queues + auth · 3 Drive/Box sync · 4 AI-assisted
+classification · 5 pattern detection.
+
+## Screens
+
+- `/upload` — drop a batch. Filenames are parsed for an entity hint and a date, and a
+  content hash links re-uploads of the same scan to the original instead of silently
+  duplicating it.
+- `/classify` — the queue. PDF on the left, form on the right, ⌘↵ to save and advance.
+  The action filter's suggestion appears with its reasoning; ambiguous cases are
+  highlighted and always default to action.
+- `/log` — the master log. Filters live in the URL, so any view is a shareable link and
+  the CSV export reuses the same query string.
+- `/settings` — entities, document types, vendors, autopay rules.
 
 ## Stack
 

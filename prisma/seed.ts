@@ -30,17 +30,25 @@ const DOCUMENT_TYPES = [
 ] as const
 
 /**
- * Pilot company group. Entity codes come from the brief; the legal names marked
- * REVIEW are placeholders — correct them in Settings > Entities before the first
- * real batch, since the legal name is what appears on filings and exports.
+ * Pilot company group. `isSegregated` puts an entity in its own tab rather than mixed
+ * into the group-wide list — a display choice, never a permission.
  */
 const COLAB_ENTITIES = [
-  { code: 'CP', legalName: 'CoLAB Processing', sortOrder: 10 },
-  { code: 'CCS', legalName: 'CoLAB Concierge Service', sortOrder: 20 },
-  { code: 'MM', legalName: 'Marsh & Munar', sortOrder: 30 },
-  { code: 'MMT', legalName: 'REVIEW — MMT', sortOrder: 40 },
-  { code: 'OP', legalName: 'REVIEW — OP', sortOrder: 50 },
+  { code: 'CP', legalName: 'CoLAB Processing', sortOrder: 10, isSegregated: false },
+  { code: 'CCS', legalName: 'CoLAB Concierge Service', sortOrder: 20, isSegregated: false },
+  { code: 'MM', legalName: 'Marsh & Munar', sortOrder: 30, isSegregated: false },
+  { code: 'MMT', legalName: 'Marsh & Munar Team LLC', sortOrder: 40, isSegregated: false },
+  { code: 'OP', legalName: 'CoLAB Ops Perfection LLC', sortOrder: 50, isSegregated: true },
 ] as const
+
+/**
+ * Aliases are how a scan gets matched back to an entity when the filename does not say.
+ * OP appears in official documents fully capitalised with a slash.
+ */
+const ENTITY_ALIASES: Record<string, string[]> = {
+  OP: ['CO/LAB OPS PERFECTION, LLC', 'CoLAB Ops Perfection'],
+  MMT: ['Marsh & Munar Team'],
+}
 
 /** Default folder tree created under each entity, mirroring the current Box layout. */
 const FOLDER_TREE: Record<string, string[]> = {
@@ -82,8 +90,16 @@ async function main() {
     const entity = await prisma.entity.upsert({
       where: { companyGroupId_code: { companyGroupId: group.id, code: e.code } },
       create: { ...e, companyGroupId: group.id },
-      update: { sortOrder: e.sortOrder },
+      update: { legalName: e.legalName, sortOrder: e.sortOrder, isSegregated: e.isSegregated },
     })
+
+    for (const alias of ENTITY_ALIASES[e.code] ?? []) {
+      await prisma.entityAlias.upsert({
+        where: { entityId_aliasText: { entityId: entity.id, aliasText: alias } },
+        create: { entityId: entity.id, aliasText: alias, source: 'NAME' },
+        update: {},
+      })
+    }
 
     for (const [parentName, children] of Object.entries(FOLDER_TREE)) {
       const parentPath = `${e.code} > ${parentName}`
@@ -115,6 +131,20 @@ async function main() {
     }
   }
   console.log(`✔ ${COLAB_ENTITIES.length} entities with folder trees`)
+
+  // The operator account. Until Auth.js is wired (Phase 2) this is who every audit
+  // event is attributed to — see src/server/session.ts.
+  const operator = await prisma.user.upsert({
+    where: { email: 'KG@colabservice.com' },
+    create: { email: 'KG@colabservice.com', name: 'Kauê Guireli' },
+    update: {},
+  })
+  await prisma.membership.upsert({
+    where: { userId_companyGroupId: { userId: operator.id, companyGroupId: group.id } },
+    create: { userId: operator.id, companyGroupId: group.id, role: 'OWNER' },
+    update: { role: 'OWNER', isActive: true },
+  })
+  console.log(`✔ operator ${operator.email}`)
 }
 
 main()

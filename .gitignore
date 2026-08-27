@@ -35,3 +35,6 @@ yarn-error.log*
 # local object storage — dev only; real documents live in R2.
 # Scanned mail is confidential, it must never reach the repo.
 /.storage
+
+# generated test scans
+/.storage
