@@ -58,6 +58,12 @@ model User {
   // Named `image` because the Auth.js Prisma adapter writes to that exact field.
   image       String?   @map("avatar_url")
   emailVerified DateTime? @map("email_verified")
+
+  /// scrypt hash for password sign-in, in the format written by src/server/password.ts.
+  /// Null for people who only ever sign in with Google — the two methods coexist, and a
+  /// user may have both. Never selected into anything that reaches the client.
+  passwordHash String? @map("password_hash")
+
   createdAt   DateTime  @default(now()) @map("created_at")
   lastLoginAt DateTime? @map("last_login_at")
 
@@ -76,13 +82,29 @@ model User {
   @@map("app_user")
 }
 
+/// What someone may do in the system. Deliberately NOT about who handles which
+/// document: whether an item needs paying or confirming varies document by document,
+/// so that lives on the Document as `actionKind`, never as a label on a person.
 enum Role {
+  /// Unrestricted, including ownership transfer.
   OWNER
+  /// Everything except ownership transfer, including configuration and every queue.
   ADMIN
+  /// Uploads batches and classifies. Sees the whole log because triage requires it.
   OPERATOR
-  PAYER
-  CONFIRMER
+  /// Standard operational member. Works the documents routed to them; does not browse
+  /// the group-wide log or change configuration.
+  MEMBER
+  /// Read-only across the whole log.
   VIEWER
+}
+
+/// What a document is asking a person to do. Set during classification, and it can
+/// change hands: a confirmer who is satisfied hands the same document on as PAY.
+enum ActionKind {
+  PAY
+  CONFIRM
+  REVIEW
 }
 
 model Membership {
@@ -303,7 +325,7 @@ model RoutingRule {
   /// { documentTypeId?, entityId?, vendorId?, amountGte?, hasDueDate?, keywords?[] }
   match Json @default("{}")
 
-  routeToRole   Role?   @map("route_to_role")
+  routeToActionKind ActionKind? @map("route_to_action_kind")
   routeToUserId String? @map("route_to_user_id")
   routeToUser   User?   @relation(fields: [routeToUserId], references: [id], onDelete: SetNull)
 
@@ -425,8 +447,14 @@ model Document {
   // --- routing ------------------------------------------------------------
   assignedToUserId String? @map("assigned_to_user_id")
   assignedTo       User?   @relation("DocumentAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  assignedRole     Role?   @map("assigned_role")
-  notifiedAt       DateTime? @map("notified_at")
+
+  /// What the assignee is being asked to do. One assignee and one action at a time:
+  /// a handoff (confirm -> pay) reassigns the document and rewrites this, leaving the
+  /// previous step in DocumentEvent rather than accumulating parallel assignments.
+  /// Null on archived documents, which never enter anyone's queue.
+  actionKind ActionKind? @map("action_kind")
+
+  notifiedAt DateTime? @map("notified_at")
 
   // --- filing -------------------------------------------------------------
   storageFolderId String?        @map("storage_folder_id")

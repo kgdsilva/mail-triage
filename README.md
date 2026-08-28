@@ -96,6 +96,37 @@ npx tsx prisma/seed.ts
 npm run dev
 ```
 
+## Roles, and what they are not
+
+Access roles say what a person may **see and change**: OWNER, ADMIN, OPERATOR, MEMBER,
+VIEWER. They deliberately say nothing about who handles which document.
+
+There is no permanent "payer" and no permanent "confirmer". In practice whoever pays or
+confirms varies document by document — the same colleague may confirm one item and pay
+the next — so that lives on the document as `actionKind` (PAY / CONFIRM / REVIEW), set
+during classification. The dashboard groups a person's items by it, which is why one
+person can legitimately appear in more than one group at once.
+
+Handing work on is a reassignment, not a second assignment: one assignee and one action
+at a time. When a confirmer is satisfied they hand the document on as PAY, and the step
+they finished stays in `DocumentEvent`. That keeps every dashboard honest — it shows
+only what is genuinely someone's right now.
+
+## Signing in
+
+Two methods, one allowlist. Google for anyone with a Workspace account, and email +
+password for those without one. A person can have both; the email is the identity.
+Passwords are admin-set in Settings → Members — there is no self-signup, no reset email,
+and no self-service change.
+
+Sessions are JWT because the Credentials provider requires it. That would normally
+weaken revocation, except `getSession()` re-reads the membership on every request, so
+deactivating someone locks them out immediately. The token proves identity; the
+membership row decides access.
+
+Password hashing is scrypt from Node's standard library (`src/server/password.ts`) —
+memory-hard, and no security-critical dependency in the supply chain.
+
 ## The two invariants
 
 Everything else in this codebase is negotiable. These two are not:

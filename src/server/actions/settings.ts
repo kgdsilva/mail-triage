@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { prisma } from '@/server/db/client'
 import { normalizeEmail } from '@/auth'
 import { requireAdmin, requireSession } from '@/server/session'
+import { hashPassword, validatePassword } from '@/server/password'
 
 /**
  * Configuration lives in the database, not in code, so onboarding a second company
@@ -160,33 +161,91 @@ export async function saveDocumentType(formData: FormData) {
 const memberSchema = z.object({
   email: z.string().trim().email(),
   name: z.string().trim().optional(),
-  role: z.enum(['OWNER', 'ADMIN', 'OPERATOR', 'PAYER', 'CONFIRMER', 'VIEWER']),
+  role: z.enum(['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'VIEWER']),
+  /// Blank means Google-only: the person signs in with Google and never has a password.
+  password: z.string().optional(),
 })
 
 /**
  * Adds someone to the workspace.
  *
  * This is the allowlist that authentication checks against: until an email appears
- * here, signing in with that Google account is refused. There is no invitation email to
- * send or accept — the person just signs in with Google once their address is listed.
+ * here, signing in is refused whichever method they use. There is no invitation email
+ * and no self-signup.
+ *
+ * Setting a password is optional. Leave it blank for someone who will sign in with
+ * Google; set one for someone who has no Workspace account, and hand it to them
+ * directly. Either way the same email is the identity, so a person given a password
+ * today can still sign in with Google later.
  */
 export async function addMember(formData: FormData) {
   const session = await requireAdmin()
   const data = memberSchema.parse(Object.fromEntries(formData))
   const email = normalizeEmail(data.email)
 
+  const password = data.password?.trim() || null
+  let passwordHash: string | undefined
+  if (password) {
+    const problem = validatePassword(password)
+    if (problem) throw new Error(problem)
+    passwordHash = await hashPassword(password)
+  }
+
   // Users are global across company groups, so reuse an existing record rather than
   // creating a second one for the same person.
   const user = await prisma.user.upsert({
     where: { email },
-    create: { email, name: data.name || null },
-    update: data.name ? { name: data.name } : {},
+    create: { email, name: data.name || null, passwordHash },
+    update: {
+      ...(data.name ? { name: data.name } : {}),
+      // Only overwrite an existing password when a new one was actually typed.
+      ...(passwordHash ? { passwordHash } : {}),
+    },
   })
 
   await prisma.membership.upsert({
     where: { userId_companyGroupId: { userId: user.id, companyGroupId: session.companyGroupId } },
     create: { userId: user.id, companyGroupId: session.companyGroupId, role: data.role },
     update: { role: data.role, isActive: true },
+  })
+
+  revalidatePath('/settings/members')
+}
+
+/**
+ * Sets or replaces a member's password, or clears it back to Google-only.
+ *
+ * Admin-set only: there is no self-service change and no reset email. If someone
+ * forgets their password, an admin sets a new one here and tells them what it is.
+ */
+export async function setMemberPassword(membershipId: string, formData: FormData) {
+  const session = await requireAdmin()
+
+  const membership = await prisma.membership.findFirst({
+    where: { id: membershipId, companyGroupId: session.companyGroupId },
+    select: { userId: true },
+  })
+  if (!membership) throw new Error('Member not found')
+
+  const password = String(formData.get('password') ?? '').trim()
+
+  if (!password) {
+    // Clearing the password does not remove access — it leaves Google as the only way
+    // in for that person, which is the state every Google-only member is already in.
+    await prisma.user.update({
+      where: { id: membership.userId },
+      data: { passwordHash: null },
+    })
+    revalidatePath('/settings/members')
+    return
+  }
+
+  const problem = validatePassword(password)
+  if (problem) throw new Error(problem)
+
+  await prisma.user.update({
+    where: { id: membership.userId },
+    data: { passwordHash: await hashPassword(password) },
   })
 
   revalidatePath('/settings/members')

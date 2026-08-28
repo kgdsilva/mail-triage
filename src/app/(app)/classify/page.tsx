@@ -1,13 +1,13 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { nextUnreviewed } from '@/server/documents'
-import { requireSession } from '@/server/session'
+import { requireTriage } from '@/server/session'
 
 export const dynamic = 'force-dynamic'
 
 /** Sends the operator straight to the next document awaiting a decision. */
 export default async function ClassifyEntry() {
-  const session = await requireSession()
+  const session = await requireTriage()
   const next = await nextUnreviewed(session.companyGroupId)
 
   if (next) redirect(`/classify/${next.id}`)

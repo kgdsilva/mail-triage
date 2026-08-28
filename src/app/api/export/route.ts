@@ -1,6 +1,6 @@
 import { listAllForExport } from '@/server/documents'
 import { parseFilters } from '@/lib/filters'
-import { requireSession } from '@/server/session'
+import { canSeeWholeLog, requireSession } from '@/server/session'
 
 const COLUMNS = [
   'Reviewed',
@@ -34,6 +34,9 @@ function isoDate(d: Date | null) {
 export async function GET(req: Request) {
   const session = await requireSession()
   const filters = parseFilters(new URL(req.url).searchParams)
+  // Same restriction as the log screen — otherwise the export is a way around it.
+  if (!canSeeWholeLog(session.role)) filters.restrictToUserId = session.userId
+
   const rows = await listAllForExport(session.companyGroupId, filters)
 
   const lines = [COLUMNS.map(csvCell).join(',')]

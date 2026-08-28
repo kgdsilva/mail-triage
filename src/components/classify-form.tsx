@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Disposition, DispositionReason, DocStatus } from '@/generated/prisma/enums'
+import type { ActionKind, Disposition, DispositionReason, DocStatus } from '@/generated/prisma/enums'
 import { saveClassification } from '@/server/actions/documents'
 import {
   findOrCreateVendor,
@@ -29,6 +29,7 @@ type Doc = {
   summaryNote: string
   internalNotes: string
   assignedToUserId: string | null
+  actionKind: ActionKind | null
 }
 
 const ARCHIVE_REASONS: DispositionReason[] = [
@@ -169,6 +170,7 @@ export function ClassifyForm({
       fd.set('vendorId', form.vendorId ?? '')
       fd.set('storageFolderId', form.storageFolderId ?? '')
       fd.set('assignedToUserId', form.assignedToUserId ?? '')
+      fd.set('actionKind', form.actionKind ?? '')
       fd.set('documentDate', form.documentDate)
       fd.set('dueDate', form.dueDate)
       fd.set('amount', form.amount)
@@ -400,6 +402,28 @@ export function ClassifyForm({
       </div>
 
       {form.disposition === 'ACTION' && (
+        <Field label="What does this need?">
+          <div className="flex gap-1.5">
+            {ACTION_KINDS.map(({ value, label, hint }) => (
+              <button
+                key={value}
+                type="button"
+                title={hint}
+                onClick={() => set('actionKind', value)}
+                className={`flex-1 rounded border px-2 py-1.5 text-xs ${
+                  (form.actionKind ?? 'REVIEW') === value
+                    ? 'border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900'
+                    : 'border-neutral-300 dark:border-neutral-700'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </Field>
+      )}
+
+      {form.disposition === 'ACTION' && (
         <div className="grid grid-cols-2 gap-2">
           <Field label="Route to">
             <select
@@ -511,3 +535,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </label>
   )
 }
+
+/**
+ * What a document asks of whoever it lands on. This lives on the document, not on the
+ * person: the same colleague may confirm one item and pay the next, so there is no
+ * permanent "payer" or "confirmer".
+ */
+const ACTION_KINDS: { value: ActionKind; label: string; hint: string }[] = [
+  { value: 'PAY', label: 'Pay', hint: 'A bill to pay — amount and due date are what matter' },
+  {
+    value: 'CONFIRM',
+    label: 'Confirm',
+    hint: 'Needs a decision or verification before any money moves',
+  },
+  { value: 'REVIEW', label: 'Review', hint: 'Someone should look at it; nothing to pay yet' },
+]

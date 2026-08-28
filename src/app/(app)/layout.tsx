@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { signOut } from '@/auth'
 import { countUnreviewed } from '@/server/documents'
-import { isAdmin, requireSession } from '@/server/session'
+import { canSeeWholeLog, isAdmin, requireSession } from '@/server/session'
 import { prisma } from '@/server/db/client'
 import { NavLink } from '@/components/nav-link'
 
@@ -16,24 +16,30 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       where: { id: session.companyGroupId },
       select: { name: true },
     }),
-    countUnreviewed(session.companyGroupId),
+    // Only meaningful for people who actually triage; skip the query otherwise.
+    isAdmin(session.role) ? countUnreviewed(session.companyGroupId) : Promise.resolve(0),
   ])
+
+  const triages = isAdmin(session.role)
 
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <header className="border-b border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
         <div className="mx-auto flex max-w-[1600px] items-center gap-6 px-5 py-3">
-          <Link href="/log" className="text-sm font-semibold tracking-tight">
+          <Link href="/" className="text-sm font-semibold tracking-tight">
             Mail Triage
           </Link>
           <span className="hidden text-xs text-neutral-500 sm:inline">{group?.name}</span>
 
           <nav className="ml-auto flex items-center gap-1">
-            <NavLink href="/classify" badge={pending || undefined}>
-              Classify
-            </NavLink>
-            <NavLink href="/log">Master log</NavLink>
-            <NavLink href="/upload">Upload</NavLink>
+            <NavLink href="/">My queue</NavLink>
+            {triages && (
+              <NavLink href="/classify" badge={pending || undefined}>
+                Classify
+              </NavLink>
+            )}
+            <NavLink href="/log">{canSeeWholeLog(session.role) ? 'Master log' : 'My documents'}</NavLink>
+            {triages && <NavLink href="/upload">Upload</NavLink>}
             {isAdmin(session.role) && <NavLink href="/settings">Settings</NavLink>}
           </nav>
 

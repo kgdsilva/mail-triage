@@ -1,8 +1,11 @@
 import { UploadForm } from '@/components/upload-form'
+import { requireTriage } from '@/server/session'
 
 export const dynamic = 'force-dynamic'
 
-export default function UploadPage() {
+export default async function UploadPage() {
+  await requireTriage()
+
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <div>

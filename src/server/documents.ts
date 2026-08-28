@@ -1,5 +1,5 @@
 import { Prisma } from '@/generated/prisma/client'
-import type { Disposition, DispositionReason, DocStatus } from '@/generated/prisma/enums'
+import type { ActionKind, Disposition, DispositionReason, DocStatus } from '@/generated/prisma/enums'
 import { prisma } from '@/server/db/client'
 
 export type LogFilters = {
@@ -12,6 +12,13 @@ export type LogFilters = {
   dateTo?: Date
   /** Segregated entities (OP) sit in their own view rather than the group-wide list. */
   view?: 'main' | 'segregated' | 'all'
+  /**
+   * Limits the result to documents assigned to this user. Set for roles that do not
+   * browse the group-wide log (MEMBER) — see canSeeWholeLog in server/session.ts.
+   * This is a permission boundary, so it is applied last and cannot be overridden by
+   * anything the caller puts in the query string.
+   */
+  restrictToUserId?: string
   page?: number
   pageSize?: number
 }
@@ -70,6 +77,9 @@ export async function buildWhere(
   if (filters.view === 'main') where.entity = { isSegregated: false }
   if (filters.view === 'segregated') where.entity = { isSegregated: true }
 
+  // Applied last: a restricted viewer never sees beyond their own assignments.
+  if (filters.restrictToUserId) where.assignedToUserId = filters.restrictToUserId
+
   return where
 }
 
@@ -113,9 +123,18 @@ export async function listAllForExport(companyGroupId: string, filters: LogFilte
   })
 }
 
-export function getDocument(companyGroupId: string, id: string) {
+/**
+ * `restrictToUserId` guards direct URL access: without it a member could open any
+ * document by guessing an id, which the filtered log would never have shown them.
+ */
+export function getDocument(companyGroupId: string, id: string, restrictToUserId?: string) {
   return prisma.document.findFirst({
-    where: { id, companyGroupId, deletedAt: null },
+    where: {
+      id,
+      companyGroupId,
+      deletedAt: null,
+      ...(restrictToUserId ? { assignedToUserId: restrictToUserId } : {}),
+    },
     include: {
       ...LOG_INCLUDE,
       batch: { select: { id: true, label: true } },
@@ -179,6 +198,8 @@ export type ClassifyInput = {
   summaryNote: string | null
   internalNotes: string | null
   assignedToUserId: string | null
+  /** Null unless disposition is ACTION — the database enforces that pairing. */
+  actionKind: ActionKind | null
 }
 
 /**
@@ -199,6 +220,9 @@ export async function classifyDocument(
   }
   if (input.disposition === 'ARCHIVE' && !input.dispositionReason) {
     throw new Error('Archiving requires a reason — it is what makes the decision auditable.')
+  }
+  if (input.disposition === 'ACTION' && !input.actionKind) {
+    throw new Error('An action item needs to say what it is asking for: pay, confirm or review.')
   }
 
   const before = await prisma.document.findFirst({

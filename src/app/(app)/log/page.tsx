@@ -4,7 +4,7 @@ import { LogFilters } from '@/components/log-filters'
 import { parseFilters } from '@/lib/filters'
 import { prisma } from '@/server/db/client'
 import { listDocuments } from '@/server/documents'
-import { requireSession } from '@/server/session'
+import { canSeeWholeLog, requireSession } from '@/server/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +21,10 @@ export default async function LogPage({
   }
 
   const filters = parseFilters(sp)
+  // A MEMBER works their own queue rather than browsing the group's mail. Applied
+  // after parsing so no query string can widen it.
+  const wholeLog = canSeeWholeLog(session.role)
+  if (!wholeLog) filters.restrictToUserId = session.userId
   const [{ rows, total, page, pageCount }, entities, types] = await Promise.all([
     listDocuments(session.companyGroupId, filters),
     prisma.entity.findMany({
@@ -38,9 +42,11 @@ export default async function LogPage({
   return (
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
-        <h1 className="text-lg font-semibold">Master log</h1>
+        <h1 className="text-lg font-semibold">{wholeLog ? 'Master log' : 'My documents'}</h1>
         <p className="text-xs text-neutral-500">
-          Every document that has passed through the system. Nothing is ever deleted.
+          {wholeLog
+            ? 'Every document that has passed through the system. Nothing is ever deleted.'
+            : 'Every document routed to you, open or resolved.'}
         </p>
       </div>
 

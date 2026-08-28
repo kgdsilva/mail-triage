@@ -50,11 +50,35 @@ export const requireSession = cache(async (): Promise<Session> => {
   return session
 })
 
-/** Roles that may change configuration and see every queue. */
+/** Roles that may change configuration. */
 export const ADMIN_ROLES = ['OWNER', 'ADMIN', 'OPERATOR'] as const
 
 export function isAdmin(role: string) {
   return (ADMIN_ROLES as readonly string[]).includes(role)
+}
+
+/**
+ * Who may browse the group-wide master log.
+ *
+ * MEMBER is the standard operational role and is deliberately excluded: they work the
+ * documents routed to them and see those, rather than the whole group's mail. VIEWER is
+ * included because read-only-across-everything is the entire point of that role.
+ */
+const FULL_LOG_ROLES = ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] as const
+
+export function canSeeWholeLog(role: string) {
+  return (FULL_LOG_ROLES as readonly string[]).includes(role)
+}
+
+/**
+ * Triage work — uploading batches and classifying — belongs to the roles that oversee
+ * the whole log. A MEMBER receives documents; they do not decide what arrives or how it
+ * is filed. Hiding the nav link is not enough, so every such page and action calls this.
+ */
+export async function requireTriage(): Promise<Session> {
+  const session = await requireSession()
+  if (!isAdmin(session.role)) redirect('/')
+  return session
 }
 
 export async function requireAdmin(): Promise<Session> {

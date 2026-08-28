@@ -1,5 +1,5 @@
 import { prisma } from '@/server/db/client'
-import { requireSession } from '@/server/session'
+import { canSeeWholeLog, requireSession } from '@/server/session'
 import { getObject } from '@/server/storage'
 
 /**
@@ -13,7 +13,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params
 
   const doc = await prisma.document.findFirst({
-    where: { id, companyGroupId: session.companyGroupId, deletedAt: null },
+    where: {
+      id,
+      companyGroupId: session.companyGroupId,
+      deletedAt: null,
+      // The PDF itself is the document; a member who may not open the record in the
+      // log must not be able to pull its bytes by id either.
+      ...(canSeeWholeLog(session.role) ? {} : { assignedToUserId: session.userId }),
+    },
     select: {
       storageKey: true,
       storageBucket: true,

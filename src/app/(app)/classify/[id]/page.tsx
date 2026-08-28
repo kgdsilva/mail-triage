@@ -3,12 +3,12 @@ import { notFound } from 'next/navigation'
 import { ClassifyForm } from '@/components/classify-form'
 import { prisma } from '@/server/db/client'
 import { countUnreviewed, getDocument, nextUnreviewed } from '@/server/documents'
-import { requireSession } from '@/server/session'
+import { requireTriage } from '@/server/session'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ClassifyPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSession()
+  const session = await requireTriage()
   const { id } = await params
 
   const doc = await getDocument(session.companyGroupId, id)
@@ -109,13 +109,14 @@ export default async function ClassifyPage({ params }: { params: Promise<{ id: s
             summaryNote: doc.summaryNote ?? '',
             internalNotes: doc.internalNotes ?? '',
             assignedToUserId: doc.assignedToUserId,
+            actionKind: doc.actionKind,
           }}
           entities={entities}
           types={types}
           folders={folders}
           people={users.map((m) => ({
             id: m.user.id,
-            label: `${m.user.name ?? m.user.email} · ${m.role.toLowerCase()}`,
+            label: m.user.name ?? m.user.email,
           }))}
           nextId={next?.id ?? null}
         />
