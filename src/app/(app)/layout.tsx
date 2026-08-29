@@ -41,10 +41,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <nav className="ml-auto flex items-stretch gap-1">
             <NavLink href="/">My queue</NavLink>
             {triages && (
-              <NavLink href="/classify" badge={pending || undefined}>
-                Classify
+              <NavLink href="/review" badge={pending || undefined}>
+                Review
               </NavLink>
             )}
+            {triages && <NavLink href="/classify">Classify</NavLink>}
+            {canSeeWholeLog(session.role) && <NavLink href="/checks">Checks</NavLink>}
             <NavLink href="/log">{canSeeWholeLog(session.role) ? 'Master log' : 'My documents'}</NavLink>
             {triages && <NavLink href="/upload">Upload</NavLink>}
             {isAdmin(session.role) && <NavLink href="/settings">Settings</NavLink>}

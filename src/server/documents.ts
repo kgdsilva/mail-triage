@@ -204,6 +204,28 @@ export type ClassifyInput = {
 }
 
 /**
+ * The rules a decision must satisfy, wherever it was made — the full classify form or a
+ * one-click decision on the review table. Checked here as well as by the database CHECK
+ * constraints: the constraints are the guarantee, this is so a person gets a sentence
+ * instead of a Postgres error.
+ */
+function assertDecisionCoherent(input: {
+  disposition: Disposition
+  dispositionReason: DispositionReason | null
+  actionKind: ActionKind | null
+}) {
+  if (input.disposition === 'UNREVIEWED') {
+    throw new Error('Choose Archive or Send for action — a document cannot be filed undecided.')
+  }
+  if (input.disposition === 'ARCHIVE' && !input.dispositionReason) {
+    throw new Error('Archiving requires a reason — it is what makes the decision auditable.')
+  }
+  if (input.disposition === 'ACTION' && !input.actionKind) {
+    throw new Error('An action item needs to say what it is asking for: pay, confirm or review.')
+  }
+}
+
+/**
  * Commits a classification and records what changed, in one transaction.
  *
  * The archive-needs-a-reason rule is checked here as well as by the database CHECK
@@ -216,15 +238,7 @@ export async function classifyDocument(
   actorUserId: string,
   input: ClassifyInput,
 ) {
-  if (input.disposition === 'UNREVIEWED') {
-    throw new Error('Choose Archive or Send for action — a document cannot be filed undecided.')
-  }
-  if (input.disposition === 'ARCHIVE' && !input.dispositionReason) {
-    throw new Error('Archiving requires a reason — it is what makes the decision auditable.')
-  }
-  if (input.disposition === 'ACTION' && !input.actionKind) {
-    throw new Error('An action item needs to say what it is asking for: pay, confirm or review.')
-  }
+  assertDecisionCoherent(input)
 
   const before = await prisma.document.findFirst({
     where: { id: documentId, companyGroupId, deletedAt: null },
@@ -265,5 +279,186 @@ export async function classifyDocument(
     )
 
     return updated
+  })
+}
+
+/**
+ * The three one-click decisions on the review table.
+ *
+ * A quick decision answers "what is this?" and nothing else. It deliberately does not
+ * set a vendor, amount, folder or final filename — that is the classify form's job — so
+ * a document decided here is decided but NOT yet filed. The review table shows that
+ * difference rather than implying the work is finished.
+ */
+export type QuickDecision = 'PAY' | 'ARCHIVE' | 'SPAM'
+
+const QUICK_DECISIONS: Record<
+  QuickDecision,
+  { disposition: Disposition; dispositionReason: DispositionReason | null; actionKind: ActionKind | null; status: DocStatus }
+> = {
+  // Needs paying: it enters someone's queue, unassigned until routed.
+  PAY: {
+    disposition: 'ACTION',
+    dispositionReason: 'MANUAL_INVOICE',
+    actionKind: 'PAY',
+    status: 'WAITING',
+  },
+  // "No payment needed" is the brief's FYI bucket: seen, nothing to do. Not OTHER,
+  // which would make every archived document's reason say nothing in six months.
+  ARCHIVE: {
+    disposition: 'ARCHIVE',
+    dispositionReason: 'FYI_STATEMENT',
+    actionKind: null,
+    status: 'ARCHIVED',
+  },
+  SPAM: {
+    disposition: 'ARCHIVE',
+    dispositionReason: 'SPAM_SOLICITATION',
+    actionKind: null,
+    status: 'ARCHIVED',
+  },
+}
+
+export async function quickDecide(
+  companyGroupId: string,
+  documentId: string,
+  actorUserId: string,
+  decision: QuickDecision,
+) {
+  const target = QUICK_DECISIONS[decision]
+  if (!target) throw new Error('Unknown decision')
+  assertDecisionCoherent(target)
+
+  const before = await prisma.document.findFirst({
+    where: { id: documentId, companyGroupId, deletedAt: null },
+    select: {
+      disposition: true,
+      dispositionReason: true,
+      actionKind: true,
+      status: true,
+      documentTypeId: true,
+    },
+  })
+  if (!before) throw new Error('Document not found')
+
+  // Calling something spam is also a statement about what type it is. Only fill the
+  // type when it is still empty — never overwrite a type a person already chose.
+  let documentTypeId: string | undefined
+  if (decision === 'SPAM' && !before.documentTypeId) {
+    const spamType = await prisma.documentType.findFirst({
+      where: { companyGroupId, code: 'SPAM', isActive: true },
+      select: { id: true },
+    })
+    documentTypeId = spamType?.id
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.document.update({
+      where: { id: documentId },
+      data: {
+        ...target,
+        ...(documentTypeId ? { documentTypeId } : {}),
+        reviewedByUserId: actorUserId,
+        reviewedAt: new Date(),
+      },
+    })
+
+    await recordEvent(
+      {
+        documentId,
+        actorUserId,
+        action: before.disposition === 'UNREVIEWED' ? 'classified' : 'reclassified',
+        fromValue: {
+          disposition: before.disposition,
+          dispositionReason: before.dispositionReason,
+          actionKind: before.actionKind,
+          status: before.status,
+        },
+        toValue: { ...target, via: 'quick-review' },
+      },
+      tx,
+    )
+  })
+}
+
+/**
+ * Sharpens why something was archived, from the review table, without reopening the
+ * full form. The default reason a quick archive applies is a reasonable guess; this is
+ * how it becomes accurate.
+ */
+export async function setArchiveReason(
+  companyGroupId: string,
+  documentId: string,
+  actorUserId: string,
+  reason: DispositionReason,
+) {
+  const before = await prisma.document.findFirst({
+    where: { id: documentId, companyGroupId, deletedAt: null, disposition: 'ARCHIVE' },
+    select: { dispositionReason: true },
+  })
+  if (!before) throw new Error('Document not found, or not archived')
+
+  return prisma.$transaction(async (tx) => {
+    await tx.document.update({
+      where: { id: documentId },
+      data: { dispositionReason: reason },
+    })
+    await recordEvent(
+      {
+        documentId,
+        actorUserId,
+        action: 'reclassified',
+        fromValue: { dispositionReason: before.dispositionReason },
+        toValue: { dispositionReason: reason },
+      },
+      tx,
+    )
+  })
+}
+
+/** Rows for the review sweep: everything still undecided, plus decided ones on request. */
+export function listForReview(
+  companyGroupId: string,
+  opts: { includeDecided: boolean; entityId?: string | null },
+) {
+  return prisma.document.findMany({
+    where: {
+      companyGroupId,
+      deletedAt: null,
+      ...(opts.includeDecided ? {} : { disposition: 'UNREVIEWED' }),
+      ...(opts.entityId ? { entityId: opts.entityId } : {}),
+    },
+    include: {
+      entity: { select: { id: true, code: true, legalName: true, sortOrder: true } },
+      documentType: { select: { label: true, code: true } },
+      vendor: { select: { name: true } },
+      batch: { select: { label: true } },
+    },
+    orderBy: [
+      { disposition: 'asc' },
+      { entity: { sortOrder: 'asc' } },
+      { documentDate: { sort: 'desc', nulls: 'last' } },
+      { createdAt: 'asc' },
+    ],
+    take: 500,
+  })
+}
+
+/** Incoming third-party checks, for reconciliation. Archived, so never in a queue. */
+export function listChecks(companyGroupId: string, entityId?: string | null) {
+  return prisma.document.findMany({
+    where: {
+      companyGroupId,
+      deletedAt: null,
+      documentType: { code: 'CHECK' },
+      ...(entityId ? { entityId } : {}),
+    },
+    include: {
+      entity: { select: { id: true, code: true, sortOrder: true } },
+      vendor: { select: { name: true } },
+      batch: { select: { label: true } },
+    },
+    orderBy: [{ documentDate: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+    take: 500,
   })
 }

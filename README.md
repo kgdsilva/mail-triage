@@ -96,6 +96,38 @@ npx tsx prisma/seed.ts
 npm run dev
 ```
 
+## Review vs Classify
+
+Two screens over the same data, for two different moments — not two ways to do one job.
+
+**Review** (`/review`) is the batch sweep: a table grouped by entity with the PDF
+alongside, and three one-click decisions (needs paying / no payment needed / spam). It
+answers "what came in and what is it?" across a whole batch.
+
+**Classify** (`/classify`) is the full form for one document: vendor, amount, dates,
+folder, final filename, routing.
+
+They share everything that matters. The quick buttons call `quickDecide()`, which runs
+the same `assertDecisionCoherent()` invariants as the classify form and writes the same
+audit event (tagged `via: "quick-review"`). The PDF viewer is the same permission-scoped
+`/api/files/[id]` route.
+
+The distinction the UI has to keep honest: a quick decision decides a document, it does
+not **file** it — no final filename, no folder. So a decided row shows "✓ Reviewed" and,
+when it still lacks a home, a "Not filed" link through to the classify form. Reviewed
+never gets to mean finished.
+
+A quick archive applies `FYI_STATEMENT` ("seen, nothing to do") rather than `OTHER`,
+and the row then offers a reason dropdown so it can be sharpened to autopay or incoming
+check in one click. Defaulting everything to OTHER would technically satisfy the
+archive-needs-a-reason constraint while making it useless six months later.
+
+## Checks
+
+`/checks` lists incoming third-party checks on their own, with a per-entity filter and a
+running total for reconciliation. Deliberately read-only: these are archived on arrival
+and never enter a queue, and what action belongs here is still an open question.
+
 ## Visual language
 
 The company's own navy `#1B3A6B` and gold `#C9922B`, so the app matches the documents

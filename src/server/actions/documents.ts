@@ -4,7 +4,13 @@ import path from 'node:path'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { prisma } from '@/server/db/client'
-import { classifyDocument, recordEvent } from '@/server/documents'
+import {
+  classifyDocument,
+  quickDecide,
+  recordEvent,
+  setArchiveReason,
+  type QuickDecision,
+} from '@/server/documents'
 import { parseIncomingFilename } from '@/server/filename-parse'
 import { canSeeWholeLog, requireSession, requireTriage } from '@/server/session'
 import { buildKey, deleteObject, putObject } from '@/server/storage'
@@ -336,5 +342,41 @@ export async function resolveDocument(documentId: string) {
   })
 
   revalidatePath('/')
+  revalidatePath('/log')
+}
+
+/**
+ * One-click decision from the review table. Goes through the same decision path and the
+ * same invariants as the classify form — the table is a faster way to answer the
+ * question, not a second way to write the answer.
+ */
+export async function decideQuickly(documentId: string, decision: QuickDecision) {
+  const session = await requireTriage()
+  await quickDecide(session.companyGroupId, documentId, session.userId, decision)
+
+  revalidatePath('/review')
+  revalidatePath('/log')
+  revalidatePath('/')
+  revalidatePath('/classify')
+}
+
+/** Sharpens an archive reason from the review table. */
+export async function refineArchiveReason(documentId: string, formData: FormData) {
+  const session = await requireTriage()
+  const reason = String(formData.get('reason') ?? '')
+
+  const allowed = [
+    'AUTOPAY',
+    'INCOMING_CHECK',
+    'SPAM_SOLICITATION',
+    'FYI_STATEMENT',
+    'OTHER',
+  ] as const
+  if (!(allowed as readonly string[]).includes(reason)) {
+    throw new Error('Unknown archive reason')
+  }
+
+  await setArchiveReason(session.companyGroupId, documentId, session.userId, reason as never)
+  revalidatePath('/review')
   revalidatePath('/log')
 }
