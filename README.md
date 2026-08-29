@@ -249,6 +249,19 @@ Required environment variables in Vercel: `DATABASE_URL`, `DIRECT_URL`, `AUTH_SE
 `AUTH_URL`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `BOOTSTRAP_OWNER_EMAIL`,
 `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`.
 
+**R2 needs a CORS rule.** Files above 4.5 MB never travel through a server action —
+Vercel rejects the request body at the platform edge on every plan — so the browser PUTs
+them straight to R2 with a signed URL. That is a cross-origin request, and without a
+CORS policy on the bucket the browser blocks it before it leaves. In the bucket's
+Settings → CORS Policy:
+
+```json
+[{ "AllowedOrigins": ["https://YOUR-APP.vercel.app"],
+   "AllowedMethods": ["PUT"],
+   "AllowedHeaders": ["content-type"],
+   "MaxAgeSeconds": 3600 }]
+```
+
 The R2 bucket must stay private. Files are served by `/api/files/[id]`, which checks
 membership and assignment before returning a byte; a public bucket would route around
 that entirely.

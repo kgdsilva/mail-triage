@@ -3,7 +3,13 @@
 import { useRouter } from 'next/navigation'
 import { UploadCloud } from 'lucide-react'
 import { useRef, useState } from 'react'
-import { uploadBatch, type UploadResult } from '@/server/actions/documents'
+import {
+  attachUpload,
+  beginUpload,
+  signUpload,
+  uploadBatch,
+  type UploadResult,
+} from '@/server/actions/documents'
 
 export function UploadForm() {
   const router = useRouter()
@@ -13,22 +19,72 @@ export function UploadForm() {
   const [result, setResult] = useState<UploadResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [progress, setProgress] = useState<{ done: number; total: number; name: string } | null>(
+    null,
+  )
 
+  /**
+   * Uploads go straight from here to object storage when it is configured.
+   *
+   * Not for speed: a serverless function's request body is capped at 4.5 MB, so a 50 MB
+   * scan is rejected by the platform before it ever reaches a server action. Signing a
+   * URL and PUTting the bytes to storage is the only path these files have. Local
+   * development has no object storage, so the server reports direct: false and the
+   * whole batch goes through the original form-data action instead.
+   */
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (files.length === 0) return
 
     setBusy(true)
     setError(null)
-    try {
-      const fd = new FormData(formRef.current!)
-      // The drop zone keeps its own list, so files dropped rather than picked are
-      // included too. Clear whatever the input contributed first to avoid duplicates.
-      fd.delete('files')
-      files.forEach((f) => fd.append('files', f))
+    setProgress(null)
 
-      const res = await uploadBatch(fd)
-      setResult(res)
+    const label = String(new FormData(formRef.current!).get('label') ?? '')
+
+    try {
+      const { batchId, direct } = await beginUpload(label)
+
+      if (!direct || !batchId) {
+        const fd = new FormData()
+        fd.set('label', label)
+        files.forEach((f) => fd.append('files', f))
+        setResult(await uploadBatch(fd))
+      } else {
+        const skipped: string[] = []
+        let created = 0
+
+        for (const [i, file] of files.entries()) {
+          setProgress({ done: i, total: files.length, name: file.name })
+          const contentType = file.type || 'application/pdf'
+
+          try {
+            const { key, url } = await signUpload(batchId, file.name, contentType, file.size)
+
+            const put = await fetch(url, {
+              method: 'PUT',
+              body: file,
+              headers: { 'Content-Type': contentType },
+            })
+            if (!put.ok) throw new Error(`storage refused the upload (${put.status})`)
+
+            const res = await attachUpload({
+              batchId,
+              key,
+              filename: file.name,
+              contentType,
+              sha256: await hashFile(file),
+            })
+            if (res.ok) created += 1
+            else skipped.push(`${file.name} (${res.error})`)
+          } catch (err) {
+            skipped.push(`${file.name} (${err instanceof Error ? err.message : 'failed'})`)
+          }
+        }
+
+        setResult({ batchId, created, skipped })
+      }
+
       setFiles([])
       formRef.current?.reset()
       router.refresh()
@@ -36,6 +92,7 @@ export function UploadForm() {
       setError(err instanceof Error ? err.message : 'Upload failed.')
     } finally {
       setBusy(false)
+      setProgress(null)
     }
   }
 
@@ -140,4 +197,25 @@ export function UploadForm() {
       </button>
     </form>
   )
+}
+
+/**
+ * SHA-256 of the file, for spotting a document that was scanned twice.
+ *
+ * Computed in the browser because with a direct upload the bytes never pass through the
+ * server. That makes it a hint rather than a guarantee — a wrong value costs a missed
+ * duplicate warning, nothing more — so a failure here is not worth failing an upload
+ * over. Requires a secure context; on plain http it returns null and the document is
+ * simply stored without a hash.
+ */
+async function hashFile(file: File): Promise<string | null> {
+  if (!globalThis.crypto?.subtle) return null
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+    return Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+  } catch {
+    return null
+  }
 }

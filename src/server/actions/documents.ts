@@ -13,7 +13,15 @@ import {
 } from '@/server/documents'
 import { parseIncomingFilename } from '@/server/filename-parse'
 import { canSeeWholeLog, requireSession, requireTriage } from '@/server/session'
-import { buildKey, deleteObject, putObject } from '@/server/storage'
+import {
+  buildKey,
+  deleteObject,
+  headObject,
+  presignPut,
+  putObject,
+  storageBucket,
+  supportsDirectUpload,
+} from '@/server/storage'
 
 const MAX_BYTES = 50 * 1024 * 1024
 const ALLOWED = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff'])
@@ -379,4 +387,148 @@ export async function refineArchiveReason(documentId: string, formData: FormData
   await setArchiveReason(session.companyGroupId, documentId, session.userId, reason as never)
   revalidatePath('/review')
   revalidatePath('/log')
+}
+
+/**
+ * Direct-to-storage upload, in three steps: open a batch, sign a URL per file, then
+ * register what landed.
+ *
+ * Vercel caps a function's request body at 4.5 MB on every plan, so a scan larger than
+ * that never reaches uploadBatch — the platform rejects it before any of our code runs.
+ * The browser therefore PUTs the bytes straight to R2 and only tells the server about
+ * it afterwards. Local development has no object storage, so `direct` is false there
+ * and the form falls back to uploadBatch.
+ */
+export async function beginUpload(
+  label: string,
+): Promise<{ batchId: string | null; direct: boolean }> {
+  const session = await requireTriage()
+
+  // Only the direct path needs a batch up front, to hang each signed upload on. The
+  // fallback path lets uploadBatch create its own — creating one here too would leave
+  // an empty orphan batch behind on every local upload.
+  if (!supportsDirectUpload()) return { batchId: null, direct: false }
+
+  const batch = await prisma.batch.create({
+    data: {
+      companyGroupId: session.companyGroupId,
+      label: label.trim() || defaultBatchLabel(),
+      source: 'MANUAL_UPLOAD',
+      uploadedByUserId: session.userId,
+    },
+  })
+
+  return { batchId: batch.id, direct: true }
+}
+
+/**
+ * Signs one upload. The key is chosen here, never by the browser, so an upload cannot
+ * be written outside the caller's company group prefix or over an existing document.
+ */
+export async function signUpload(
+  batchId: string,
+  filename: string,
+  contentType: string,
+  size: number,
+): Promise<{ key: string; url: string }> {
+  const session = await requireTriage()
+
+  const batch = await prisma.batch.findFirst({
+    where: { id: batchId, companyGroupId: session.companyGroupId },
+    select: { id: true },
+  })
+  if (!batch) throw new Error('Batch not found')
+
+  if (!Number.isFinite(size) || size <= 0) throw new Error('Empty file')
+  if (size > MAX_BYTES) throw new Error('Over 50 MB')
+  if (!ALLOWED.has(contentType)) throw new Error(`${contentType} not accepted`)
+
+  const key = buildKey(session.companyGroupId, path.extname(filename))
+  return { key, url: await presignPut(key, contentType) }
+}
+
+/**
+ * Records a file that reached storage. Mirrors uploadBatch's bookkeeping: filename
+ * pre-fill, duplicate link by content hash, and an audit event.
+ *
+ * The hash is computed in the browser, because the server never sees these bytes. That
+ * makes it a convenience signal for spotting a re-scanned document, not a security
+ * control — a wrong hash costs a missed duplicate hint, nothing more. The byte size,
+ * by contrast, is read back from storage rather than trusted from the client.
+ */
+export async function attachUpload(input: {
+  batchId: string
+  key: string
+  filename: string
+  contentType: string
+  sha256: string | null
+}): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireTriage()
+
+  const batch = await prisma.batch.findFirst({
+    where: { id: input.batchId, companyGroupId: session.companyGroupId },
+    select: { id: true, label: true },
+  })
+  if (!batch) throw new Error('Batch not found')
+
+  // The key was signed for this group, but re-check rather than trust the round trip.
+  if (!input.key.startsWith(`${session.companyGroupId}/`)) {
+    throw new Error('Key does not belong to this workspace')
+  }
+
+  const stored = await headObject(input.key)
+  if (!stored) return { ok: false, error: 'File did not reach storage' }
+
+  const sha256 = /^[0-9a-f]{64}$/.test(input.sha256 ?? '') ? input.sha256 : null
+
+  const prefill = await parseIncomingFilename(session.companyGroupId, input.filename)
+  const duplicate = sha256
+    ? await prisma.document.findFirst({
+        where: { companyGroupId: session.companyGroupId, sha256, deletedAt: null },
+        select: { id: true },
+      })
+    : null
+
+  const doc = await prisma.document.create({
+    data: {
+      companyGroupId: session.companyGroupId,
+      batchId: batch.id,
+      originalFilename: input.filename,
+      storageKey: input.key,
+      storageBucket: storageBucket(),
+      mimeType: input.contentType,
+      byteSize: stored.byteSize,
+      sha256,
+      entityId: prefill.entityId,
+      documentDate: prefill.documentDate,
+    },
+  })
+
+  await recordEvent({
+    documentId: doc.id,
+    actorUserId: session.userId,
+    action: 'uploaded',
+    toValue: {
+      originalFilename: input.filename,
+      batch: batch.label,
+      byteSize: stored.byteSize,
+      via: 'direct-upload',
+    },
+  })
+
+  if (duplicate) {
+    await prisma.documentLink.create({
+      data: {
+        fromDocumentId: doc.id,
+        toDocumentId: duplicate.id,
+        relation: 'DUPLICATE_OF',
+        createdByUserId: session.userId,
+        note: 'Identical file content (sha256) already in the log.',
+      },
+    })
+  }
+
+  revalidatePath('/review')
+  revalidatePath('/log')
+  return { ok: true }
 }
