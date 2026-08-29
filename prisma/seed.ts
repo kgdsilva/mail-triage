@@ -132,20 +132,28 @@ async function main() {
   }
   console.log(`✔ ${COLAB_ENTITIES.length} entities with folder trees`)
 
-  // The first owner. Authentication is allowlist-based, so this membership is what
-  // makes it possible to sign in at all — see src/auth.ts. Emails are stored lowercased
+  // The first way in. Authentication is allowlist-based, so a freshly created database
+  // locks everyone out: no member exists, so nobody can sign in, so nobody can add a
+  // member. This membership is what breaks that circle — see src/auth.ts.
+  //
+  // Driven by BOOTSTRAP_OWNER_EMAIL rather than a hardcoded address, because the next
+  // company group onboarded will have a different owner. Emails are stored lowercased
   // because that is what Google returns.
-  const operator = await prisma.user.upsert({
-    where: { email: 'kg@colabservice.com' },
-    create: { email: 'kg@colabservice.com', name: 'Kauê Guireli' },
+  const ownerEmail = (process.env.BOOTSTRAP_OWNER_EMAIL || 'kg@colabservice.com')
+    .trim()
+    .toLowerCase()
+
+  const owner = await prisma.user.upsert({
+    where: { email: ownerEmail },
+    create: { email: ownerEmail },
     update: {},
   })
   await prisma.membership.upsert({
-    where: { userId_companyGroupId: { userId: operator.id, companyGroupId: group.id } },
-    create: { userId: operator.id, companyGroupId: group.id, role: 'OWNER' },
+    where: { userId_companyGroupId: { userId: owner.id, companyGroupId: group.id } },
+    create: { userId: owner.id, companyGroupId: group.id, role: 'OWNER' },
     update: { role: 'OWNER', isActive: true },
   })
-  console.log(`✔ operator ${operator.email}`)
+  console.log(`✔ owner ${owner.email} — sign in with Google or set a password for them`)
 }
 
 main()
