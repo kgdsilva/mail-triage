@@ -3,7 +3,9 @@
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ActionKind, Disposition, DispositionReason, DocStatus } from '@/generated/prisma/enums'
+import { Sparkles } from 'lucide-react'
 import { saveClassification } from '@/server/actions/documents'
+import { analyzeForClassify } from '@/server/actions/ai'
 import {
   findOrCreateVendor,
   getSuggestion,
@@ -54,6 +56,8 @@ export function ClassifyForm({
   folders,
   people,
   nextId,
+  ai,
+  aiAvailable,
 }: {
   document: Doc
   entities: { id: string; code: string; legalName: string }[]
@@ -61,6 +65,9 @@ export function ClassifyForm({
   folders: { id: string; pathCache: string }[]
   people: { id: string; label: string }[]
   nextId: string | null
+  /** What the model read off this document, when it has been read. */
+  ai: { rationale: string; confidence: number; ambiguous: boolean; readAt: string } | null
+  aiAvailable: boolean
 }) {
   const router = useRouter()
   const [form, setForm] = useState(doc)
@@ -70,6 +77,8 @@ export function ClassifyForm({
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [reading, setReading] = useState(false)
+  const [readError, setReadError] = useState<string | null>(null)
 
   // Whether the operator has taken over the decision. Until they do, the suggestion
   // drives the disposition; once they choose, their choice stands and is never
@@ -215,6 +224,48 @@ export function ClassifyForm({
 
   return (
     <div className="flex h-[calc(100vh-190px)] min-h-[520px] flex-col gap-3 overflow-y-auto rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
+      {/* --- what the model read ------------------------------------------- */}
+      {ai ? (
+        <div
+          className={`rounded-lg px-3 py-2.5 text-xs leading-relaxed ${
+            ai.ambiguous ? 'bg-gold-100 text-gold-800' : 'bg-navy-50 text-navy-900'
+          }`}
+        >
+          <span className="flex items-center gap-1.5 font-semibold">
+            <Sparkles className="size-3.5" aria-hidden />
+            {ai.ambiguous ? 'Read it — worth a second look' : 'Read it'}
+            <span className="ml-auto font-normal opacity-70">
+              {Math.round(ai.confidence * 100)}% confident
+            </span>
+          </span>
+          <p className="mt-1">{ai.rationale}</p>
+          <p className="mt-1.5 opacity-70">
+            Fields below are filled in from the document. Change anything that is wrong —
+            nothing is saved until you say so.
+          </p>
+        </div>
+      ) : aiAvailable ? (
+        <div className="rounded-lg bg-line-soft px-3 py-2.5 text-xs text-muted">
+          <button
+            type="button"
+            disabled={reading}
+            onClick={async () => {
+              setReading(true)
+              setReadError(null)
+              const res = await analyzeForClassify(doc.id)
+              setReading(false)
+              if (res.ok) router.refresh()
+              else setReadError(res.error ?? 'Could not read this document.')
+            }}
+            className="inline-flex items-center gap-1.5 font-medium text-navy-700 underline underline-offset-2 disabled:opacity-50"
+          >
+            <Sparkles className="size-3.5" aria-hidden />
+            {reading ? 'Reading the document…' : 'Read this document and fill the fields'}
+          </button>
+          {readError && <p className="mt-1 text-danger-700">{readError}</p>}
+        </div>
+      ) : null}
+
       {/* --- suggestion ---------------------------------------------------- */}
       {suggestion && suggestion.verdict.disposition !== 'UNREVIEWED' && (
         <div

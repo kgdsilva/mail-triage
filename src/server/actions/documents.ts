@@ -2,8 +2,11 @@
 
 import path from 'node:path'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/server/db/client'
+import { aiConfigured } from '@/server/ai/read-document'
+import { analyzeDocument } from '@/server/ai/suggest'
 import {
   classifyDocument,
   quickDecide,
@@ -115,6 +118,7 @@ export async function uploadBatch(formData: FormData): Promise<UploadResult> {
       }
 
       created += 1
+      queueRead(session.companyGroupId, doc.id)
     } catch (err) {
       // Never leave an orphaned object behind when the row could not be written.
       await deleteObject(stored.key, stored.bucket)
@@ -528,7 +532,24 @@ export async function attachUpload(input: {
     })
   }
 
+  queueRead(session.companyGroupId, doc.id)
+
   revalidatePath('/review')
   revalidatePath('/log')
   return { ok: true }
+}
+
+/**
+ * Reads a freshly uploaded document in the background, so the suggestion is waiting by
+ * the time someone opens it rather than being paid for in the upload's own latency.
+ *
+ * after() runs once the response has been sent. A failure here is deliberately silent:
+ * the classify screen reads on demand when a suggestion is missing, so a document is
+ * never stuck — it just costs a few seconds of waiting instead of none.
+ */
+function queueRead(companyGroupId: string, documentId: string) {
+  if (!aiConfigured()) return
+  after(async () => {
+    await analyzeDocument(companyGroupId, documentId).catch(() => {})
+  })
 }

@@ -4,6 +4,8 @@ import { ClassifyForm } from '@/components/classify-form'
 import { prisma } from '@/server/db/client'
 import { countUnreviewed, getDocument, nextUnreviewed } from '@/server/documents'
 import { requireTriage } from '@/server/session'
+import { aiConfigured } from '@/server/ai/read-document'
+import type { AiSuggestion } from '@/server/ai/suggest'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +15,17 @@ export default async function ClassifyPage({ params }: { params: Promise<{ id: s
 
   const doc = await getDocument(session.companyGroupId, id)
   if (!doc) notFound()
+
+  /**
+   * What the model read off this document, if it has been read.
+   *
+   * Pre-fills every field the record does not already carry a human answer for. The
+   * upload path kicks a read off in the background, so by the time someone opens a
+   * document this is usually waiting; when it is not, the form offers to read on
+   * demand rather than leaving the operator with a blank screen.
+   */
+  const ai = (doc.aiSuggestion as AiSuggestion | null) ?? null
+  const aiAvailable = aiConfigured()
 
   const [entities, types, folders, users, next, remaining, duplicates] = await Promise.all([
     prisma.entity.findMany({
@@ -95,22 +108,36 @@ export default async function ClassifyPage({ params }: { params: Promise<{ id: s
             id: doc.id,
             originalFilename: doc.originalFilename,
             finalFilename: doc.finalFilename,
-            entityId: doc.entityId,
-            documentTypeId: doc.documentTypeId,
-            vendorId: doc.vendorId,
-            vendorName: doc.vendor?.name ?? '',
-            documentDate: doc.documentDate?.toISOString().slice(0, 10) ?? '',
-            dueDate: doc.dueDate?.toISOString().slice(0, 10) ?? '',
-            amount: doc.amount?.toString() ?? '',
-            disposition: doc.disposition,
-            dispositionReason: doc.dispositionReason,
+            entityId: doc.entityId ?? ai?.entityId ?? null,
+            documentTypeId: doc.documentTypeId ?? ai?.documentTypeId ?? null,
+            vendorId: doc.vendorId ?? ai?.vendorId ?? null,
+            vendorName: doc.vendor?.name ?? ai?.vendorName ?? '',
+            documentDate:
+              doc.documentDate?.toISOString().slice(0, 10) ?? ai?.documentDate ?? '',
+            dueDate: doc.dueDate?.toISOString().slice(0, 10) ?? ai?.dueDate ?? '',
+            amount: doc.amount?.toString() ?? (ai?.amount != null ? String(ai.amount) : ''),
+            // A decision is never pre-filled once a human has made one.
+            disposition:
+              doc.disposition === 'UNREVIEWED' && ai ? ai.disposition : doc.disposition,
+            dispositionReason: doc.dispositionReason ?? ai?.dispositionReason ?? null,
             status: doc.status,
             storageFolderId: doc.storageFolderId,
-            summaryNote: doc.summaryNote ?? '',
+            summaryNote: doc.summaryNote ?? ai?.summary ?? '',
             internalNotes: doc.internalNotes ?? '',
             assignedToUserId: doc.assignedToUserId,
             actionKind: doc.actionKind,
           }}
+          ai={
+            ai
+              ? {
+                  rationale: ai.rationale,
+                  confidence: ai.confidence,
+                  ambiguous: ai.ambiguous,
+                  readAt: ai.readAt,
+                }
+              : null
+          }
+          aiAvailable={aiAvailable}
           entities={entities}
           types={types}
           folders={folders}

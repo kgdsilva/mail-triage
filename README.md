@@ -96,6 +96,36 @@ npx tsx prisma/seed.ts
 npm run dev
 ```
 
+## AI-assisted reading
+
+Set `ANTHROPIC_API_KEY` and uploads are read automatically; leave it blank and the
+feature is simply off, with classification fully manual. There is no OCR step — Claude
+reads scanned PDFs natively.
+
+**The model reads; it does not decide.** It reports what the page says — addressee,
+type, sender, amount, dates — and two judgements that cannot be made from the database:
+whether this is a solicitation dressed as a notice, and whether it states a deadline or
+risk. Whether a bill is on autopay stays with `src/server/action-filter.ts`, because
+that is a lookup against the company's own records, evaluated on the document's date
+rather than today, and it has to be exact rather than inferred.
+
+Three rules govern how the two are combined (`mergeVerdict` in `src/server/ai/suggest.ts`):
+
+- A stated deadline or risk **overrides** any suggestion to archive, however confident
+  the autopay lookup was. Missing one of those is the failure this platform exists to
+  prevent, and its cost is a penalty rather than the amount printed on the page.
+- A solicitation is archived **only** when the model can quote the disclaimer that
+  proves it. Thinking something looks like spam is not enough to bury it.
+- Anything the model could not classify goes to a human, flagged ambiguous.
+
+Nothing commits. Every field arrives on the classify screen pre-filled and editable, and
+a decision is never pre-filled once a human has made one. Reads are cached on the
+document, so opening a record repeatedly costs nothing after the first time.
+
+Uploads kick a read off in the background via `after()`, so the suggestion is usually
+waiting by the time someone opens the document; when it is not, the classify screen
+offers to read on demand rather than showing a blank form.
+
 ## Review vs Classify
 
 Two screens over the same data, for two different moments — not two ways to do one job.
