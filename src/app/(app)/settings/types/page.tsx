@@ -13,20 +13,20 @@ export default async function TypesPage() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="overflow-hidden rounded border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="overflow-hidden rounded-xl border border-line bg-surface">
         <table className="w-full text-sm">
-          <thead className="border-b border-neutral-200 text-left text-xs text-neutral-500 dark:border-neutral-800">
+          <thead className="border-b border-line text-left text-[10.5px] uppercase tracking-[0.07em] text-subtle">
             <tr>
-              <th className="px-3 py-2 font-medium">Label</th>
-              <th className="px-3 py-2 font-medium">Code</th>
-              <th className="px-3 py-2 font-medium">Pre-fills as</th>
+              <th className="px-4 py-3 font-semibold">Label</th>
+              <th className="px-4 py-3 font-semibold">Code</th>
+              <th className="px-4 py-3 font-semibold">Pre-fills as</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+          <tbody className="divide-y divide-line-soft">
             {types.map((t) => (
               <tr key={t.id}>
-                <td className="px-3 py-2">{t.label}</td>
-                <td className="px-3 py-2 font-mono text-xs text-neutral-500">{t.code}</td>
+                <td className="px-4 py-3">{t.label}</td>
+                <td className="px-3 py-2 font-mono text-xs text-muted">{t.code}</td>
                 <td className="px-3 py-2 text-xs">
                   {t.defaultAction === 'ACTION'
                     ? 'Always send for action'
@@ -38,7 +38,7 @@ export default async function TypesPage() {
             ))}
           </tbody>
         </table>
-        <p className="border-t border-neutral-200 px-3 py-2 text-xs text-neutral-500 dark:border-neutral-800">
+        <p className="border-t border-line px-3 py-2 text-xs text-muted">
           A pre-fill is only a suggestion; the operator confirms every document. Types
           that carry deadlines should stay on “always send for action”.
         </p>
@@ -46,7 +46,7 @@ export default async function TypesPage() {
 
       <form
         action={saveDocumentType}
-        className="h-fit space-y-3 rounded border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+        className="h-fit space-y-3 rounded-lg border border-line bg-surface p-4"
       >
         <p className="text-sm font-medium">Add a type</p>
         <input name="label" placeholder="Label" required className={inputClass} />
@@ -57,7 +57,7 @@ export default async function TypesPage() {
           <option value="ARCHIVE">Archive</option>
         </select>
         <input name="sortOrder" type="number" defaultValue={100} className={inputClass} />
-        <button className="w-full rounded bg-neutral-900 px-3 py-2 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900">
+        <button className="w-full rounded-lg bg-navy-700 px-3 py-2 text-sm text-white">
           Add type
         </button>
       </form>
@@ -66,4 +66,4 @@ export default async function TypesPage() {
 }
 
 const inputClass =
-  'w-full rounded border border-neutral-300 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-neutral-900 dark:border-neutral-700 dark:focus:border-neutral-300'
+  'w-full rounded-lg border border-line bg-transparent px-2 py-1.5 text-sm outline-none focus:border-navy-500'

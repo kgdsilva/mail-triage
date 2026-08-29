@@ -214,14 +214,14 @@ export function ClassifyForm({
   const reasons = form.disposition === 'ARCHIVE' ? ARCHIVE_REASONS : ACTION_REASONS
 
   return (
-    <div className="flex h-[calc(100vh-190px)] min-h-[520px] flex-col gap-3 overflow-y-auto rounded border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="flex h-[calc(100vh-190px)] min-h-[520px] flex-col gap-3 overflow-y-auto rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
       {/* --- suggestion ---------------------------------------------------- */}
       {suggestion && suggestion.verdict.disposition !== 'UNREVIEWED' && (
         <div
-          className={`rounded px-3 py-2 text-xs ${
+          className={`rounded-lg px-3 py-2.5 text-xs leading-relaxed ${
             suggestion.verdict.ambiguous
-              ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100'
-              : 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
+              ? 'bg-gold-100 text-gold-800'
+              : 'bg-line-soft text-muted'
           }`}
         >
           <span className="font-medium">
@@ -285,17 +285,17 @@ export function ClassifyForm({
             className={inputClass}
           />
           {vendorOpen && vendorQuery.trim() && (
-            <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded border border-neutral-300 bg-white text-xs shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+            <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-line bg-surface text-xs shadow-lg">
               {vendorHits.map((v) => (
                 <li key={v.id}>
                   <button
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => commitVendor(v.name)}
-                    className="flex w-full items-center justify-between px-2 py-1.5 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                    className="flex w-full items-center justify-between px-2 py-1.5 text-left hover:bg-line-soft"
                   >
                     {v.name}
-                    {v.knownSpam && <span className="text-red-600">solicitation</span>}
+                    {v.knownSpam && <span className="text-danger-700">solicitation</span>}
                   </button>
                 </li>
               ))}
@@ -305,7 +305,7 @@ export function ClassifyForm({
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => commitVendor(vendorQuery)}
-                    className="w-full px-2 py-1.5 text-left text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+                    className="w-full px-2 py-1.5 text-left text-muted hover:bg-line-soft"
                   >
                     Create “{vendorQuery.trim()}”
                   </button>
@@ -345,8 +345,8 @@ export function ClassifyForm({
       </div>
 
       {/* --- the decision -------------------------------------------------- */}
-      <div className="rounded border border-neutral-200 p-3 dark:border-neutral-800">
-        <p className="mb-2 text-xs font-medium text-neutral-600 dark:text-neutral-400">Decision</p>
+      <div className="rounded-lg border border-line p-3">
+        <p className="mb-2 text-xs font-medium text-muted">Decision</p>
         <div className="flex gap-2">
           {(['ARCHIVE', 'ACTION'] as const).map((d) => (
             <button
@@ -363,12 +363,12 @@ export function ClassifyForm({
                   status: d === 'ARCHIVE' ? 'ARCHIVED' : 'WAITING',
                 }))
               }}
-              className={`flex-1 rounded px-3 py-2 text-sm font-medium ${
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 form.disposition === d
                   ? d === 'ACTION'
-                    ? 'bg-amber-500 text-white'
-                    : 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-                  : 'border border-neutral-300 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400'
+                    ? 'bg-gold-100 text-gold-800 ring-1 ring-gold-500 ring-inset'
+                    : 'bg-navy-700 text-white'
+                  : 'border border-line text-muted hover:bg-navy-50'
               }`}
             >
               {d === 'ARCHIVE' ? 'Archive' : 'Send for action'}
@@ -381,7 +381,7 @@ export function ClassifyForm({
             <select
               value={form.dispositionReason ?? ''}
               onChange={(e) => set('dispositionReason', (e.target.value || null) as DispositionReason | null)}
-              className={`${inputClass} ${needsReason ? 'border-red-500' : ''}`}
+              className={`${inputClass} ${needsReason ? 'border-danger-700' : ''}`}
             >
               <option value="">
                 {form.disposition === 'ARCHIVE' ? 'Reason (required)' : 'Reason (optional)'}
@@ -393,7 +393,7 @@ export function ClassifyForm({
               ))}
             </select>
             {needsReason && (
-              <p className="mt-1 text-[11px] text-red-600 dark:text-red-400">
+              <p className="mt-1 text-[11px] text-danger-700">
                 Archiving needs a stated reason — it is what makes the decision auditable later.
               </p>
             )}
@@ -410,10 +410,10 @@ export function ClassifyForm({
                 type="button"
                 title={hint}
                 onClick={() => set('actionKind', value)}
-                className={`flex-1 rounded border px-2 py-1.5 text-xs ${
+                className={`flex-1 rounded-lg border px-2 py-2 text-xs font-medium transition-colors ${
                   (form.actionKind ?? 'REVIEW') === value
-                    ? 'border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900'
-                    : 'border-neutral-300 dark:border-neutral-700'
+                    ? 'border-navy-700 bg-navy-700 text-white'
+                    : 'border-line text-muted hover:bg-navy-50'
                 }`}
               >
                 {label}
@@ -488,25 +488,25 @@ export function ClassifyForm({
         </select>
       </Field>
 
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger-700">{error}</p>}
 
       <div className="mt-auto flex items-center gap-2 pt-2">
         <button
           onClick={() => save(true)}
           disabled={busy || blocked}
-          className="flex-1 rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900"
+          className="flex-1 rounded-lg bg-navy-700 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-navy-900 disabled:opacity-40"
         >
           {busy ? 'Saving…' : nextId ? 'Save & next' : 'Save & finish'}
         </button>
         <button
           onClick={() => save(false)}
           disabled={busy || blocked}
-          className="rounded border border-neutral-300 px-3 py-2 text-sm disabled:opacity-40 dark:border-neutral-700"
+          className="rounded-lg border border-line px-3 py-2 text-sm disabled:opacity-40"
         >
           Save
         </button>
       </div>
-      <p className="text-center text-[11px] text-neutral-500">
+      <p className="text-center text-[11px] text-muted">
         {needsDecision
           ? 'Choose Archive or Send for action to save'
           : '⌘↵ save & next · ⇧⌘↵ save & stay'}
@@ -516,12 +516,12 @@ export function ClassifyForm({
 }
 
 const inputClass =
-  'w-full rounded border border-neutral-300 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-neutral-900 dark:border-neutral-700 dark:focus:border-neutral-300'
+  'w-full rounded-lg border border-line bg-transparent px-2 py-1.5 text-sm outline-none focus:border-navy-500'
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[80px_minmax(0,1fr)] items-center gap-2">
-      <span className="text-xs text-neutral-600 dark:text-neutral-400">{label}</span>
+      <span className="text-xs text-muted">{label}</span>
       {children}
     </div>
   )
@@ -530,7 +530,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-neutral-600 dark:text-neutral-400">{label}</span>
+      <span className="mb-1 block text-xs text-muted">{label}</span>
       {children}
     </label>
   )

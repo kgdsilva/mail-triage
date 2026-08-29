@@ -21,17 +21,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ])
 
   const triages = isAdmin(session.role)
+  const initials = session.userName
+    .split(' ')
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
 
   return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-      <header className="border-b border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="mx-auto flex max-w-[1600px] items-center gap-6 px-5 py-3">
-          <Link href="/" className="text-sm font-semibold tracking-tight">
-            Mail Triage
+    <div className="min-h-screen bg-canvas text-ink">
+      <header className="border-b border-line bg-surface">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-7 px-6">
+          <Link href="/" className="flex items-center gap-2.5 py-3.5">
+            <span className="h-5 w-2 rounded-sm bg-gold-500" aria-hidden />
+            <span className="text-[15px] font-bold tracking-tight text-navy-900">Mail Triage</span>
           </Link>
-          <span className="hidden text-xs text-neutral-500 sm:inline">{group?.name}</span>
+          <span className="hidden text-[12.5px] text-subtle sm:inline">{group?.name}</span>
 
-          <nav className="ml-auto flex items-center gap-1">
+          <nav className="ml-auto flex items-stretch gap-1">
             <NavLink href="/">My queue</NavLink>
             {triages && (
               <NavLink href="/classify" badge={pending || undefined}>
@@ -43,9 +50,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {isAdmin(session.role) && <NavLink href="/settings">Settings</NavLink>}
           </nav>
 
-          <div className="ml-2 hidden items-center gap-2 md:flex">
-            <span className="text-xs text-neutral-500" title={session.userEmail}>
-              {session.userName}
+          <div className="ml-3 hidden items-center gap-2.5 md:flex">
+            <span
+              className="grid size-8 place-items-center rounded-full bg-navy-100 text-[11px] font-semibold text-navy-900"
+              title={session.userEmail}
+            >
+              {initials}
             </span>
             <form
               action={async () => {
@@ -53,7 +63,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 await signOut({ redirectTo: '/signin' })
               }}
             >
-              <button className="text-xs text-neutral-500 underline underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100">
+              <button className="text-xs text-subtle transition-colors hover:text-navy-700">
                 Sign out
               </button>
             </form>
@@ -61,7 +71,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1600px] px-5 py-6">{children}</main>
+      <main className="mx-auto max-w-[1600px] px-6 py-8">{children}</main>
     </div>
   )
 }

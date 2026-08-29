@@ -22,15 +22,18 @@ export default async function SignInPage({
   const { error } = await searchParams
 
   const inputClass =
-    'w-full rounded border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950'
+    'w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition-colors placeholder:text-subtle focus:border-navy-500'
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-neutral-50 px-4 dark:bg-neutral-950">
-      <div className="w-full max-w-sm rounded border border-neutral-200 bg-white p-8 dark:border-neutral-800 dark:bg-neutral-900">
-        <h1 className="text-center text-lg font-semibold">Mail Triage</h1>
+    <main className="flex min-h-screen items-center justify-center bg-navy-50 px-4">
+      <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-8 shadow-[0_1px_3px_rgba(18,40,74,0.07)]">
+        <div className="mb-6 flex items-center justify-center gap-2.5">
+          <span className="h-6 w-2.5 rounded-sm bg-gold-500" aria-hidden />
+          <h1 className="text-[19px] font-bold tracking-tight text-navy-900">Mail Triage</h1>
+        </div>
 
         {error && (
-          <p className="mt-4 rounded bg-red-50 px-3 py-2 text-xs text-red-800 dark:bg-red-950 dark:text-red-200">
+          <p className="mt-4 rounded-lg bg-danger-100 px-3 py-2 text-xs text-danger-700">
             {MESSAGES[error] ?? 'Sign-in failed. Try again.'}
           </p>
         )}
@@ -54,13 +57,13 @@ export default async function SignInPage({
           className="mt-6 space-y-3"
         >
           <div>
-            <label htmlFor="email" className="mb-1 block text-xs text-neutral-500">
+            <label htmlFor="email" className="mb-1 block text-xs text-muted">
               Email
             </label>
             <input id="email" name="email" type="email" required autoComplete="username" className={inputClass} />
           </div>
           <div>
-            <label htmlFor="password" className="mb-1 block text-xs text-neutral-500">
+            <label htmlFor="password" className="mb-1 block text-xs text-muted">
               Password
             </label>
             <input
@@ -72,15 +75,15 @@ export default async function SignInPage({
               className={inputClass}
             />
           </div>
-          <button className="w-full rounded bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white dark:bg-neutral-100 dark:text-neutral-900">
+          <button className="w-full rounded-lg bg-navy-700 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-navy-900">
             Sign in
           </button>
         </form>
 
-        <div className="my-5 flex items-center gap-3 text-xs text-neutral-400">
-          <span className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
+        <div className="my-5 flex items-center gap-3 text-xs text-subtle">
+          <span className="h-px flex-1 bg-line" />
           or
-          <span className="h-px flex-1 bg-neutral-200 dark:bg-neutral-800" />
+          <span className="h-px flex-1 bg-line" />
         </div>
 
         <form
@@ -89,12 +92,12 @@ export default async function SignInPage({
             await signIn('google', { redirectTo: '/' })
           }}
         >
-          <button className="w-full rounded border border-neutral-300 px-4 py-2.5 text-sm font-medium dark:border-neutral-700">
+          <button className="w-full rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-medium text-navy-700 transition-colors hover:border-navy-500 hover:bg-navy-50">
             Continue with Google
           </button>
         </form>
 
-        <p className="mt-6 text-center text-xs text-neutral-400">
+        <p className="mt-6 text-center text-xs text-subtle">
           Accounts are created by an admin. There is no self-signup.
         </p>
       </div>

@@ -49,18 +49,18 @@ export default async function ClassifyPage({ params }: { params: Promise<{ id: s
           <h1 className="truncate text-sm font-semibold" title={doc.originalFilename}>
             {doc.originalFilename}
           </h1>
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-muted">
             {doc.batch?.label ?? 'No batch'} · uploaded{' '}
             {doc.createdAt.toLocaleDateString('en-US')}
           </p>
         </div>
-        <p className="shrink-0 text-xs text-neutral-500">
+        <p className="shrink-0 text-xs text-muted">
           {remaining} awaiting a decision
         </p>
       </div>
 
       {duplicates.length > 0 && (
-        <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+        <div className="rounded-lg border border-amber-300 bg-gold-50 px-3 py-2 text-xs text-amber-900">
           Identical file content already in the log:{' '}
           {duplicates.map((d, i) => (
             <span key={d.toDocument.id}>
@@ -76,7 +76,7 @@ export default async function ClassifyPage({ params }: { params: Promise<{ id: s
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_460px]">
         {/* The viewer lives in the app rather than bouncing out to Box. */}
-        <div className="h-[calc(100vh-190px)] min-h-[520px] overflow-hidden rounded border border-neutral-200 bg-neutral-100 dark:border-neutral-800 dark:bg-neutral-800">
+        <div className="h-[calc(100vh-190px)] min-h-[520px] overflow-hidden rounded-lg border border-line bg-line-soft">
           {doc.storageKey ? (
             <iframe
               src={`/api/files/${doc.id}#view=FitH`}
@@ -84,7 +84,7 @@ export default async function ClassifyPage({ params }: { params: Promise<{ id: s
               className="h-full w-full"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+            <div className="flex h-full items-center justify-center text-sm text-muted">
               No file attached to this record.
             </div>
           )}

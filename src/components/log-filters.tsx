@@ -1,5 +1,6 @@
 'use client'
 
+import { Search } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useTransition } from 'react'
 
@@ -61,25 +62,29 @@ export function LogFilters({
           }}
           className="flex-1 min-w-[240px]"
         >
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search filenames, notes, vendors…"
-            className="w-full rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:focus:border-neutral-300"
-          />
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle"
+              aria-hidden
+            />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search filenames, notes, vendors…"
+              className="w-full rounded-lg border border-line bg-surface py-2 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-subtle focus:border-navy-500"
+            />
+          </div>
         </form>
 
         {/* Segregated entities sit in their own tab. A display split, never a permission —
             "All" is always available to everyone. */}
-        <div className="flex rounded border border-neutral-300 text-xs dark:border-neutral-700">
+        <div className="flex overflow-hidden rounded-lg border border-line bg-surface text-[13px]">
           {(['main', 'segregated', 'all'] as const).map((v) => (
             <button
               key={v}
               onClick={() => apply((next) => next.set('view', v))}
-              className={`px-2.5 py-1.5 capitalize ${
-                view === v
-                  ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-                  : 'text-neutral-600 dark:text-neutral-300'
+              className={`px-3 py-2 font-medium transition-colors ${
+                view === v ? 'bg-navy-700 text-white' : 'text-muted hover:bg-navy-50'
               }`}
             >
               {v === 'main' ? 'Main' : v === 'segregated' ? 'Ops Perfection' : 'All'}
@@ -89,13 +94,13 @@ export function LogFilters({
 
         <a
           href={`/api/export?${sp.toString()}`}
-          className="rounded border border-neutral-300 px-2.5 py-1.5 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          className="rounded-lg border border-line bg-surface px-3 py-2 text-[13px] font-medium text-navy-700 transition-colors hover:border-navy-500 hover:bg-navy-50"
         >
           Export CSV
         </a>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-xs shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
         <FilterGroup label="Entity" options={entities} selected={selected('entity')} onToggle={(v) => toggle('entity', v)} />
         <FilterGroup label="Type" options={types} selected={selected('type')} onToggle={(v) => toggle('type', v)} />
         <FilterGroup
@@ -119,20 +124,21 @@ export function LogFilters({
           onToggle={(v) => toggle('status', v)}
         />
 
-        {activeCount > 0 && (
-          <button
-            onClick={() => startTransition(() => router.push('/log'))}
-            className="ml-1 text-neutral-500 underline underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100"
-          >
-            Clear {activeCount}
-          </button>
-        )}
-
-        <span className="ml-auto text-neutral-500">
-          {pending
-            ? 'Filtering…'
-            : `${total.toLocaleString()} document${total === 1 ? '' : 's'}`}
-        </span>
+        <div className="mt-0.5 flex items-center gap-3 border-t border-line-soft pt-2.5">
+          {activeCount > 0 && (
+            <button
+              onClick={() => startTransition(() => router.push('/log'))}
+              className="font-medium text-navy-700 underline underline-offset-2"
+            >
+              Clear {activeCount} filter{activeCount === 1 ? '' : 's'}
+            </button>
+          )}
+          <span className="ml-auto tabular text-muted">
+            {pending
+              ? 'Filtering…'
+              : `${total.toLocaleString()} document${total === 1 ? '' : 's'}`}
+          </span>
+        </div>
       </div>
     </div>
   )
@@ -150,16 +156,18 @@ function FilterGroup({
   onToggle: (value: string) => void
 }) {
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-neutral-500">{label}:</span>
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="w-16 flex-none text-[10.5px] font-semibold uppercase tracking-[0.07em] text-subtle">
+        {label}
+      </span>
       {options.map((o) => (
         <button
           key={o.id}
           onClick={() => onToggle(o.id)}
-          className={`rounded border px-1.5 py-0.5 ${
+          className={`rounded-full border px-2.5 py-1 font-medium transition-colors ${
             selected.has(o.id)
-              ? 'border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900'
-              : 'border-neutral-300 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800'
+              ? 'border-navy-700 bg-navy-700 text-white'
+              : 'border-line text-muted hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700'
           }`}
         >
           {o.label}

@@ -3,6 +3,10 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
+/**
+ * Active state is a gold underline rather than a filled block — it marks where you are
+ * without turning the busiest element on screen into the darkest one.
+ */
 export function NavLink({
   href,
   children,
@@ -13,20 +17,21 @@ export function NavLink({
   badge?: number
 }) {
   const pathname = usePathname()
-  const active = pathname === href || pathname.startsWith(`${href}/`)
+  const active = href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`)
 
   return (
     <Link
       href={href}
-      className={`rounded px-2.5 py-1.5 text-sm transition-colors ${
+      aria-current={active ? 'page' : undefined}
+      className={`-mb-px flex items-center border-b-2 px-3 py-3.5 text-[13.5px] transition-colors ${
         active
-          ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-          : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800'
+          ? 'border-gold-500 font-semibold text-navy-900'
+          : 'border-transparent text-muted hover:text-navy-700'
       }`}
     >
       {children}
       {badge ? (
-        <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+        <span className="ml-1.5 rounded-full bg-gold-500 px-1.5 py-px text-[10px] font-semibold text-white">
           {badge}
         </span>
       ) : null}

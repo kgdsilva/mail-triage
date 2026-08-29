@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { UploadCloud } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { uploadBatch, type UploadResult } from '@/server/actions/documents'
 
@@ -42,16 +43,16 @@ export function UploadForm() {
     <form
       ref={formRef}
       onSubmit={submit}
-      className="space-y-4 rounded border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900"
+      className="space-y-4 rounded-lg border border-line bg-surface p-5"
     >
       <label className="block">
-        <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+        <span className="text-xs font-medium text-muted">
           Batch label
         </span>
         <input
           name="label"
           placeholder="2026-08 mail"
-          className="mt-1 w-full rounded border border-neutral-300 bg-transparent px-3 py-1.5 text-sm outline-none focus:border-neutral-900 dark:border-neutral-700 dark:focus:border-neutral-300"
+          className="mt-1 w-full rounded-lg border border-line bg-transparent px-3 py-1.5 text-sm outline-none focus:border-navy-500"
         />
       </label>
 
@@ -66,15 +67,16 @@ export function UploadForm() {
           setDragging(false)
           setFiles((prev) => [...prev, ...Array.from(e.dataTransfer.files)])
         }}
-        className={`rounded border-2 border-dashed p-8 text-center transition-colors ${
-          dragging
-            ? 'border-neutral-900 bg-neutral-50 dark:border-neutral-300 dark:bg-neutral-800'
-            : 'border-neutral-300 dark:border-neutral-700'
+        className={`rounded-xl border-2 border-dashed p-10 text-center transition-colors ${
+          dragging ? 'border-navy-500 bg-navy-50' : 'border-line hover:border-navy-500'
         }`}
       >
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+        <span className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-navy-50 text-navy-500">
+          <UploadCloud className="size-6" strokeWidth={1.6} aria-hidden />
+        </span>
+        <p className="text-[14px] text-muted">
           Drop scans here, or{' '}
-          <label className="cursor-pointer underline">
+          <label className="cursor-pointer font-medium text-navy-700 underline">
             browse
             <input
               type="file"
@@ -86,7 +88,7 @@ export function UploadForm() {
             />
           </label>
         </p>
-        <p className="mt-1 text-xs text-neutral-500">PDF, JPG, PNG or TIFF · up to 50 MB each</p>
+        <p className="mt-1 text-[12.5px] text-subtle">PDF, JPG, PNG or TIFF · up to 50 MB each</p>
       </div>
 
       {files.length > 0 && (
@@ -94,13 +96,13 @@ export function UploadForm() {
           {files.map((f, i) => (
             <li
               key={`${f.name}-${i}`}
-              className="flex items-center justify-between rounded bg-neutral-50 px-2 py-1 dark:bg-neutral-800"
+              className="flex items-center justify-between rounded-lg bg-navy-50 px-2 py-1"
             >
               <span className="truncate">{f.name}</span>
               <button
                 type="button"
                 onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                className="ml-2 shrink-0 text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
+                className="ml-2 shrink-0 text-muted hover:text-ink"
               >
                 remove
               </button>
@@ -109,10 +111,10 @@ export function UploadForm() {
         </ul>
       )}
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-sm text-danger-700">{error}</p>}
 
       {result && (
-        <div className="rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100">
+        <div className="rounded-lg bg-ok-100 px-3 py-2 text-sm text-emerald-900">
           <p>
             {result.created} document{result.created === 1 ? '' : 's'} added.{' '}
             <a href="/classify" className="underline">
@@ -132,7 +134,7 @@ export function UploadForm() {
       <button
         type="submit"
         disabled={busy || files.length === 0}
-        className="rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900"
+        className="rounded-lg bg-navy-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
       >
         {busy ? 'Uploading…' : `Upload ${files.length || ''}`.trim()}
       </button>

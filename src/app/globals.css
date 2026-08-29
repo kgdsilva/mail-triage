@@ -1,26 +1,69 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/*
+ * Brand tokens. Navy and gold are the company's own, already in use across documents
+ * and presentations; everything else is derived from them rather than pulled from a
+ * generic palette, so the app looks like the rest of the company's material.
+ *
+ * Light only, on purpose: navy on white is the brand, and a dark theme would be a
+ * second design to keep in step with this one.
+ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-navy-900: #12284a;
+  --color-navy-700: #1b3a6b;
+  --color-navy-500: #2f5694;
+  --color-navy-100: #dde5f1;
+  --color-navy-50: #f0f4fa;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-gold-800: #7a5514;
+  --color-gold-600: #a8781f;
+  --color-gold-500: #c9922b;
+  --color-gold-100: #f6e8cc;
+  --color-gold-50: #fcf7ec;
+
+  /* Text. `ink` is body copy, `muted` supporting, `subtle` metadata and placeholders. */
+  --color-ink: #141922;
+  --color-muted: #5a6473;
+  --color-subtle: #8a94a6;
+
+  --color-line: #e3e7ef;
+  --color-line-soft: #eef1f6;
+  --color-canvas: #f5f7fa;
+  --color-surface: #ffffff;
+
+  /* Status. Waiting deliberately reuses the brand gold: "needs attention" and the
+     accent colour are the same idea, so they reinforce rather than compete. */
+  --color-ok-700: #1b6b45;
+  --color-ok-100: #def0e6;
+  --color-danger-700: #a8322a;
+  --color-danger-100: #f8e3e1;
+
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Money and dates line up column-to-column in the log rather than jittering. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Native controls follow the brand rather than the OS accent colour. */
+:where(input, select, textarea, button) {
+  font-family: inherit;
+}
+:where(input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--color-navy-700);
+}
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-navy-500);
+  outline-offset: 1px;
+  border-radius: 4px;
 }

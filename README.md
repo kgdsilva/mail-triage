@@ -96,6 +96,32 @@ npx tsx prisma/seed.ts
 npm run dev
 ```
 
+## Visual language
+
+The company's own navy `#1B3A6B` and gold `#C9922B`, so the app matches the documents
+and decks the team already sees. Everything else derives from those two rather than
+coming from a generic palette. Tokens live in `src/app/globals.css`; shared component
+shapes in `src/lib/theme.ts`.
+
+Light only, deliberately — navy on white is the brand, and a dark theme would be a
+second design to keep in step.
+
+Colour carries meaning and nothing else:
+
+- **Entity badges** are coloured by the entity's position, not by hardcoding CP or MMT.
+  Entity codes belong to a company group, and the next group onboarded has different
+  ones; assigning from an 8-slot palette by `sortOrder` means any group gets colours.
+- **Status** — gold for waiting, navy for in progress, green for done, grey for
+  archived. Waiting reuses the brand gold on purpose: "needs attention" and the accent
+  colour are the same idea, so they reinforce instead of competing.
+- **Overdue** is the one thing allowed to interrupt: a red pill with a clock, not just
+  red text.
+- Icons (lucide-react) are keyed on the document type's `code` with a generic fallback,
+  because types are editable per company group.
+
+Type is Inter throughout, with JetBrains Mono only where alignment carries meaning —
+filenames and entity codes. Money and dates use tabular figures so columns line up.
+
 ## Roles, and what they are not
 
 Access roles say what a person may **see and change**: OWNER, ADMIN, OPERATOR, MEMBER,

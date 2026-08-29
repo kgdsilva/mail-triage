@@ -84,7 +84,8 @@ export async function buildWhere(
 }
 
 export const LOG_INCLUDE = {
-  entity: { select: { code: true, legalName: true, isSegregated: true } },
+  // sortOrder drives the entity's badge colour; code drives the type icon.
+  entity: { select: { code: true, legalName: true, isSegregated: true, sortOrder: true } },
   batch: { select: { label: true } },
   documentType: { select: { label: true, code: true } },
   vendor: { select: { name: true } },

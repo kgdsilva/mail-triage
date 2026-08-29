@@ -28,34 +28,34 @@ export default async function MembersPage() {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-2">
-        <div className="rounded border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+        <div className="rounded-lg border border-line bg-navy-50 px-3 py-2 text-xs text-muted">
           This list is the allowlist. Signing in proves who someone is; being on this list
           is what grants access. There is no invitation email and no self-signup — add the
           address, and either set a password to hand them, or leave it blank so they sign
           in with Google.
         </div>
 
-        <div className="overflow-hidden rounded border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="overflow-hidden rounded-xl border border-line bg-surface">
           <table className="w-full text-sm">
-            <thead className="border-b border-neutral-200 text-left text-xs text-neutral-500 dark:border-neutral-800">
+            <thead className="border-b border-line text-left text-[10.5px] uppercase tracking-[0.07em] text-subtle">
               <tr>
-                <th className="px-3 py-2 font-medium">Person</th>
-                <th className="px-3 py-2 font-medium">Role</th>
-                <th className="px-3 py-2 font-medium">Signs in with</th>
-                <th className="px-3 py-2 font-medium">Last signed in</th>
-                <th className="px-3 py-2" />
+                <th className="px-4 py-3 font-semibold">Person</th>
+                <th className="px-4 py-3 font-semibold">Role</th>
+                <th className="px-4 py-3 font-semibold">Signs in with</th>
+                <th className="px-4 py-3 font-semibold">Last signed in</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+            <tbody className="divide-y divide-line-soft">
               {members.map((m) => (
-                <tr key={m.id} className={m.isActive ? '' : 'text-neutral-400'}>
+                <tr key={m.id} className={m.isActive ? '' : 'text-subtle'}>
                   <td className="px-3 py-2 align-top">
                     <span className="block">{m.user.name ?? '—'}</span>
-                    <span className="block text-xs text-neutral-500">{m.user.email}</span>
+                    <span className="block text-xs text-muted">{m.user.email}</span>
                   </td>
                   <td className="px-3 py-2 align-top">
                     <span className="text-xs">{m.role.toLowerCase()}</span>
-                    <span className="block text-[11px] text-neutral-500">{ROLE_HELP[m.role]}</span>
+                    <span className="block text-[11px] text-muted">{ROLE_HELP[m.role]}</span>
                   </td>
                   <td className="px-3 py-2 align-top text-xs">
                     {m.user.passwordHash ? 'Password or Google' : 'Google only'}
@@ -68,14 +68,14 @@ export default async function MembersPage() {
                         type="password"
                         placeholder={m.user.passwordHash ? 'New password' : 'Set password'}
                         autoComplete="new-password"
-                        className="w-32 rounded border border-neutral-300 bg-transparent px-1.5 py-1 text-[11px] outline-none focus:border-neutral-900 dark:border-neutral-700 dark:focus:border-neutral-300"
+                        className="w-32 rounded-lg border border-line bg-transparent px-1.5 py-1 text-[11px] outline-none focus:border-navy-500"
                       />
-                      <button className="text-[11px] text-neutral-500 underline hover:text-neutral-900 dark:hover:text-neutral-100">
+                      <button className="text-[11px] text-muted underline hover:text-ink">
                         Save
                       </button>
                     </form>
                     {m.user.passwordHash && (
-                      <span className="mt-0.5 block text-[10px] text-neutral-400">
+                      <span className="mt-0.5 block text-[10px] text-subtle">
                         Save blank to remove the password
                       </span>
                     )}
@@ -84,12 +84,12 @@ export default async function MembersPage() {
                     {m.user.lastLoginAt ? (
                       m.user.lastLoginAt.toLocaleDateString('en-US')
                     ) : (
-                      <span className="text-neutral-400">never</span>
+                      <span className="text-subtle">never</span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-right align-top">
                     <form action={setMemberActive.bind(null, m.id, !m.isActive)}>
-                      <button className="text-xs text-neutral-500 underline hover:text-neutral-900 dark:hover:text-neutral-100">
+                      <button className="text-xs text-muted underline hover:text-ink">
                         {m.isActive ? 'Revoke' : 'Restore'}
                       </button>
                     </form>
@@ -103,7 +103,7 @@ export default async function MembersPage() {
 
       <form
         action={addMember}
-        className="h-fit space-y-3 rounded border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+        className="h-fit space-y-3 rounded-lg border border-line bg-surface p-4"
       >
         <p className="text-sm font-medium">Add a member</p>
         <input name="email" type="email" required placeholder="name@example.com" className={inputClass} />
@@ -122,10 +122,10 @@ export default async function MembersPage() {
           placeholder="Password (blank = Google only)"
           className={inputClass}
         />
-        <button className="w-full rounded bg-neutral-900 px-3 py-2 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900">
+        <button className="w-full rounded-lg bg-navy-700 px-3 py-2 text-sm text-white">
           Add member
         </button>
-        <p className="text-[11px] text-neutral-500">
+        <p className="text-[11px] text-muted">
           If you set a password, hand it to them directly — there is no reset email. To
           use Google instead, leave it blank; the address must match their Google account.
         </p>
@@ -135,4 +135,4 @@ export default async function MembersPage() {
 }
 
 const inputClass =
-  'w-full rounded border border-neutral-300 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-neutral-900 dark:border-neutral-700 dark:focus:border-neutral-300'
+  'w-full rounded-lg border border-line bg-transparent px-2 py-1.5 text-sm outline-none focus:border-navy-500'

@@ -35,30 +35,30 @@ export default async function AutopayPage() {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="space-y-2">
-        <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+        <div className="rounded-lg border border-amber-300 bg-gold-50 px-3 py-2 text-xs text-amber-900">
           These rules are what let a bill be archived without a human deciding. A rule
           covers one vendor at one entity — a vendor on autopay for CP but not for MM will
           still surface MM&rsquo;s bill for a decision.
         </div>
 
-        <div className="overflow-hidden rounded border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="overflow-hidden rounded-xl border border-line bg-surface">
           <table className="w-full text-sm">
-            <thead className="border-b border-neutral-200 text-left text-xs text-neutral-500 dark:border-neutral-800">
+            <thead className="border-b border-line text-left text-[10.5px] uppercase tracking-[0.07em] text-subtle">
               <tr>
-                <th className="px-3 py-2 font-medium">Vendor</th>
-                <th className="px-3 py-2 font-medium">Entity</th>
-                <th className="px-3 py-2 font-medium">Acct</th>
-                <th className="px-3 py-2 font-medium">In effect</th>
-                <th className="px-3 py-2 font-medium">Confirmed by</th>
-                <th className="px-3 py-2" />
+                <th className="px-4 py-3 font-semibold">Vendor</th>
+                <th className="px-4 py-3 font-semibold">Entity</th>
+                <th className="px-4 py-3 font-semibold">Acct</th>
+                <th className="px-4 py-3 font-semibold">In effect</th>
+                <th className="px-4 py-3 font-semibold">Confirmed by</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+            <tbody className="divide-y divide-line-soft">
               {rules.map((r) => {
                 const ended = r.effectiveTo !== null && r.effectiveTo <= new Date()
                 return (
-                  <tr key={r.id} className={ended ? 'text-neutral-400' : ''}>
-                    <td className="px-3 py-2">{r.vendor.name}</td>
+                  <tr key={r.id} className={ended ? 'text-subtle' : ''}>
+                    <td className="px-4 py-3">{r.vendor.name}</td>
                     <td className="px-3 py-2 font-mono text-xs">{r.entity.code}</td>
                     <td className="px-3 py-2 text-xs">{r.accountLast4 ?? '—'}</td>
                     <td className="px-3 py-2 text-xs">
@@ -71,7 +71,7 @@ export default async function AutopayPage() {
                     <td className="px-3 py-2 text-right">
                       {!ended && (
                         <form action={endAutopayRule.bind(null, r.id)}>
-                          <button className="text-xs text-neutral-500 underline hover:text-neutral-900 dark:hover:text-neutral-100">
+                          <button className="text-xs text-muted underline hover:text-ink">
                             End
                           </button>
                         </form>
@@ -82,14 +82,14 @@ export default async function AutopayPage() {
               })}
               {rules.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-10 text-center text-xs text-neutral-500">
+                  <td colSpan={6} className="px-3 py-10 text-center text-xs text-muted">
                     No autopay rules yet. Until one exists, every bill goes to a human.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-          <p className="border-t border-neutral-200 px-3 py-2 text-xs text-neutral-500 dark:border-neutral-800">
+          <p className="border-t border-line px-3 py-2 text-xs text-muted">
             Ending a rule keeps it in the record rather than deleting it, so a document
             archived last year still shows why.
           </p>
@@ -98,7 +98,7 @@ export default async function AutopayPage() {
 
       <form
         action={saveAutopayRule}
-        className="h-fit space-y-3 rounded border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+        className="h-fit space-y-3 rounded-lg border border-line bg-surface p-4"
       >
         <p className="text-sm font-medium">Confirm autopay</p>
         <select name="vendorId" required className={inputClass} defaultValue="">
@@ -123,15 +123,15 @@ export default async function AutopayPage() {
         </select>
         <input name="accountLast4" placeholder="Account last 4 (optional)" maxLength={4} className={inputClass} />
         <input name="paymentMethod" placeholder="Payment method (optional)" className={inputClass} />
-        <label className="block text-xs text-neutral-600 dark:text-neutral-400">
+        <label className="block text-xs text-muted">
           In effect from
           <input name="effectiveFrom" type="date" required defaultValue={today} className={`mt-1 ${inputClass}`} />
         </label>
         <input name="notes" placeholder="Notes" className={inputClass} />
-        <button className="w-full rounded bg-neutral-900 px-3 py-2 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900">
+        <button className="w-full rounded-lg bg-navy-700 px-3 py-2 text-sm text-white">
           Confirm rule
         </button>
-        <p className="text-[11px] text-neutral-500">
+        <p className="text-[11px] text-muted">
           Recorded against your name — this is the record of who vouched for it.
         </p>
       </form>
@@ -140,4 +140,4 @@ export default async function AutopayPage() {
 }
 
 const inputClass =
-  'w-full rounded border border-neutral-300 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-neutral-900 dark:border-neutral-700 dark:focus:border-neutral-300'
+  'w-full rounded-lg border border-line bg-transparent px-2 py-1.5 text-sm outline-none focus:border-navy-500'
