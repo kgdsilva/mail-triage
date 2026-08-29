@@ -230,6 +230,32 @@ for one entity but not the one on the document is ambiguous, and surfaces to a h
   migration is ever recreated they must be re-appended:
   `cat prisma/sql/invariants.sql >> prisma/migrations/<ts>_init/migration.sql`
 
+## Deploying
+
+Vercel (app) + Neon (Postgres) + Cloudflare R2 (files).
+
+The build runs `prisma generate && prisma migrate deploy && next build`. Generate is not
+optional: `src/generated` is gitignored, so without it Vercel compiles against a client
+that does not exist. Migrate deploy runs there so a deployment never lands on a schema
+its code does not expect.
+
+**Two connection strings, and getting them backwards is a real bug.** `DATABASE_URL` is
+Neon's *pooled* string (host contains `-pooler`) and is what the running app uses — a
+serverless runtime opens many short-lived connections and will exhaust a direct
+connection. `DIRECT_URL` is the *unpooled* string, used only by migrations, because the
+migration engine takes an advisory lock the pooler will not hold.
+
+Required environment variables in Vercel: `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET`,
+`AUTH_URL`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `BOOTSTRAP_OWNER_EMAIL`,
+`S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`.
+
+The R2 bucket must stay private. Files are served by `/api/files/[id]`, which checks
+membership and assignment before returning a byte; a public bucket would route around
+that entirely.
+
+Google OAuth needs the production origin and `/api/auth/callback/google` redirect added
+to the existing client — added, not replacing localhost.
+
 ## Environment gotchas
 
 **Do not put this project under `~/Documents` or `~/Desktop` on a Mac with iCloud

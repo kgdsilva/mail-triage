@@ -11,6 +11,9 @@ export default defineConfig({
     seed: 'npx tsx prisma/seed.ts',
   },
   datasource: {
-    url: env('DATABASE_URL'),
+    // Migrations need a direct connection: Neon's pooler does not hold the advisory
+    // lock the migration engine takes. The app itself uses the pooled DATABASE_URL,
+    // which is what belongs in a serverless runtime.
+    url: process.env.DIRECT_URL || env('DATABASE_URL'),
   },
 })
