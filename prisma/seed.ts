@@ -36,18 +36,26 @@ const DOCUMENT_TYPES = [
 const COLAB_ENTITIES = [
   { code: 'CP', legalName: 'CoLAB Processing', sortOrder: 10, isSegregated: false },
   { code: 'CCS', legalName: 'CoLAB Concierge Service', sortOrder: 20, isSegregated: false },
-  { code: 'MM', legalName: 'Marsh & Munar', sortOrder: 30, isSegregated: false },
+  { code: 'MM', legalName: 'Munar Mortgage LLC', sortOrder: 30, isSegregated: false },
   { code: 'MMT', legalName: 'Marsh & Munar Team LLC', sortOrder: 40, isSegregated: false },
   { code: 'OP', legalName: 'CoLAB Ops Perfection LLC', sortOrder: 50, isSegregated: true },
 ] as const
 
 /**
- * Aliases are how a scan gets matched back to an entity when the filename does not say.
- * OP appears in official documents fully capitalised with a slash.
+ * How a scan gets matched back to an entity. A document never prints the code — it
+ * prints a legal name, a trading name, or a DBA that shares no words with either.
+ * Both the filename parser and the AI reader match against these, so an entity with no
+ * aliases is matched on its legal name alone, which is the case that quietly fails.
+ *
+ * MM is the one worth noting: it trades as Keystone Alliance Mortgage, which resembles
+ * neither its code nor its legal name.
  */
 const ENTITY_ALIASES: Record<string, string[]> = {
+  CP: ['CoLAB Processing', 'Co/LAB Processing LLC'],
+  CCS: ['CoLAB Concierge Service', 'CoLAB Concierge Services'],
+  MM: ['Munar Mortgage', 'Munar Mortgage LLC', 'Keystone Alliance Mortgage'],
+  MMT: ['Marsh & Munar Team', 'Marsh & Munar Team LLC'],
   OP: ['CO/LAB OPS PERFECTION, LLC', 'CoLAB Ops Perfection'],
-  MMT: ['Marsh & Munar Team'],
 }
 
 /** Default folder tree created under each entity, mirroring the current Box layout. */
