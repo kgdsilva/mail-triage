@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { prisma } from '@/server/db/client'
-import { listForReview } from '@/server/documents'
+import { countNotFiled, countUnreviewed, listForReview } from '@/server/documents'
 import { requireTriage } from '@/server/session'
 import { ReviewTable, type ReviewRow } from '@/components/review-table'
 import { RunReader } from '@/components/run-reader'
@@ -26,10 +26,12 @@ export default async function ReviewPage({
   const session = await requireTriage()
   const { show, entity } = await searchParams
   const includeDecided = show === 'all'
+  const notFiledOnly = show === 'notfiled'
 
   const [rows, entities] = await Promise.all([
     listForReview(session.companyGroupId, {
       includeDecided,
+      notFiledOnly,
       entityId: entity || null,
     }),
     prisma.entity.findMany({
@@ -62,7 +64,12 @@ export default async function ReviewPage({
     return a.index - b.index
   })
 
-  const pendingCount = rows.filter((r) => r.disposition === 'UNREVIEWED').length
+  // Both counts come from the same queries the nav badge uses, so the number on the tab
+  // and the number over the menu can never tell different stories.
+  const [pendingCount, notFiledCount] = await Promise.all([
+    countUnreviewed(session.companyGroupId),
+    countNotFiled(session.companyGroupId),
+  ])
 
   const aiAvailable = aiConfigured()
   const autoApply = aiAvailable ? await autoApplyEnabled(session.companyGroupId) : false
@@ -91,7 +98,16 @@ export default async function ReviewPage({
         <span className="w-16 flex-none text-[10.5px] font-semibold uppercase tracking-[0.07em] text-subtle">
           Show
         </span>
-        <Tab href={buildHref({ entity })} active={!includeDecided} label={`Needs a look (${pendingCount})`} />
+        <Tab
+          href={buildHref({ entity })}
+          active={!includeDecided && !notFiledOnly}
+          label={`Needs a look (${pendingCount})`}
+        />
+        <Tab
+          href={buildHref({ entity, show: 'notfiled' })}
+          active={notFiledOnly}
+          label={`Decided, not filed (${notFiledCount})`}
+        />
         <Tab href={buildHref({ entity, show: 'all' })} active={includeDecided} label="All" />
 
         <span className="ml-4 w-16 flex-none text-[10.5px] font-semibold uppercase tracking-[0.07em] text-subtle">
@@ -112,8 +128,8 @@ export default async function ReviewPage({
         <div className="rounded-xl border border-line bg-surface px-4 py-3 shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
           <RunReader initialUnread={unread} />
           <p className="mt-1.5 text-[12px] text-subtle">
-            Uploads are read automatically in the background. Run this after dropping in a
-            batch, or for anything uploaded before the reader existed.
+            Reading never starts on its own. Upload everything first, then run it once —
+            this covers the whole backlog, so nothing is read twice or paid for twice.
           </p>
           <div className="mt-3 border-t border-line-soft pt-3">
             <AutoApplyToggle enabled={autoApply} />
@@ -121,7 +137,14 @@ export default async function ReviewPage({
         </div>
       )}
 
-      <ReviewTable groups={groups} showingDecided={includeDecided} />
+      {notFiledOnly && (
+        <p className="rounded-xl border border-line bg-gold-50 px-4 py-2.5 text-[13px] text-gold-800">
+          These already have a decision but no final name or no folder, so they were never
+          actually filed. Open one to finish it.
+        </p>
+      )}
+
+      <ReviewTable groups={groups} showingDecided={includeDecided || notFiledOnly} />
     </div>
   )
 }

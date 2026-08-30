@@ -163,10 +163,41 @@ export async function nextUnreviewed(companyGroupId: string, afterId?: string) {
   })
 }
 
+/**
+ * What is actually waiting on a person, in one place.
+ *
+ * The nav badge and the Review screen's own tabs both read from here. They used to
+ * count separately and could disagree — a badge saying five over a screen saying none
+ * is worse than either number alone, because it leaves nowhere to go and nothing to
+ * click.
+ */
+export const NEEDS_LOOK_WHERE = (companyGroupId: string) => ({
+  companyGroupId,
+  deletedAt: null,
+  disposition: 'UNREVIEWED' as const,
+})
+
+/**
+ * Decided, but with no name or no home — so not actually filed.
+ *
+ * A quick decision on the review table answers "what is this" without filing it, and
+ * until now an automatic decision left the folder empty too. These are finished
+ * decisions with unfinished filing, and they have to be findable or they are simply
+ * lost.
+ */
+export const NOT_FILED_WHERE = (companyGroupId: string) => ({
+  companyGroupId,
+  deletedAt: null,
+  disposition: { not: 'UNREVIEWED' as const },
+  OR: [{ finalFilename: null }, { storageFolderId: null }],
+})
+
 export async function countUnreviewed(companyGroupId: string) {
-  return prisma.document.count({
-    where: { companyGroupId, deletedAt: null, disposition: 'UNREVIEWED' },
-  })
+  return prisma.document.count({ where: NEEDS_LOOK_WHERE(companyGroupId) })
+}
+
+export async function countNotFiled(companyGroupId: string) {
+  return prisma.document.count({ where: NOT_FILED_WHERE(companyGroupId) })
 }
 
 export type EventInput = {
@@ -421,13 +452,17 @@ export async function setArchiveReason(
 /** Rows for the review sweep: everything still undecided, plus decided ones on request. */
 export function listForReview(
   companyGroupId: string,
-  opts: { includeDecided: boolean; entityId?: string | null },
+  opts: { includeDecided: boolean; notFiledOnly?: boolean; entityId?: string | null },
 ) {
+  const base = opts.notFiledOnly
+    ? NOT_FILED_WHERE(companyGroupId)
+    : opts.includeDecided
+      ? { companyGroupId, deletedAt: null }
+      : NEEDS_LOOK_WHERE(companyGroupId)
+
   return prisma.document.findMany({
     where: {
-      companyGroupId,
-      deletedAt: null,
-      ...(opts.includeDecided ? {} : { disposition: 'UNREVIEWED' }),
+      ...base,
       ...(opts.entityId ? { entityId: opts.entityId } : {}),
     },
     include: {

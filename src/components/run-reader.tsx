@@ -9,9 +9,9 @@ import { BTN } from '@/lib/theme'
 /**
  * Reads every document that has not been read yet, on demand.
  *
- * Uploads already kick off a read in the background, but that only covers documents
- * uploaded since the reader existed — and a background read can fail quietly. This is
- * the deliberate pass: drop a whole batch in, then run it when you are ready.
+ * The only way reading ever starts. Uploading used to trigger it per file, which spent
+ * money the moment a file landed and gave no way to drop a hundred scans in and decide
+ * afterwards. Now the whole backlog waits here until somebody asks for it.
  *
  * The loop lives here rather than on the server because a serverless function is killed
  * after a few minutes and a read takes several seconds. Each call takes a small slice
@@ -84,7 +84,7 @@ export function RunReader({ initialUnread }: { initialUnread: number }) {
     return (
       <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted">
         <Sparkles className="size-3.5 text-navy-500" aria-hidden />
-        Every document has been read.
+        Everything uploaded has been read.
       </span>
     )
   }

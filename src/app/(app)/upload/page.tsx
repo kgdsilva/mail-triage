@@ -12,7 +12,8 @@ export default async function UploadPage() {
         <h1 className="text-[26px] font-bold tracking-tight text-navy-900">Upload a batch</h1>
         <p className="mt-1 text-sm text-muted">
           One PDF per document, named however they arrive. Files are stored here — this
-          platform is the source of truth, not Box or Drive.
+          platform is the source of truth, not Box or Drive. Nothing is read by the AI
+          until you ask for it on Review, so you can drop a whole batch in first.
         </p>
       </div>
       <UploadForm />

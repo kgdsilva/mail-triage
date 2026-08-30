@@ -23,7 +23,7 @@ export async function analyzeForClassify(
 
   if (result.ok) {
     revalidatePath(`/classify/${documentId}`)
-    revalidatePath('/review')
+    revalidatePath('/', 'layout')
   }
   return result
 }
@@ -106,8 +106,8 @@ export async function analyzeUnread(
   })
 
   if (processed > 0) {
-    revalidatePath('/review')
-    revalidatePath('/log')
+    // Layout scope: the nav badge is rendered there and has to move with the screen.
+    revalidatePath('/', 'layout')
   }
 
   return { processed, applied, escalated, failed, remaining, lastError }

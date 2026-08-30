@@ -3,6 +3,7 @@ import { prisma } from '@/server/db/client'
 import { suggestDisposition, type FilterVerdict } from '@/server/action-filter'
 import { recordEvent } from '@/server/documents'
 import { suggestFilename } from '@/server/filename'
+import { suggestFolder } from '@/server/filing'
 import { readDocument, aiConfigured } from '@/server/ai/read-document'
 import type { Extraction } from '@/server/ai/schema'
 
@@ -373,7 +374,10 @@ async function applyDecision(
       ? prisma.entity.findUnique({ where: { id: suggestion.entityId }, select: { code: true } })
       : null,
     suggestion.documentTypeId
-      ? prisma.documentType.findUnique({ where: { id: suggestion.documentTypeId }, select: { label: true } })
+      ? prisma.documentType.findUnique({
+          where: { id: suggestion.documentTypeId },
+          select: { label: true, code: true },
+        })
       : null,
     prisma.document.findUnique({
       where: { id: documentId },
@@ -393,6 +397,8 @@ async function applyDecision(
   const settings = (group?.settings as Record<string, unknown> | null) ?? {}
   if (settings.autoApply !== true) return false
 
+  const typeCode = type?.code ?? null
+
   // The page wins, but a value already on the record does not get thrown away. The
   // filename parser pulls a date off the scan's name at upload, and plenty of documents
   // — statements especially — show a period rather than a date of issue.
@@ -411,6 +417,15 @@ async function applyDecision(
       extension: doc.originalFilename.split('.').pop() ?? 'pdf',
     },
     settings as { filenameTemplate?: string; dateFormat?: string },
+  )
+
+  // Filing it means giving it a home, not just a name. Without this every automatic
+  // decision landed as "decided but not filed" — archived in name only, and invisible
+  // in a state nobody could act on.
+  const folder = await suggestFolder(
+    companyGroupId,
+    suggestion.entityId,
+    type ? typeCode : null,
   )
 
   const isAction = suggestion.disposition === 'ACTION'
@@ -433,6 +448,8 @@ async function applyDecision(
         status: isAction ? 'WAITING' : 'ARCHIVED',
         summaryNote: suggestion.summary,
         finalFilename,
+        storageFolderId: folder?.id ?? null,
+        filedAt: folder ? new Date() : null,
         reviewedAt: new Date(),
       },
     })
