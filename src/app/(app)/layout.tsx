@@ -45,7 +45,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 Review
               </NavLink>
             )}
-            {triages && <NavLink href="/classify">Classify</NavLink>}
             {canSeeWholeLog(session.role) && <NavLink href="/checks">Checks</NavLink>}
             <NavLink href="/log">{canSeeWholeLog(session.role) ? 'Master log' : 'My documents'}</NavLink>
             {triages && <NavLink href="/upload">Upload</NavLink>}

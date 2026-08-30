@@ -389,3 +389,32 @@ export async function removeEntityAlias(aliasId: string) {
   revalidatePath(`/settings/entities/${alias.entityId}`)
   revalidatePath('/settings/entities')
 }
+
+/**
+ * Lets the reader commit its own decisions.
+ *
+ * Off by default, and deliberately a choice rather than a default: a reader that files
+ * documents on its own is a different thing from one that proposes, and that is the
+ * owner's call. Even switched on it only ever acts on a decision that cleared every
+ * condition — the reading was clear, the entity and type are known, the filing rules
+ * named a reason, and nothing was flagged ambiguous. Everything else still waits for a
+ * person, and everything it does decide is recorded and reversible.
+ */
+export async function setAutoApply(enabled: boolean) {
+  const session = await requireAdmin()
+
+  const group = await prisma.companyGroup.findUniqueOrThrow({
+    where: { id: session.companyGroupId },
+    select: { settings: true },
+  })
+  const settings = { ...((group.settings as Record<string, unknown> | null) ?? {}) }
+  settings.autoApply = enabled
+
+  await prisma.companyGroup.update({
+    where: { id: session.companyGroupId },
+    data: { settings: settings as Prisma.InputJsonValue },
+  })
+
+  revalidatePath('/settings')
+  revalidatePath('/review')
+}

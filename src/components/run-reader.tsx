@@ -22,7 +22,10 @@ export function RunReader({ initialUnread }: { initialUnread: number }) {
   const router = useRouter()
   const [remaining, setRemaining] = useState(initialUnread)
   const [done, setDone] = useState(0)
+  const [applied, setApplied] = useState(0)
+  const [escalated, setEscalated] = useState(0)
   const [failed, setFailed] = useState(0)
+  const [finished, setFinished] = useState(false)
   const [running, setRunning] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +40,10 @@ export function RunReader({ initialUnread }: { initialUnread: number }) {
     setStopping(false)
     setError(null)
     let processedHere = 0
+    let appliedHere = 0
+    let escalatedHere = 0
     let failedHere = 0
+    setFinished(false)
 
     stopRequested.current = false
 
@@ -45,8 +51,12 @@ export function RunReader({ initialUnread }: { initialUnread: number }) {
       for (;;) {
         const res = await analyzeUnread(4)
         processedHere += res.processed
+        appliedHere += res.applied
+        escalatedHere += res.escalated
         failedHere += res.failed
         setDone(processedHere)
+        setApplied(appliedHere)
+        setEscalated(escalatedHere)
         setFailed(failedHere)
         setRemaining(res.remaining)
 
@@ -65,6 +75,7 @@ export function RunReader({ initialUnread }: { initialUnread: number }) {
     } finally {
       setRunning(false)
       setStopping(false)
+      setFinished(processedHere > 0 || failedHere > 0)
       router.refresh()
     }
   }
@@ -117,6 +128,28 @@ export function RunReader({ initialUnread }: { initialUnread: number }) {
             className="block h-full bg-navy-700 transition-all"
             style={{ width: `${Math.min(100, Math.round(((done + failed) / total) * 100))}%` }}
           />
+        </span>
+      )}
+
+      {finished && !running && (
+        <span className="w-full text-[13px] text-navy-900">
+          Read {done} document{done === 1 ? '' : 's'}:{' '}
+          {applied > 0 && (
+            <>
+              <strong className="font-semibold">{applied} decided automatically</strong>
+              {' — visible in “All”, and reversible.'}{' '}
+            </>
+          )}
+          {escalated > 0 && (
+            <strong className="font-semibold text-gold-800">
+              {escalated} need{escalated === 1 ? 's' : ''} your review.
+            </strong>
+          )}
+          {applied === 0 && escalated > 0 && (
+            <span className="block text-[12px] text-subtle">
+              Nothing was decided automatically — turn that on in Settings if you want it.
+            </span>
+          )}
         </span>
       )}
 

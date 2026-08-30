@@ -44,10 +44,20 @@ export async function isAiAvailable() {
  */
 export async function analyzeUnread(
   limit = 4,
-): Promise<{ processed: number; failed: number; remaining: number; lastError?: string }> {
+): Promise<{
+  processed: number
+  applied: number
+  escalated: number
+  failed: number
+  remaining: number
+  lastError?: string
+}> {
   const session = await requireTriage()
   if (!aiConfigured()) {
-    return { processed: 0, failed: 0, remaining: 0, lastError: 'ANTHROPIC_API_KEY is not set' }
+    return {
+      processed: 0, applied: 0, escalated: 0, failed: 0, remaining: 0,
+      lastError: 'ANTHROPIC_API_KEY is not set',
+    }
   }
 
   const batch = await prisma.document.findMany({
@@ -63,6 +73,8 @@ export async function analyzeUnread(
   })
 
   let processed = 0
+  let applied = 0
+  let escalated = 0
   let failed = 0
   let lastError: string | undefined
 
@@ -70,6 +82,8 @@ export async function analyzeUnread(
     const result = await analyzeDocument(session.companyGroupId, doc.id)
     if (result.ok) {
       processed += 1
+      if (result.applied) applied += 1
+      else escalated += 1
     } else {
       failed += 1
       lastError = result.error
@@ -96,7 +110,7 @@ export async function analyzeUnread(
     revalidatePath('/log')
   }
 
-  return { processed, failed, remaining, lastError }
+  return { processed, applied, escalated, failed, remaining, lastError }
 }
 
 /** How many documents are still waiting to be read — drives the button's label. */

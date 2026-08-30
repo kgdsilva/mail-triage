@@ -13,12 +13,14 @@ export const EXTRACTION_SCHEMA = {
   additionalProperties: false,
   required: [
     'entityCode',
+    'addresseeName',
     'documentTypeCode',
     'vendorName',
     'amount',
     'documentDate',
     'dueDate',
     'summary',
+    'moneyDirection',
     'solicitation',
     'deadlineOrRisk',
     'confidence',
@@ -28,6 +30,17 @@ export const EXTRACTION_SCHEMA = {
       type: ['string', 'null'],
       description:
         'Entity code from the provided list whose name, address or EIN appears as the ADDRESSEE. Null if none of them clearly matches — do not guess from the sender.',
+    },
+    addresseeName: {
+      type: ['string', 'null'],
+      description:
+        'The addressee exactly as printed, even when it matches none of the entities — a person, a different company, a former name. Null only when the page shows no addressee at all.',
+    },
+    moneyDirection: {
+      type: 'string',
+      enum: ['owed_by_us', 'received_by_us', 'neither'],
+      description:
+        'owed_by_us when the document asks for payment. received_by_us for a check or payment arriving. neither when no money moves.',
     },
     documentTypeCode: {
       type: ['string', 'null'],
@@ -93,6 +106,8 @@ export const EXTRACTION_SCHEMA = {
 
 export type Extraction = {
   entityCode: string | null
+  addresseeName: string | null
+  moneyDirection: 'owed_by_us' | 'received_by_us' | 'neither'
   documentTypeCode: string | null
   vendorName: string | null
   amount: number | null

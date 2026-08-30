@@ -4,7 +4,9 @@ import { listForReview } from '@/server/documents'
 import { requireTriage } from '@/server/session'
 import { ReviewTable, type ReviewRow } from '@/components/review-table'
 import { RunReader } from '@/components/run-reader'
+import { AutoApplyToggle } from '@/components/auto-apply-toggle'
 import { aiConfigured } from '@/server/ai/read-document'
+import { autoApplyEnabled } from '@/server/ai/suggest'
 import { Prisma } from '@/generated/prisma/client'
 
 export const dynamic = 'force-dynamic'
@@ -63,6 +65,7 @@ export default async function ReviewPage({
   const pendingCount = rows.filter((r) => r.disposition === 'UNREVIEWED').length
 
   const aiAvailable = aiConfigured()
+  const autoApply = aiAvailable ? await autoApplyEnabled(session.companyGroupId) : false
   const unread = aiAvailable
     ? await prisma.document.count({
         where: {
@@ -112,6 +115,9 @@ export default async function ReviewPage({
             Uploads are read automatically in the background. Run this after dropping in a
             batch, or for anything uploaded before the reader existed.
           </p>
+          <div className="mt-3 border-t border-line-soft pt-3">
+            <AutoApplyToggle enabled={autoApply} />
+          </div>
         </div>
       )}
 
@@ -182,6 +188,8 @@ function toAi(raw: unknown): ReviewRow['ai'] {
     dispositionReason: typeof s.dispositionReason === 'string' ? s.dispositionReason : null,
     rationale: s.rationale,
     confidence: typeof s.confidence === 'number' ? s.confidence : 0,
+    decisionConfidence:
+      typeof s.decisionConfidence === 'number' ? s.decisionConfidence : 0,
     ambiguous: s.ambiguous === true,
   }
 }

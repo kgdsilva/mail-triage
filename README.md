@@ -96,6 +96,35 @@ npx tsx prisma/seed.ts
 npm run dev
 ```
 
+## The reader deciding for itself
+
+Off until an owner turns it on, on the Review screen. Off is the honest default: a
+reader that files documents on its own is a different product from one that proposes,
+and that is not a decision to make by omission.
+
+Switched on, a decision is committed without a click only when every one of these holds
+(`scoreDecision` in `src/server/ai/suggest.ts`) — each is a veto, not a weight, so a
+single unresolved doubt can never be outvoted by confidence elsewhere:
+
+- the reading itself was clear (extraction confidence at or above 0.85)
+- the entity is known — not knowing whose document this is blocks every other question
+- the document type is known
+- the filing rules produced a stated reason, so the decision can be audited later
+- nothing was flagged ambiguous by the merge rules
+
+Everything else goes to Review. What lands there is meant to be the genuine questions —
+is this ours or personal, is this really not on autopay — not the whole batch.
+
+**Decision confidence is not extraction confidence.** A personal insurance renewal was
+extracted at 93%: the reading was excellent, and what was unknown was whose document it
+was. Showing the extraction figure beside a decision invited exactly the wrong
+conclusion, so the two are separate numbers and only the decision one gates autonomy.
+
+Auto-decided documents are ordinary records: visible under "All" on Review, changeable
+by the same buttons, and carrying a `DocumentEvent` whose actor is null and whose
+payload says `via: "auto-reader"` with the reasoning and both confidence figures. Decide
+and record, never decide and forget.
+
 ## AI-assisted reading
 
 Set `ANTHROPIC_API_KEY` and uploads are read automatically; leave it blank and the

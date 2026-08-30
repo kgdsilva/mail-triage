@@ -33,6 +33,7 @@ export type ReviewRow = {
     dispositionReason: string | null
     rationale: string
     confidence: number
+    decisionConfidence: number
     ambiguous: boolean
   } | null
 }
@@ -249,7 +250,9 @@ function ReviewMark({ row }: { row: ReviewRow }) {
       >
         <Sparkles className="mt-0.5 size-3 flex-none" aria-hidden />
         <span className="truncate">{row.ai.rationale}</span>
-        <span className="flex-none opacity-70">{Math.round(row.ai.confidence * 100)}%</span>
+        <span className="flex-none opacity-70">
+          {row.ai.ambiguous ? 'needs you' : `${Math.round(row.ai.decisionConfidence * 100)}%`}
+        </span>
       </span>
     )
   }
@@ -349,13 +352,21 @@ function parseDate(iso: string | null) {
 }
 
 /**
- * Which quick button the reader proposed. Only meaningful before a human decides —
- * afterwards the active state shows what was actually chosen.
+ * Which quick button the reader proposed, if any.
+ *
+ * Nothing is proposed for a row the reader flagged. This screen offers three answers —
+ * pay, archive, spam — and an escalated document is precisely one the reader could not
+ * place among them. Mapping every action item onto "Pay" made a received cheque and a
+ * personal insurance renewal both read as bills to pay, which is how a display detail
+ * became a wrong recommendation.
  */
 function proposedButton(row: ReviewRow): 'PAY' | 'ARCHIVE' | 'SPAM' | null {
   if (row.disposition !== 'UNREVIEWED' || !row.ai) return null
+  if (row.ai.ambiguous) return null
   if (row.ai.dispositionReason === 'SPAM_SOLICITATION') return 'SPAM'
   if (row.ai.disposition === 'ARCHIVE') return 'ARCHIVE'
-  if (row.ai.disposition === 'ACTION') return 'PAY'
+  // Only an action the filing rules could name a reason for. Without one there is no
+  // basis for choosing between paying it and merely looking at it.
+  if (row.ai.disposition === 'ACTION' && row.ai.dispositionReason) return 'PAY'
   return null
 }

@@ -74,7 +74,9 @@ Due date means a date by which something must happen. A statement period ending,
 
 Solicitations are advertising dressed as official mail: labor-law poster sellers, LLC compliance and "certificate of good standing" resellers, business filing centres. They imitate government letterhead, quote large fines, and print a disclaimer in small type — "this is not a bill", "not affiliated with any government agency", "this is a solicitation". That disclaimer is the tell. Quote it as evidence. An official notice from a real tax authority never carries one.
 
-Report a deadline or risk when the document states one: a date something is due, or a consequence — penalty, interest, collections, legal action, cancellation of coverage.
+Report a deadline or risk only for an obligation this company has to meet: a payment it owes, a response a government agency requires, coverage that lapses if it does nothing. A note on money arriving — "void if not deposited within 90 days", "deposit promptly" — is not one of those. Nothing is owed and nobody is at risk, so report no deadline.
+
+Always name the addressee, even when it matches none of the entities above. Mail addressed to a person, or to a company not on the list, is a real and useful answer — report the name as printed and leave the entity code null. Never stretch an unfamiliar addressee onto the nearest entity.
 
 Two things to be strict about. Report only what the document actually says; a null is more useful than a guess, and a wrong amount or date costs more than a blank field. And say nothing about whether a bill is on autopay — you cannot know that, and it is decided elsewhere from the company's own records.`
 }

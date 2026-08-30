@@ -1,6 +1,8 @@
-import type { Prisma } from '@/generated/prisma/client'
+import { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/server/db/client'
 import { suggestDisposition, type FilterVerdict } from '@/server/action-filter'
+import { recordEvent } from '@/server/documents'
+import { suggestFilename } from '@/server/filename'
 import { readDocument, aiConfigured } from '@/server/ai/read-document'
 import type { Extraction } from '@/server/ai/schema'
 
@@ -31,7 +33,19 @@ export type AiSuggestion = {
   dispositionReason: FilterVerdict['reason']
   rationale: string
   ambiguous: boolean
+  /** How sure the model is about what it READ off the page. */
   confidence: number
+  /**
+   * How sure the system is about the DECISION, which is a different question.
+   *
+   * The personal auto-insurance renewal that started this was extracted at 93% — the
+   * reading was excellent. What was unknown was whose document it is. Showing the
+   * extraction number next to a decision invited exactly the wrong conclusion, and
+   * would have been a disastrous thing to auto-apply on.
+   */
+  decisionConfidence: number
+  /** Whether this may be decided without a person looking at it. */
+  autoApplicable: boolean
   /** Kept for audit and for judging the model later against what a human chose. */
   raw: Extraction
   readAt: string
@@ -82,7 +96,7 @@ export async function analyzeDocument(
   companyGroupId: string,
   documentId: string,
   opts: { force?: boolean } = {},
-): Promise<{ ok: boolean; suggestion?: AiSuggestion; error?: string }> {
+): Promise<{ ok: boolean; suggestion?: AiSuggestion; error?: string; applied?: boolean }> {
   if (!aiConfigured()) return { ok: false, error: 'AI reading is not configured' }
 
   const existing = await prisma.document.findFirst({
@@ -141,6 +155,10 @@ export async function analyzeDocument(
     summary: x.summary,
     ...merged,
     confidence: x.confidence,
+    ...scoreDecision(x, merged, {
+      entityMatched: Boolean(entity),
+      typeMatched: Boolean(documentType),
+    }),
     raw: x,
     readAt: new Date().toISOString(),
   }
@@ -153,7 +171,11 @@ export async function analyzeDocument(
     },
   })
 
-  return { ok: true, suggestion }
+  const applied = suggestion.autoApplicable
+    ? await applyDecision(companyGroupId, documentId, suggestion)
+    : false
+
+  return { ok: true, suggestion, applied }
 }
 
 /**
@@ -170,7 +192,12 @@ export function mergeVerdict(
   verdict: FilterVerdict,
   x: Extraction,
 ): Pick<AiSuggestion, 'disposition' | 'dispositionReason' | 'rationale' | 'ambiguous'> {
-  if (x.deadlineOrRisk.present && verdict.disposition === 'ARCHIVE') {
+  // Money arriving carries no obligation. A "void if not deposited in 90 days" note on
+  // an incoming check is not a deadline this company has to meet, and letting it
+  // override the archive turned received cheques into things to pay.
+  const moneyIn = x.moneyDirection === 'received_by_us' || verdict.reason === 'INCOMING_CHECK'
+
+  if (x.deadlineOrRisk.present && !moneyIn && verdict.disposition === 'ARCHIVE') {
     return {
       disposition: 'ACTION',
       dispositionReason: 'DEADLINE_NOTICE',
@@ -185,6 +212,18 @@ export function mergeVerdict(
       dispositionReason: 'SPAM_SOLICITATION',
       rationale: `Reads as a solicitation, not a bill — the page says: "${x.solicitation.evidence}". Log and file, no action.`,
       ambiguous: false,
+    }
+  }
+
+  // Addressed to somebody outside the group. That is an answer, not a failure to read,
+  // and it is a question only a person can settle: is this personal, or a company
+  // record filed under a name we have not registered yet?
+  if (!x.entityCode && x.addresseeName) {
+    return {
+      disposition: 'ACTION',
+      dispositionReason: null,
+      rationale: `Addressed to "${x.addresseeName}", which matches none of the entities. Confirm whether this is company mail before anything is done with it.`,
+      ambiguous: true,
     }
   }
 
@@ -207,4 +246,166 @@ export function mergeVerdict(
     rationale: verdict.rationale,
     ambiguous: verdict.ambiguous,
   }
+}
+
+/** Below this, a decision is never applied without a person seeing it. */
+export const AUTO_APPLY_THRESHOLD = 0.85
+
+/**
+ * Scores the decision rather than the reading, and says whether it may stand on its own.
+ *
+ * Every condition here is a veto, not a weight. A decision is applied automatically only
+ * when the reading was clear, the filing rules produced a stated reason, and there is no
+ * open question about whose document this is — so an unresolved doubt can never be
+ * outvoted by confidence elsewhere.
+ */
+function scoreDecision(
+  x: Extraction,
+  merged: Pick<AiSuggestion, 'disposition' | 'dispositionReason' | 'ambiguous'>,
+  matched: { entityMatched: boolean; typeMatched: boolean },
+): { decisionConfidence: number; autoApplicable: boolean } {
+  const blockers: boolean[] = [
+    // Anything the merge flagged is by definition a question for a person.
+    merged.ambiguous,
+    // Not knowing whose document this is blocks every decision about it.
+    !matched.entityMatched,
+    !matched.typeMatched,
+    // A disposition with no stated reason cannot be audited later, which is the whole
+    // point of the archive-needs-a-reason rule.
+    !merged.dispositionReason,
+    // A poor scan the model itself doubted.
+    x.confidence < AUTO_APPLY_THRESHOLD,
+  ]
+
+  const blocked = blockers.filter(Boolean).length
+  if (blocked === 0) {
+    return { decisionConfidence: x.confidence, autoApplicable: true }
+  }
+
+  // Each unmet condition drops the decision a clear step below the bar, so the number
+  // shown to a person reflects the doubt rather than the quality of the reading.
+  const penalty = Math.min(0.75, 0.25 * blocked)
+  return {
+    decisionConfidence: Math.max(0.05, Math.round((x.confidence - penalty) * 100) / 100),
+    autoApplicable: false,
+  }
+}
+
+/**
+ * Writes a decision the reader was sure about, without waiting for a click.
+ *
+ * This is the part that turns reading into work saved. It only ever runs on a
+ * suggestion that cleared every condition in scoreDecision, and only when the group has
+ * turned it on — a reader that decides on its own is a different product from one that
+ * proposes, and that is the owner's call to make, not a default.
+ *
+ * Nothing is hidden and nothing is lost. The decision lands on the document exactly as a
+ * person's would, and a DocumentEvent records that the reader made it, with the reasoning
+ * and both confidence figures, so any of it can be audited or reversed later.
+ */
+async function applyDecision(
+  companyGroupId: string,
+  documentId: string,
+  suggestion: AiSuggestion,
+): Promise<boolean> {
+  const [group, entity, type, doc] = await Promise.all([
+    prisma.companyGroup.findUnique({ where: { id: companyGroupId }, select: { settings: true } }),
+    suggestion.entityId
+      ? prisma.entity.findUnique({ where: { id: suggestion.entityId }, select: { code: true } })
+      : null,
+    suggestion.documentTypeId
+      ? prisma.documentType.findUnique({ where: { id: suggestion.documentTypeId }, select: { label: true } })
+      : null,
+    prisma.document.findUnique({
+      where: { id: documentId },
+      select: {
+        disposition: true,
+        originalFilename: true,
+        documentDate: true,
+        dueDate: true,
+        amount: true,
+      },
+    }),
+  ])
+
+  // Never overwrite a decision a person already made.
+  if (!doc || doc.disposition !== 'UNREVIEWED') return false
+
+  const settings = (group?.settings as Record<string, unknown> | null) ?? {}
+  if (settings.autoApply !== true) return false
+
+  // The page wins, but a value already on the record does not get thrown away. The
+  // filename parser pulls a date off the scan's name at upload, and plenty of documents
+  // — statements especially — show a period rather than a date of issue.
+  const documentDate = suggestion.documentDate
+    ? new Date(`${suggestion.documentDate}T00:00:00Z`)
+    : doc.documentDate
+  const dueDate = suggestion.dueDate ? new Date(`${suggestion.dueDate}T00:00:00Z`) : doc.dueDate
+  const amount = suggestion.amount ?? (doc.amount == null ? null : Number(String(doc.amount)))
+
+  const finalFilename = suggestFilename(
+    {
+      entityCode: entity?.code ?? null,
+      documentDate,
+      typeLabel: type?.label ?? null,
+      amount,
+      extension: doc.originalFilename.split('.').pop() ?? 'pdf',
+    },
+    settings as { filenameTemplate?: string; dateFormat?: string },
+  )
+
+  const isAction = suggestion.disposition === 'ACTION'
+
+  await prisma.$transaction(async (tx) => {
+    await tx.document.update({
+      where: { id: documentId },
+      data: {
+        entityId: suggestion.entityId,
+        documentTypeId: suggestion.documentTypeId,
+        vendorId: suggestion.vendorId,
+        documentDate,
+        dueDate,
+        amount: amount == null ? null : new Prisma.Decimal(amount),
+        disposition: suggestion.disposition,
+        dispositionReason: suggestion.dispositionReason,
+        // An action item has to say what it asks for; REVIEW is the honest default when
+        // the reader was not told to route it anywhere in particular.
+        actionKind: isAction ? 'REVIEW' : null,
+        status: isAction ? 'WAITING' : 'ARCHIVED',
+        summaryNote: suggestion.summary,
+        finalFilename,
+        reviewedAt: new Date(),
+      },
+    })
+
+    await recordEvent(
+      {
+        documentId,
+        // Null actor: this was not a person, and the log should not imply one.
+        actorUserId: null,
+        action: 'classified',
+        fromValue: { disposition: 'UNREVIEWED' },
+        toValue: {
+          disposition: suggestion.disposition,
+          dispositionReason: suggestion.dispositionReason,
+          rationale: suggestion.rationale,
+          decisionConfidence: suggestion.decisionConfidence,
+          extractionConfidence: suggestion.confidence,
+          via: 'auto-reader',
+        },
+      },
+      tx,
+    )
+  })
+
+  return true
+}
+
+/** Whether this group lets the reader decide on its own. */
+export async function autoApplyEnabled(companyGroupId: string) {
+  const group = await prisma.companyGroup.findUnique({
+    where: { id: companyGroupId },
+    select: { settings: true },
+  })
+  return ((group?.settings as Record<string, unknown> | null) ?? {}).autoApply === true
 }
