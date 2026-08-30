@@ -299,6 +299,15 @@ model AutopayRule {
 
   paymentMethod String? @map("payment_method")
 
+  /// Whether the automatic payment settles the whole bill.
+  ///
+  /// False for an arrangement that covers only part of it — a card where the minimum
+  /// or finance charge is drafted automatically while the principal is still paid by
+  /// hand. Such a rule must never archive the bill: the automatic part is handled, the
+  /// rest is not, and archiving it is how a payment goes missing. The filter escalates
+  /// these instead, quoting the caveat.
+  coversFullBalance Boolean @default(true) @map("covers_full_balance")
+
   effectiveFrom DateTime  @map("effective_from") @db.Date
   effectiveTo   DateTime? @map("effective_to") @db.Date
 

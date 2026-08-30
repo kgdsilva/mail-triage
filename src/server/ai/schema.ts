@@ -73,15 +73,20 @@ export const EXTRACTION_SCHEMA = {
     solicitation: {
       type: 'object',
       additionalProperties: false,
-      required: ['isSolicitation', 'evidence'],
+      required: ['isSolicitation', 'disguisedAsOfficial', 'evidence'],
       description:
         'Advertising mail dressed up as an official notice or invoice. These self-disclose in fine print.',
       properties: {
         isSolicitation: { type: 'boolean' },
+        disguisedAsOfficial: {
+          type: 'boolean',
+          description:
+            'True only when it imitates a government or regulatory notice — official-looking letterhead, a threatened fine or penalty, an urgent deadline. Ordinary advertising that is plainly an advert is false here.',
+        },
         evidence: {
           type: ['string', 'null'],
           description:
-            'The disclaimer quoted from the page — "this is not a bill", "not affiliated with any government agency" — or null when not a solicitation.',
+            'The fine-print disclaimer quoted verbatim — "this is not a bill", "not affiliated with any government agency", "this is a solicitation". Null when the page carries no such disclaimer. A marketing slogan or a call to action is not a disclaimer; do not quote one here.',
         },
       },
     },
@@ -114,7 +119,11 @@ export type Extraction = {
   documentDate: string | null
   dueDate: string | null
   summary: string
-  solicitation: { isSolicitation: boolean; evidence: string | null }
+  solicitation: {
+    isSolicitation: boolean
+    disguisedAsOfficial: boolean
+    evidence: string | null
+  }
   deadlineOrRisk: { present: boolean; detail: string | null }
   confidence: number
 }

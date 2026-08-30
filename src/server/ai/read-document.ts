@@ -72,7 +72,9 @@ Amount means what is owed now, or the face value of an incoming check. Statement
 
 Due date means a date by which something must happen. A statement period ending, a printed date, or an "as of" date is not a due date.
 
-Solicitations are advertising dressed as official mail: labor-law poster sellers, LLC compliance and "certificate of good standing" resellers, business filing centres. They imitate government letterhead, quote large fines, and print a disclaimer in small type — "this is not a bill", "not affiliated with any government agency", "this is a solicitation". That disclaimer is the tell. Quote it as evidence. An official notice from a real tax authority never carries one.
+Solicitations are advertising dressed as official mail: labor-law poster sellers, LLC compliance and "certificate of good standing" resellers, business filing centres. They imitate government letterhead, quote large fines, and print a disclaimer in small type — "this is not a bill", "not affiliated with any government agency", "this is a solicitation". That disclaimer is the tell. Quote it, and only it, as evidence. An official notice from a real tax authority never carries one.
+
+Ordinary advertising is not this. A vendor's contact card, a rate sheet, a flyer from a supplier the company already deals with — these are plainly adverts and make no pretence of being official. Mark them as not disguised, and quote nothing: a slogan or an invitation to call is not a disclaimer.
 
 Report a deadline or risk only for an obligation this company has to meet: a payment it owes, a response a government agency requires, coverage that lapses if it does nothing. A note on money arriving — "void if not deposited within 90 days", "deposit promptly" — is not one of those. Nothing is owed and nobody is at risk, so report no deadline.
 

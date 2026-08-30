@@ -96,6 +96,25 @@ npx tsx prisma/seed.ts
 npm run dev
 ```
 
+## Autopay is not always all of the bill
+
+`AutopayRule.coversFullBalance` is false for an arrangement that settles only part of a
+bill — a card where the minimum or finance charge is drafted automatically while the
+principal is still paid by hand. Such a rule never archives: the automatic half is
+handled, the rest is still someone's job, and filing the document away is how that half
+goes unpaid. It escalates instead, quoting the caveat from the rule's notes.
+
+Two things had to change for autopay rules to be worth entering at all:
+
+- **A due date on an automatically paid bill is expected, not alarming.** The rule that
+  escalates an archive when the page states a deadline used to fire on every bill, since
+  every bill has one — which meant a confirmed autopay rule archived nothing. It no
+  longer applies when the reason is AUTOPAY.
+- **A statement showing a balance due is a bill.** Types that file by default used to
+  short-circuit before the autopay list was ever consulted, so a card statement was
+  filed as informational without anyone asking whether the payment was automatic. When
+  the page asks for money, the autopay list decides.
+
 ## Two rules that carry most of the volume
 
 **The document body beats its filename.** A scan's name is informal and often inherited

@@ -48,6 +48,7 @@ export default async function AutopayPage() {
                 <th className="px-4 py-3 font-semibold">Vendor</th>
                 <th className="px-4 py-3 font-semibold">Entity</th>
                 <th className="px-4 py-3 font-semibold">Acct</th>
+                <th className="px-4 py-3 font-semibold">Covers</th>
                 <th className="px-4 py-3 font-semibold">In effect</th>
                 <th className="px-4 py-3 font-semibold">Confirmed by</th>
                 <th className="px-4 py-3" />
@@ -61,6 +62,15 @@ export default async function AutopayPage() {
                     <td className="px-4 py-3">{r.vendor.name}</td>
                     <td className="px-3 py-2 font-mono text-xs">{r.entity.code}</td>
                     <td className="px-3 py-2 text-xs">{r.accountLast4 ?? '—'}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {r.coversFullBalance ? (
+                        <span className="text-muted">full bill</span>
+                      ) : (
+                        <span className="rounded-full bg-gold-100 px-2 py-0.5 font-medium text-gold-800">
+                          partial — still needs paying
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-xs">
                       {formatDate(r.effectiveFrom)} →{' '}
                       {r.effectiveTo ? formatDate(r.effectiveTo) : 'open'}
@@ -128,6 +138,17 @@ export default async function AutopayPage() {
           <input name="effectiveFrom" type="date" required defaultValue={today} className={`mt-1 ${inputClass}`} />
         </label>
         <input name="notes" placeholder="Notes" className={inputClass} />
+        <label className="flex items-start gap-2 text-xs">
+          <input type="checkbox" name="partial" className="mt-0.5" />
+          <span>
+            Covers only part of the bill
+            <span className="block text-[11px] text-subtle">
+              For an arrangement where a minimum or finance charge is drafted
+              automatically but the rest is still paid by hand. These are never archived —
+              they come to Review with the caveat attached.
+            </span>
+          </span>
+        </label>
         <button className="w-full rounded-lg bg-navy-700 px-3 py-2 text-sm text-white">
           Confirm rule
         </button>

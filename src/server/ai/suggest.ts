@@ -140,6 +140,7 @@ export async function analyzeDocument(
     documentTypeId: documentType?.id ?? null,
     vendorId: vendor?.id ?? null,
     onDate: documentDate ?? undefined,
+    owesMoney: x.moneyDirection === 'owed_by_us' && x.amount !== null,
   })
 
   const merged = mergeVerdict(verdict, x)
@@ -199,7 +200,17 @@ export function mergeVerdict(
   // override the archive turned received cheques into things to pay.
   const moneyIn = x.moneyDirection === 'received_by_us' || verdict.reason === 'INCOMING_CHECK'
 
-  if (x.deadlineOrRisk.present && !moneyIn && verdict.disposition === 'ARCHIVE') {
+  // A confirmed autopay arrangement already answers the deadline. Every bill has a due
+  // date, so overriding on one would escalate every automatically paid bill and leave
+  // the autopay list doing nothing at all — which is the opposite of why it exists.
+  const dueDateIsExpected = verdict.reason === 'AUTOPAY'
+
+  if (
+    x.deadlineOrRisk.present &&
+    !moneyIn &&
+    !dueDateIsExpected &&
+    verdict.disposition === 'ARCHIVE'
+  ) {
     return {
       disposition: 'ACTION',
       dispositionReason: 'DEADLINE_NOTICE',
@@ -208,7 +219,14 @@ export function mergeVerdict(
     }
   }
 
-  if (x.solicitation.isSolicitation && x.solicitation.evidence) {
+  // All three, because the harm is the disguise. Ordinary advertising is merely
+  // informational mail and is filed as such — calling it spam would put a wrong reason
+  // in the audit trail, and a quotable marketing line is not a disclaimer.
+  if (
+    x.solicitation.isSolicitation &&
+    x.solicitation.disguisedAsOfficial &&
+    x.solicitation.evidence
+  ) {
     return {
       disposition: 'ARCHIVE',
       dispositionReason: 'SPAM_SOLICITATION',

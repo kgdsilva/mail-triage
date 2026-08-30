@@ -96,6 +96,8 @@ const autopaySchema = z.object({
   paymentMethod: z.string().trim().optional(),
   effectiveFrom: z.string().min(1),
   notes: z.string().trim().optional(),
+  /// Checkbox is "covers only part", so the stored flag is its inverse.
+  partial: z.coerce.boolean().default(false),
 })
 
 /**
@@ -105,7 +107,8 @@ const autopaySchema = z.object({
  */
 export async function saveAutopayRule(formData: FormData) {
   const session = await requireAdmin()
-  const data = autopaySchema.parse(Object.fromEntries(formData))
+  const raw = Object.fromEntries(formData)
+  const data = autopaySchema.parse({ ...raw, partial: raw.partial === 'on' })
 
   await prisma.autopayRule.create({
     data: {
@@ -115,6 +118,7 @@ export async function saveAutopayRule(formData: FormData) {
       accountLast4: data.accountLast4 || null,
       paymentMethod: data.paymentMethod || null,
       effectiveFrom: new Date(`${data.effectiveFrom}T00:00:00Z`),
+      coversFullBalance: !data.partial,
       confirmedByUserId: session.userId,
       notes: data.notes || null,
     },

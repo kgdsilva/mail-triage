@@ -33,6 +33,14 @@ export type FilterInput = {
   vendorId: string | null
   /** Date the autopay rule is evaluated against — the document's own date, not today. */
   onDate?: Date
+  /**
+   * Whether the page actually asks for money.
+   *
+   * A card statement is typed Statement, which files by default — but one showing a
+   * balance due is a bill, and the question that matters for it is whether the payment
+   * is automatic. Without this the autopay list is never consulted for it.
+   */
+  owesMoney?: boolean
 }
 
 /**
@@ -139,7 +147,9 @@ export async function suggestDisposition(input: FilterInput): Promise<FilterVerd
   // Types configured to archive outright. Driven by `defaultAction` rather than a list
   // of hardcoded codes, so a group that adds its own archive-by-default type is covered
   // without a code change.
-  if (documentType.defaultAction === 'ARCHIVE') {
+  // A type that files by default still files by default — unless this particular
+  // document is asking to be paid, in which case the autopay list decides.
+  if (documentType.defaultAction === 'ARCHIVE' && !input.owesMoney) {
     const known = ARCHIVE_REASON_BY_CODE[documentType.code]
     return {
       disposition: 'ARCHIVE',
@@ -161,6 +171,21 @@ export async function suggestDisposition(input: FilterInput): Promise<FilterVerd
 
   const rule = await findAutopayRule(vendor.id, input.entityId, onDate)
   if (rule) {
+    // An arrangement that covers only part of the bill is not a reason to archive it.
+    // The automatic half is handled; the rest is still somebody's job, and filing the
+    // document away is how that half goes unpaid.
+    if (!rule.coversFullBalance) {
+      return {
+        disposition: 'ACTION',
+        reason: 'MANUAL_INVOICE',
+        rationale:
+          `${vendor.name} is on PARTIAL autopay for ${rule.entity.code} — the automatic ` +
+          `payment does not settle the whole balance, so the rest still needs paying.` +
+          (rule.notes ? ` Noted: ${rule.notes}` : ''),
+        ambiguous: true,
+      }
+    }
+
     return {
       disposition: 'ARCHIVE',
       reason: 'AUTOPAY',
