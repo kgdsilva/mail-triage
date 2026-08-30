@@ -137,7 +137,11 @@ export default async function ReviewPage({
         </p>
       )}
 
-      <ReviewTable groups={groups} showingDecided={includeDecided || notFiledOnly} />
+      <ReviewTable
+        groups={groups}
+        showingDecided={includeDecided || notFiledOnly}
+        entities={entities}
+      />
     </div>
   )
 }
@@ -207,5 +211,6 @@ function toAi(raw: unknown): ReviewRow['ai'] {
     decisionConfidence:
       typeof s.decisionConfidence === 'number' ? s.decisionConfidence : 0,
     ambiguous: s.ambiguous === true,
+    needs: s.needs === 'entity' ? 'entity' : null,
   }
 }

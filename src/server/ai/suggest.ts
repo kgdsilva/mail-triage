@@ -34,6 +34,14 @@ export type AiSuggestion = {
   dispositionReason: FilterVerdict['reason']
   rationale: string
   ambiguous: boolean
+  /**
+   * What the screen has to ask for, when something is flagged.
+   *
+   * The rationale explains the doubt to a person; this names it to the code, so the row
+   * can offer the control that settles it. Telling somebody "I don't know whose this is"
+   * beside three buttons that all assume they know is not a question they can answer.
+   */
+  needs: 'entity' | null
   /** How sure the model is about what it READ off the page. */
   confidence: number
   /**
@@ -195,7 +203,7 @@ export async function analyzeDocument(
 export function mergeVerdict(
   verdict: FilterVerdict,
   x: Extraction,
-): Pick<AiSuggestion, 'disposition' | 'dispositionReason' | 'rationale' | 'ambiguous'> {
+): Pick<AiSuggestion, 'disposition' | 'dispositionReason' | 'rationale' | 'ambiguous' | 'needs'> {
   // Money arriving carries no obligation. A "void if not deposited in 90 days" note on
   // an incoming check is not a deadline this company has to meet, and letting it
   // override the archive turned received cheques into things to pay.
@@ -217,6 +225,7 @@ export function mergeVerdict(
       dispositionReason: 'DEADLINE_NOTICE',
       rationale: `Filing rules pointed at archive, but the document states a deadline or consequence: ${x.deadlineOrRisk.detail ?? 'see the page'}. Surfacing it instead.`,
       ambiguous: true,
+      needs: null,
     }
   }
 
@@ -233,6 +242,7 @@ export function mergeVerdict(
       dispositionReason: 'SPAM_SOLICITATION',
       rationale: `Reads as a solicitation, not a bill — the page says: "${x.solicitation.evidence}". Log and file, no action.`,
       ambiguous: false,
+      needs: null,
     }
   }
 
@@ -244,6 +254,7 @@ export function mergeVerdict(
       dispositionReason: verdict.reason,
       rationale: verdict.rationale,
       ambiguous: verdict.ambiguous,
+      needs: null,
     }
   }
 
@@ -272,6 +283,7 @@ export function mergeVerdict(
         x.vendorName ? ` — informational mail from ${x.vendorName}` : ''
       }. Log and file, no action.`,
       ambiguous: false,
+      needs: null,
     }
   }
 
@@ -282,8 +294,9 @@ export function mergeVerdict(
     return {
       disposition: 'ACTION',
       dispositionReason: null,
-      rationale: `Addressed to "${x.addresseeName}", which matches none of the entities. Confirm whether this is company mail before anything is done with it.`,
+      rationale: `Addressed to "${x.addresseeName}", which matches none of the entities.`,
       ambiguous: true,
+      needs: 'entity',
     }
   }
 
@@ -297,6 +310,7 @@ export function mergeVerdict(
         ? `Could not classify this confidently, and it states a deadline: ${x.deadlineOrRisk.detail ?? 'see the page'}.`
         : 'Could not classify this confidently. Ambiguity goes to a human.',
       ambiguous: true,
+      needs: null,
     }
   }
 
@@ -305,6 +319,7 @@ export function mergeVerdict(
     dispositionReason: verdict.reason,
     rationale: verdict.rationale,
     ambiguous: verdict.ambiguous,
+    needs: null,
   }
 }
 
@@ -321,12 +336,13 @@ export const AUTO_APPLY_THRESHOLD = 0.85
  */
 function scoreDecision(
   x: Extraction,
-  merged: Pick<AiSuggestion, 'disposition' | 'dispositionReason' | 'ambiguous'>,
+  merged: Pick<AiSuggestion, 'disposition' | 'dispositionReason' | 'ambiguous' | 'needs'>,
   matched: { entityMatched: boolean; typeMatched: boolean },
 ): { decisionConfidence: number; autoApplicable: boolean } {
   const blockers: boolean[] = [
     // Anything the merge flagged is by definition a question for a person.
     merged.ambiguous,
+    merged.needs !== null,
     // Not knowing whose document this is blocks every decision about it.
     !matched.entityMatched,
     !matched.typeMatched,

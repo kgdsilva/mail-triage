@@ -151,6 +151,15 @@ single unresolved doubt can never be outvoted by confidence elsewhere:
 - the filing rules produced a stated reason, so the decision can be audited later
 - nothing was flagged ambiguous by the merge rules
 
+A flagged row asks for what is actually missing rather than offering the same three
+answers. When the reader cannot tell whose document it is — the common case, since a
+scan often names a trading company or a person — the row offers the entity list instead
+of pay/archive/spam, which all presuppose the answer. Choosing one re-reads the document
+with the gap closed, so it comes back with a real proposal (and files itself, if that is
+on) rather than leaving a second guess to make. "Not company mail" is one of the choices,
+and archives with `NOT_COMPANY_MAIL` — personal post reaches a business scan pile often
+enough that the answer is worth recording.
+
 Everything else goes to Review. What lands there is meant to be the genuine questions —
 is this ours or personal, is this really not on autopay — not the whole batch.
 

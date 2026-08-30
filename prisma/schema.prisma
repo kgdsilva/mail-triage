@@ -398,6 +398,9 @@ enum DispositionReason {
   DEADLINE_NOTICE
   MANUAL_INVOICE
   RISK_PENALTY
+  /// Addressed to a person or to a company outside the group. Filed so the answer is
+  /// recorded, rather than archived as OTHER, which says nothing six months later.
+  NOT_COMPANY_MAIL
   OTHER
 }
 

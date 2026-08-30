@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { Ban, Check, CircleDot, FileText, Pencil, Sparkles, Wallet } from 'lucide-react'
 import { decideQuickly, refineArchiveReason } from '@/server/actions/documents'
+import { resolveEntity } from '@/server/actions/ai'
 import { EntityBadge, formatDate, formatMoney } from '@/components/badges'
 import { documentTypeIcon } from '@/lib/theme'
 
@@ -35,6 +36,8 @@ export type ReviewRow = {
     confidence: number
     decisionConfidence: number
     ambiguous: boolean
+    /** What the row must ask for before any of the three answers makes sense. */
+    needs: 'entity' | null
   } | null
 }
 
@@ -57,9 +60,12 @@ const ARCHIVE_REASONS = [
 export function ReviewTable({
   groups,
   showingDecided,
+  entities,
 }: {
   groups: { entityId: string | null; code: string | null; name: string; index: number; rows: ReviewRow[] }[]
   showingDecided: boolean
+  /** Offered on rows where the reader could not tell whose document it is. */
+  entities: { id: string; code: string; legalName: string }[]
 }) {
   const all = groups.flatMap((g) => g.rows)
   const [selectedId, setSelectedId] = useState<string | null>(all[0]?.id ?? null)
@@ -176,6 +182,9 @@ export function ReviewTable({
                         </td>
 
                         <td className="w-72 px-3 py-2.5 align-top">
+                          {row.ai?.needs === 'entity' ? (
+                            <EntityResolver row={row} entities={entities} disabled={busy} />
+                          ) : (
                           <div className="flex flex-nowrap items-center justify-end gap-1.5">
                             <QuickButton
                               label="Needs paying"
@@ -211,10 +220,13 @@ export function ReviewTable({
                               tone="danger"
                             />
                           </div>
+                          )}
 
-                          <div className="mt-1.5 flex flex-wrap items-center justify-end gap-2">
-                            <StatusMarks row={row} />
-                          </div>
+                          {row.ai?.needs !== 'entity' && (
+                            <div className="mt-1.5 flex flex-wrap items-center justify-end gap-2">
+                              <StatusMarks row={row} />
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )
@@ -397,4 +409,55 @@ function proposedButton(row: ReviewRow): 'PAY' | 'ARCHIVE' | 'SPAM' | null {
   // basis for choosing between paying it and merely looking at it.
   if (row.ai.disposition === 'ACTION' && row.ai.dispositionReason) return 'PAY'
   return null
+}
+
+/**
+ * The control that answers the reader's actual question.
+ *
+ * When it cannot tell whose document this is, naming the company is the only useful
+ * next move — pay, archive and spam all presuppose the answer. Choosing one re-reads
+ * the document with the gap closed, so the row returns with a real proposal rather than
+ * leaving a second guess to make.
+ */
+function EntityResolver({
+  row,
+  entities,
+  disabled,
+}: {
+  row: ReviewRow
+  entities: { id: string; code: string; legalName: string }[]
+  disabled: boolean
+}) {
+  const [pending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+
+  return (
+    <div className="flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
+      <span className="text-[11px] text-subtle">Whose is this?</span>
+      <select
+        defaultValue=""
+        disabled={disabled || pending}
+        onChange={(e) => {
+          const value = e.target.value
+          if (!value) return
+          setError(null)
+          startTransition(async () => {
+            const res = await resolveEntity(row.id, value)
+            if (!res.ok) setError(res.error ?? 'Could not save that.')
+          })
+        }}
+        className="w-full rounded-lg border border-gold-500 bg-surface px-2 py-1.5 text-[12px] text-navy-900 outline-none focus:border-navy-500 disabled:opacity-50"
+        aria-label="Which company this document belongs to"
+      >
+        <option value="">Choose a company…</option>
+        {entities.map((e) => (
+          <option key={e.id} value={e.id}>
+            {e.code} · {e.legalName}
+          </option>
+        ))}
+        <option value="NOT_OURS">Not company mail — archive it</option>
+      </select>
+      {error && <span className="text-[11px] text-danger-700">{error}</span>}
+    </div>
+  )
 }

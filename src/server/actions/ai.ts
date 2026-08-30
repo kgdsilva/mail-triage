@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/server/db/client'
 import { analyzeDocument, type AiSuggestion } from '@/server/ai/suggest'
+import { recordEvent } from '@/server/documents'
 import { aiConfigured } from '@/server/ai/read-document'
 import { requireTriage } from '@/server/session'
 
@@ -125,4 +126,91 @@ export async function countUnread(): Promise<{ unread: number; available: boolea
     },
   })
   return { unread, available: aiConfigured() }
+}
+
+/**
+ * Answers the reader's question about whose document this is, and acts on the answer.
+ *
+ * The reader flags mail addressed to a name it does not recognise, and that is a
+ * question only a person can settle — but until now the row offered pay, archive and
+ * spam, three answers to a different question. Naming the entity here re-runs the
+ * decision with the gap closed, so the row comes back with a real proposal instead of
+ * needing a second guess.
+ *
+ * "Not company mail" is its own answer: personal post lands in a business scan pile
+ * often enough that recording it as such is worth more than filing it under OTHER.
+ */
+export async function resolveEntity(
+  documentId: string,
+  entityId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireTriage()
+
+  const doc = await prisma.document.findFirst({
+    where: {
+      id: documentId,
+      companyGroupId: session.companyGroupId,
+      deletedAt: null,
+      disposition: 'UNREVIEWED',
+    },
+    select: { id: true, entityId: true },
+  })
+  if (!doc) return { ok: false, error: 'Document not found, or already decided' }
+
+  if (entityId === 'NOT_OURS') {
+    await prisma.$transaction(async (tx) => {
+      await tx.document.update({
+        where: { id: doc.id },
+        data: {
+          disposition: 'ARCHIVE',
+          dispositionReason: 'NOT_COMPANY_MAIL',
+          actionKind: null,
+          status: 'ARCHIVED',
+          reviewedByUserId: session.userId,
+          reviewedAt: new Date(),
+        },
+      })
+      await recordEvent(
+        {
+          documentId: doc.id,
+          actorUserId: session.userId,
+          action: 'classified',
+          fromValue: { disposition: 'UNREVIEWED' },
+          toValue: { disposition: 'ARCHIVE', dispositionReason: 'NOT_COMPANY_MAIL' },
+        },
+        tx,
+      )
+    })
+
+    revalidatePath('/', 'layout')
+    return { ok: true }
+  }
+
+  const entity = await prisma.entity.findFirst({
+    where: { id: entityId, companyGroupId: session.companyGroupId, isActive: true },
+    select: { id: true, code: true },
+  })
+  if (!entity) return { ok: false, error: 'Unknown entity' }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.document.update({ where: { id: doc.id }, data: { entityId: entity.id } })
+    await recordEvent(
+      {
+        documentId: doc.id,
+        actorUserId: session.userId,
+        action: 'reclassified',
+        fromValue: { entityId: doc.entityId },
+        toValue: { entityId: entity.id, source: 'answered on review' },
+      },
+      tx,
+    )
+  })
+
+  // Read it again now the gap is closed: the filing rules can reach the autopay list,
+  // and what was a question can come back as a proposal — or file itself, if the group
+  // has that turned on.
+  await analyzeDocument(session.companyGroupId, doc.id, { force: true })
+
+  revalidatePath('/', 'layout')
+  return { ok: true }
 }
