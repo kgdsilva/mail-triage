@@ -16,7 +16,10 @@ export function AutoApplyToggle({ enabled }: { enabled: boolean }) {
   const [pending, startTransition] = useTransition()
 
   return (
-    <label className="flex cursor-pointer items-start gap-2 text-[13px]">
+    <label
+      className="flex cursor-pointer items-center gap-2 text-[12.5px] text-muted"
+      title="Only where the entity and type are known, the filing rules named a reason, and nothing was flagged. Everything else still comes to you, and anything decided this way shows in All and can be changed."
+    >
       <input
         type="checkbox"
         checked={on}
@@ -28,18 +31,10 @@ export function AutoApplyToggle({ enabled }: { enabled: boolean }) {
             await setAutoApply(next).catch(() => setOn(!next))
           })
         }}
-        className="mt-0.5"
       />
-      <span>
-        <span className="inline-flex items-center gap-1.5 font-medium text-navy-900">
-          <ShieldCheck className="size-3.5 text-navy-500" aria-hidden />
-          Let the reader file the clear ones itself
-        </span>
-        <span className="block text-[12px] leading-relaxed text-subtle">
-          Only where the entity and type are known, the filing rules named a reason, and
-          nothing was flagged. Everything else still comes to you, and anything decided
-          this way shows in “All” and can be changed.
-        </span>
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        <ShieldCheck className="size-3.5 text-navy-500" aria-hidden />
+        File the clear ones automatically
       </span>
     </label>
   )

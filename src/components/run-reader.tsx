@@ -18,7 +18,14 @@ import { BTN } from '@/lib/theme'
  * and reports what is left, so an import of hundreds gets through in many short requests
  * instead of one that times out — and progress stays visible and interruptible.
  */
-export function RunReader({ initialUnread }: { initialUnread: number }) {
+export function RunReader({
+  initialUnread,
+  enabledHint = false,
+}: {
+  initialUnread: number
+  /** Suppresses the "turn it on" nudge when it already is. */
+  enabledHint?: boolean
+}) {
   const router = useRouter()
   const [remaining, setRemaining] = useState(initialUnread)
   const [done, setDone] = useState(0)
@@ -122,7 +129,7 @@ export function RunReader({ initialUnread }: { initialUnread: number }) {
         </>
       )}
 
-      {total > 0 && (
+      {total > 0 && running && (
         <span className="h-1.5 w-32 overflow-hidden rounded-full bg-line">
           <span
             className="block h-full bg-navy-700 transition-all"
@@ -132,7 +139,7 @@ export function RunReader({ initialUnread }: { initialUnread: number }) {
       )}
 
       {finished && !running && (
-        <span className="w-full text-[13px] text-navy-900">
+        <span className="text-[12.5px] text-navy-900">
           Read {done} document{done === 1 ? '' : 's'}:{' '}
           {applied > 0 && (
             <>
@@ -145,9 +152,9 @@ export function RunReader({ initialUnread }: { initialUnread: number }) {
               {escalated} need{escalated === 1 ? 's' : ''} your review.
             </strong>
           )}
-          {applied === 0 && escalated > 0 && (
+          {applied === 0 && escalated > 0 && !enabledHint && (
             <span className="block text-[12px] text-subtle">
-              Nothing was decided automatically — turn that on in Settings if you want it.
+              Nothing was decided on its own — the switch on the right turns that on.
             </span>
           )}
         </span>

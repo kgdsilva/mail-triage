@@ -85,62 +85,55 @@ export default async function ReviewPage({
     : 0
 
   return (
-    <div className="space-y-5">
-      <header>
-        <h1 className="text-[26px] font-bold tracking-tight text-navy-900">Review</h1>
-        <p className="mt-1 text-[15px] text-muted">
-          Everything waiting on a decision, grouped by company. Click a row to read it,
-          then say what it is.
-        </p>
-      </header>
-
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-xs shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
-        <span className="w-16 flex-none text-[10.5px] font-semibold uppercase tracking-[0.07em] text-subtle">
-          Show
-        </span>
-        <Tab
-          href={buildHref({ entity })}
-          active={!includeDecided && !notFiledOnly}
-          label={`Needs a look (${pendingCount})`}
-        />
-        <Tab
-          href={buildHref({ entity, show: 'notfiled' })}
-          active={notFiledOnly}
-          label={`Decided, not filed (${notFiledCount})`}
-        />
-        <Tab href={buildHref({ entity, show: 'all' })} active={includeDecided} label="All" />
-
-        <span className="ml-4 w-16 flex-none text-[10.5px] font-semibold uppercase tracking-[0.07em] text-subtle">
-          Company
-        </span>
-        <Tab href={buildHref({ show })} active={!entity} label="All" />
-        {entities.map((e) => (
-          <Tab
-            key={e.id}
-            href={buildHref({ show, entity: e.id })}
-            active={entity === e.id}
-            label={e.code}
-          />
-        ))}
-      </div>
-
-      {aiAvailable && (
-        <div className="rounded-xl border border-line bg-surface px-4 py-3 shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
-          <RunReader initialUnread={unread} />
-          <p className="mt-1.5 text-[12px] text-subtle">
-            Reading never starts on its own. Upload everything first, then run it once —
-            this covers the whole backlog, so nothing is read twice or paid for twice.
-          </p>
-          <div className="mt-3 border-t border-line-soft pt-3">
+    <div className="space-y-4">
+      {/* Title and the one action that starts work share a line: the screen exists to
+          be swept, and the button that fills it should not be three cards down. */}
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <h1 className="text-[22px] font-bold tracking-tight text-navy-900">Review</h1>
+        {aiAvailable && <RunReader initialUnread={unread} enabledHint={autoApply} />}
+        {aiAvailable && (
+          <div className="ml-auto">
             <AutoApplyToggle enabled={autoApply} />
           </div>
-        </div>
-      )}
+        )}
+      </header>
+
+      {/* One bar. Two questions — what to show, and whose — on one line each. */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-y border-line py-2.5 text-xs">
+        <span className="flex items-center gap-1.5">
+          <Tab
+            href={buildHref({ entity })}
+            active={!includeDecided && !notFiledOnly}
+            label={`Needs a look ${pendingCount}`}
+          />
+          <Tab
+            href={buildHref({ entity, show: 'notfiled' })}
+            active={notFiledOnly}
+            label={`Not filed ${notFiledCount}`}
+          />
+          <Tab href={buildHref({ entity, show: 'all' })} active={includeDecided} label="All" />
+        </span>
+
+        <span className="flex items-center gap-1.5">
+          <span className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-subtle">
+            Company
+          </span>
+          <Tab href={buildHref({ show })} active={!entity} label="All" />
+          {entities.map((e) => (
+            <Tab
+              key={e.id}
+              href={buildHref({ show, entity: e.id })}
+              active={entity === e.id}
+              label={e.code}
+            />
+          ))}
+        </span>
+      </div>
 
       {notFiledOnly && (
-        <p className="rounded-xl border border-line bg-gold-50 px-4 py-2.5 text-[13px] text-gold-800">
-          These already have a decision but no final name or no folder, so they were never
-          actually filed. Open one to finish it.
+        <p className="text-[12.5px] text-gold-800">
+          Decided, but with no final name or no folder — so never actually filed. Open one
+          to finish it.
         </p>
       )}
 

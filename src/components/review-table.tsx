@@ -98,26 +98,38 @@ export function ReviewTable({
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
-      <div className="space-y-5">
-        {groups.map((group) => (
-          <section key={group.entityId ?? 'none'}>
-            <div className="mb-2 flex items-center gap-2">
-              {group.code ? (
-                <EntityBadge code={group.code} index={group.index} />
-              ) : (
-                <span className="rounded-full bg-line-soft px-2 py-0.5 text-[11px] font-medium text-muted">
-                  No entity
-                </span>
-              )}
-              <h2 className="text-[13px] font-semibold text-navy-900">{group.name}</h2>
-              <span className="text-[12px] text-subtle">{group.rows.length}</span>
-            </div>
-
-            <div className="overflow-x-auto rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
-              {/* Fixed layout so a long line of reasoning cannot widen a column and push
-                  the buttons off the screen — the document column absorbs the slack. */}
-              <table className="w-full table-fixed text-sm">
-                <tbody className="divide-y divide-line-soft">
+      {/* One list, not one card per company. The company is a heading inside it — four
+          bordered boxes chopped a short batch into pieces that read as separate screens. */}
+      <div className="overflow-x-auto rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
+        {/* Fixed layout so a long line of reasoning cannot widen a column and push the
+            buttons off the screen — the document column absorbs the slack. */}
+        <table className="w-full table-fixed text-sm">
+          {/* Widths declared here, not on the cells: with table-fixed the browser takes
+              them from the first row, and that row is now a group heading spanning all
+              four columns. */}
+          <colgroup>
+            <col className="w-1" />
+            <col />
+            <col className="w-28" />
+            <col className="w-72" />
+          </colgroup>
+          {groups.map((group) => (
+            <tbody key={group.entityId ?? 'none'} className="divide-y divide-line-soft">
+              <tr>
+                <td colSpan={4} className="border-t border-line bg-canvas/60 px-3 py-1.5 first:border-t-0">
+                  <span className="flex items-baseline gap-2">
+                    {group.code ? (
+                      <EntityBadge code={group.code} index={group.index} />
+                    ) : (
+                      <span className="rounded-full bg-line-soft px-2 py-0.5 text-[11px] font-medium text-muted">
+                        No entity
+                      </span>
+                    )}
+                    <span className="text-[12.5px] font-semibold text-navy-900">{group.name}</span>
+                    <span className="text-[11.5px] text-subtle">{group.rows.length}</span>
+                  </span>
+                </td>
+              </tr>
                   {group.rows.map((row) => {
                     const Icon = documentTypeIcon(row.typeCode)
                     const active = row.id === selectedId
@@ -138,7 +150,7 @@ export function ReviewTable({
                           />
                         </td>
 
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-2.5">
                           <div className="flex items-start gap-2.5">
                             <Icon
                               className="mt-0.5 size-4 flex-none text-subtle"
@@ -159,11 +171,11 @@ export function ReviewTable({
                           </div>
                         </td>
 
-                        <td className="tabular w-24 whitespace-nowrap px-2 py-3 text-right align-top text-[13.5px] font-semibold text-navy-900">
+                        <td className="tabular w-24 whitespace-nowrap px-2 py-2.5 text-right align-top text-[13.5px] font-semibold text-navy-900">
                           {row.amount ? formatMoney({ toString: () => row.amount! }) : ''}
                         </td>
 
-                        <td className="w-72 px-3 py-3 align-top">
+                        <td className="w-72 px-3 py-2.5 align-top">
                           <div className="flex flex-nowrap items-center justify-end gap-1.5">
                             <QuickButton
                               label="Needs paying"
@@ -207,11 +219,9 @@ export function ReviewTable({
                       </tr>
                     )
                   })}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        ))}
+            </tbody>
+          ))}
+        </table>
       </div>
 
       {/* Same viewer as the classify screen, same permission-scoped route. */}
@@ -242,12 +252,13 @@ export function ReviewTable({
  */
 function ReasonLine({ row }: { row: ReviewRow }) {
   if (row.disposition !== 'UNREVIEWED' || !row.ai) return null
+  // Only when there is a question. On a clean read the highlighted button already says
+  // what the reader thinks, and repeating it on every row is what made the screen busy.
+  if (!row.ai.ambiguous) return null
 
   return (
     <p
-      className={`mt-1 line-clamp-2 rounded px-1.5 py-0.5 text-[11.5px] leading-relaxed ${
-        row.ai.ambiguous ? 'bg-gold-100 text-gold-800' : 'text-muted'
-      }`}
+      className="mt-1 line-clamp-2 rounded bg-gold-100 px-1.5 py-0.5 text-[11.5px] leading-relaxed text-gold-800"
       title={row.ai.rationale}
     >
       <Sparkles className="mr-1 inline size-3 -translate-y-px" aria-hidden />
