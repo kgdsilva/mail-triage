@@ -25,6 +25,7 @@ export function parseFilters(sp: URLSearchParams): LogFilters {
     dateFrom: date('from'),
     dateTo: date('to'),
     view: view === 'segregated' || view === 'all' ? view : 'main',
+    showDeleted: sp.get('deleted') === '1',
     page: Number(sp.get('page')) || 1,
   }
 }

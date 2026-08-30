@@ -133,6 +133,12 @@ export function LogFilters({
               Clear {activeCount} filter{activeCount === 1 ? '' : 's'}
             </button>
           )}
+          <a
+            href="/log?deleted=1"
+            className="text-muted underline underline-offset-2 hover:text-navy-700"
+          >
+            Removed documents
+          </a>
           <span className="ml-auto tabular text-muted">
             {pending
               ? 'Filtering…'

@@ -1,11 +1,12 @@
 import Link from 'next/link'
-import { Search } from 'lucide-react'
+import { Search, Trash2, Undo2 } from 'lucide-react'
 import { DispositionBadge, DueBadge, EntityBadge, StatusBadge, formatDate, formatMoney } from '@/components/badges'
 import { documentTypeIcon } from '@/lib/theme'
 import { LogFilters } from '@/components/log-filters'
 import { parseFilters } from '@/lib/filters'
 import { prisma } from '@/server/db/client'
 import { listDocuments } from '@/server/documents'
+import { deleteDocument, restoreDocument } from '@/server/actions/documents'
 import { canSeeWholeLog, requireSession } from '@/server/session'
 
 export const dynamic = 'force-dynamic'
@@ -27,6 +28,7 @@ export default async function LogPage({
   // after parsing so no query string can widen it.
   const wholeLog = canSeeWholeLog(session.role)
   if (!wholeLog) filters.restrictToUserId = session.userId
+  const showingDeleted = filters.showDeleted === true
   const [{ rows, total, page, pageCount }, entities, types] = await Promise.all([
     listDocuments(session.companyGroupId, filters),
     prisma.entity.findMany({
@@ -54,6 +56,19 @@ export default async function LogPage({
         </p>
       </header>
 
+      {showingDeleted && (
+        <div className="flex items-center gap-3 rounded-xl border border-line bg-gold-50 px-4 py-2.5 text-[13px] text-gold-800">
+          <Trash2 className="size-4 flex-none" aria-hidden />
+          <span>
+            Showing documents removed from the log. Nothing here was destroyed — the
+            record, the file and the full history are intact, and Restore puts one back.
+          </span>
+          <Link href="/log" className="ml-auto flex-none font-medium underline">
+            Back to the log
+          </Link>
+        </div>
+      )}
+
       <LogFilters
         entities={entities.map((e) => ({ id: e.id, label: e.code }))}
         types={types.map((t) => ({ id: t.id, label: t.label }))}
@@ -73,6 +88,7 @@ export default async function LogPage({
               <th className="px-4 py-3 font-semibold">Due</th>
               <th className="px-4 py-3 font-semibold">Decision</th>
               <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-line-soft">
@@ -134,12 +150,32 @@ export default async function LogPage({
                 <td className="whitespace-nowrap px-4 py-3">
                   <StatusBadge value={d.status} />
                 </td>
+                <td className="whitespace-nowrap px-3 py-3 text-right">
+                  {showingDeleted ? (
+                    <form action={restoreDocument.bind(null, d.id)}>
+                      <button className="inline-flex items-center gap-1 text-[12px] text-navy-700 transition-colors hover:underline">
+                        <Undo2 className="size-3.5" aria-hidden />
+                        Restore
+                      </button>
+                    </form>
+                  ) : (
+                    <form action={deleteDocument.bind(null, d.id)}>
+                      <button
+                        className="inline-flex items-center gap-1 text-[12px] text-subtle transition-colors hover:text-danger-700"
+                        title="Remove from the log. The record and its history are kept, and this can be undone."
+                        aria-label={`Remove ${d.finalFilename ?? d.originalFilename} from the log`}
+                      >
+                        <Trash2 className="size-3.5" aria-hidden />
+                      </button>
+                    </form>
+                  )}
+                </td>
               </tr>
             ))}
 
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-20 text-center">
+                <td colSpan={10} className="px-4 py-20 text-center">
                   <span className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-navy-50 text-navy-500">
                     <Search className="size-5" strokeWidth={1.6} aria-hidden />
                   </span>

@@ -19,6 +19,8 @@ export type LogFilters = {
    * anything the caller puts in the query string.
    */
   restrictToUserId?: string
+  /** Shows the removed rows instead of hiding them, so a removal can be undone. */
+  showDeleted?: boolean
   page?: number
   pageSize?: number
 }
@@ -54,7 +56,7 @@ export async function buildWhere(
   const where: Prisma.DocumentWhereInput = {
     companyGroupId,
     // Soft delete only — the master log never loses a row, it just stops showing it.
-    deletedAt: null,
+    deletedAt: filters.showDeleted ? { not: null } : null,
   }
 
   if (filters.q?.trim()) {

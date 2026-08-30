@@ -322,7 +322,11 @@ for one entity but not the one on the document is ambiguous, and surfaces to a h
   still see the entity; it just sits in its own tab.
 - `Document.storageKey` is nullable so a historical log row can exist before its PDF is
   attached (Phase 1.5 import).
-- Nothing in the master log is hard-deleted — `deletedAt` only.
+- Nothing in the master log is hard-deleted — `deletedAt` only. The log's delete button
+  removes a row from view and records who did it; the record, the stored file and the
+  event history stay intact, and "Removed documents" lists them for restoring. A filed
+  document is evidence that something arrived and what was decided about it, which is
+  the one thing an audit log cannot be allowed to lose.
 - `prisma/sql/invariants.sql` holds the CHECK constraints, the generated full-text
   column and the partial indexes. Prisma cannot express these, so if the initial
   migration is ever recreated they must be re-appended:

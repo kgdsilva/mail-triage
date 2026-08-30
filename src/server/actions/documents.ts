@@ -553,3 +553,61 @@ function queueRead(companyGroupId: string, documentId: string) {
     await analyzeDocument(companyGroupId, documentId).catch(() => {})
   })
 }
+
+/**
+ * Removes a document from the log — from view, not from existence.
+ *
+ * The master log is the audit backbone: a filed document is evidence that something was
+ * received and what was decided about it, so nothing here is ever destroyed. Setting
+ * deletedAt takes the row out of every list while keeping the record, the stored file
+ * and the whole event history intact, and the removal is itself an event naming who did
+ * it. Anything removed can be listed and put back.
+ */
+export async function deleteDocument(documentId: string) {
+  const session = await requireTriage()
+
+  const doc = await prisma.document.findFirst({
+    where: { id: documentId, companyGroupId: session.companyGroupId, deletedAt: null },
+    select: { id: true, originalFilename: true },
+  })
+  if (!doc) throw new Error('Document not found')
+
+  await prisma.$transaction(async (tx) => {
+    await tx.document.update({ where: { id: doc.id }, data: { deletedAt: new Date() } })
+    await recordEvent(
+      {
+        documentId: doc.id,
+        actorUserId: session.userId,
+        action: 'removed_from_log',
+        toValue: { originalFilename: doc.originalFilename },
+      },
+      tx,
+    )
+  })
+
+  revalidatePath('/log')
+  revalidatePath('/review')
+  revalidatePath('/')
+}
+
+/** Puts a removed document back in the log. */
+export async function restoreDocument(documentId: string) {
+  const session = await requireTriage()
+
+  const doc = await prisma.document.findFirst({
+    where: { id: documentId, companyGroupId: session.companyGroupId, deletedAt: { not: null } },
+    select: { id: true },
+  })
+  if (!doc) throw new Error('Document not found')
+
+  await prisma.$transaction(async (tx) => {
+    await tx.document.update({ where: { id: doc.id }, data: { deletedAt: null } })
+    await recordEvent(
+      { documentId: doc.id, actorUserId: session.userId, action: 'restored_to_log' },
+      tx,
+    )
+  })
+
+  revalidatePath('/log')
+  revalidatePath('/review')
+}
