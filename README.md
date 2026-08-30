@@ -96,6 +96,26 @@ npx tsx prisma/seed.ts
 npm run dev
 ```
 
+## Two rules that carry most of the volume
+
+**The document body beats its filename.** A scan's name is informal and often inherited
+from whatever handled it before: `CP_07-13-26_CAEDD_FormDelinquency.pdf` was addressed,
+in its body, to CO/LAB OPS PERFECTION, LLC. The filename parser sets an entity at upload
+from that prefix; the reader then reads the real addressee. Until the reader's answer
+reached the record, the review screen grouped that document under the wrong company and
+a quick archive would have filed it there for good — which matters most for OP, the one
+entity that has to stay separate. The body now wins, on documents nobody has reviewed
+yet, recorded with both values so the move is visible and reversible.
+
+**Nothing owed, no deadline, no stated risk is a confident archive.** Transfer
+confirmations, statements, lender rate sheets, a vendor's contact card — a large share
+of a real month. All of it used to reach the autopay lookup, because those types fall
+through to ASK, and came back as "not on the autopay list" as though a rate sheet were
+an unpaid bill. That question only means something for a document that asks for money.
+When none of the three signals of an obligation is present there is nothing to decide,
+and saying so is an answer rather than a doubt. Ambiguity is reserved for the real
+questions: is this ours or personal, is this really not on autopay, whose is this.
+
 ## The reader deciding for itself
 
 Off until an owner turns it on, on the Review screen. Off is the honest default: a

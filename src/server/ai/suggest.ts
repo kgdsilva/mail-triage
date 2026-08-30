@@ -101,7 +101,7 @@ export async function analyzeDocument(
 
   const existing = await prisma.document.findFirst({
     where: { id: documentId, companyGroupId, deletedAt: null },
-    select: { aiSuggestion: true, disposition: true },
+    select: { aiSuggestion: true, disposition: true, entityId: true, reviewedAt: true },
   })
   if (!existing) return { ok: false, error: 'Document not found' }
   if (existing.aiSuggestion && !opts.force) {
@@ -171,6 +171,8 @@ export async function analyzeDocument(
     },
   })
 
+  await adoptEntityFromDocument(documentId, existing, entity?.id ?? null, x)
+
   const applied = suggestion.autoApplicable
     ? await applyDecision(companyGroupId, documentId, suggestion)
     : false
@@ -211,6 +213,45 @@ export function mergeVerdict(
       disposition: 'ARCHIVE',
       dispositionReason: 'SPAM_SOLICITATION',
       rationale: `Reads as a solicitation, not a bill — the page says: "${x.solicitation.evidence}". Log and file, no action.`,
+      ambiguous: false,
+    }
+  }
+
+  // A filing rule that reached a definite archive knows more than the generic test
+  // below — autopay and incoming cheques carry better reasons than "nothing to do".
+  if (verdict.disposition === 'ARCHIVE') {
+    return {
+      disposition: 'ARCHIVE',
+      dispositionReason: verdict.reason,
+      rationale: verdict.rationale,
+      ambiguous: verdict.ambiguous,
+    }
+  }
+
+  /**
+   * Purely informational mail: nothing owed, no deadline, no stated consequence.
+   *
+   * This is a large share of a real month — transfer confirmations, statements, lender
+   * rate sheets, a vendor's contact card — and it was the worst-handled. The autopay
+   * lookup was being asked of all of it, because the type falls through to ASK, and
+   * "not on the autopay list" came back as though a rate sheet were an unpaid bill.
+   * That question only means something for a document that asks for money. When none
+   * of the three signals of an obligation is present, there is nothing to decide, and
+   * saying so is a confident answer rather than a doubt.
+   */
+  const asksForNothing =
+    x.moneyDirection !== 'owed_by_us' &&
+    x.amount === null &&
+    !x.dueDate &&
+    !x.deadlineOrRisk.present
+
+  if (asksForNothing) {
+    return {
+      disposition: 'ARCHIVE',
+      dispositionReason: 'FYI_STATEMENT',
+      rationale: `Nothing owed, no deadline and no stated risk${
+        x.vendorName ? ` — informational mail from ${x.vendorName}` : ''
+      }. Log and file, no action.`,
       ambiguous: false,
     }
   }
@@ -408,4 +449,52 @@ export async function autoApplyEnabled(companyGroupId: string) {
     select: { settings: true },
   })
   return ((group?.settings as Record<string, unknown> | null) ?? {}).autoApply === true
+}
+
+/**
+ * Files the document under the entity the page names, rather than the one its filename
+ * claimed.
+ *
+ * A scan's name is informal and often inherited from however it was handled before:
+ * `CP_07-13-26_CAEDD_FormDelinquency.pdf` was addressed, in its body, to CO/LAB OPS
+ * PERFECTION, LLC. The filename parser sets an entity at upload from that prefix, the
+ * reader then reads the addressee off the page, and until now only the filename's guess
+ * reached the record — so the review screen grouped the document under the wrong company
+ * and a quick archive would have filed it there permanently.
+ *
+ * The body wins, because it is the document. This only ever moves a document nobody has
+ * reviewed, never one a person has already placed, and the change is recorded with both
+ * values so a wrong move is visible and reversible.
+ */
+async function adoptEntityFromDocument(
+  documentId: string,
+  before: { entityId: string | null; disposition: string; reviewedAt: Date | null },
+  readEntityId: string | null,
+  x: Extraction,
+) {
+  if (!readEntityId || readEntityId === before.entityId) return
+  // A person has looked at this and placed it. Their answer stands.
+  if (before.disposition !== 'UNREVIEWED' || before.reviewedAt) return
+
+  await prisma.$transaction(async (tx) => {
+    await tx.document.update({
+      where: { id: documentId },
+      data: { entityId: readEntityId },
+    })
+    await recordEvent(
+      {
+        documentId,
+        actorUserId: null,
+        action: 'reclassified',
+        fromValue: { entityId: before.entityId, source: 'filename' },
+        toValue: {
+          entityId: readEntityId,
+          source: 'document body',
+          addressee: x.addresseeName,
+          via: 'auto-reader',
+        },
+      },
+      tx,
+    )
+  })
 }
