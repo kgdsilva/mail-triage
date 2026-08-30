@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
-import { Ban, Check, CircleDot, FileText, Pencil, Wallet } from 'lucide-react'
+import { Ban, Check, CircleDot, FileText, Pencil, Sparkles, Wallet } from 'lucide-react'
 import { decideQuickly, refineArchiveReason } from '@/server/actions/documents'
 import { EntityBadge, formatDate, formatMoney } from '@/components/badges'
 import { documentTypeIcon } from '@/lib/theme'
@@ -27,6 +27,14 @@ export type ReviewRow = {
   typeLabel: string | null
   vendorName: string | null
   batchLabel: string | null
+  /** What the reader proposed, when this document has been read. */
+  ai: {
+    disposition: string
+    dispositionReason: string | null
+    rationale: string
+    confidence: number
+    ambiguous: boolean
+  } | null
 }
 
 const ARCHIVE_REASONS = [
@@ -158,6 +166,7 @@ export function ReviewTable({
                               short="Pay"
                               icon={Wallet}
                               active={row.disposition === 'ACTION'}
+                              proposed={proposedButton(row) === 'PAY'}
                               onClick={() => decide(row, 'PAY')}
                               disabled={busy}
                               tone="navy"
@@ -170,6 +179,7 @@ export function ReviewTable({
                                 row.disposition === 'ARCHIVE' &&
                                 row.dispositionReason !== 'SPAM_SOLICITATION'
                               }
+                              proposed={proposedButton(row) === 'ARCHIVE'}
                               onClick={() => decide(row, 'ARCHIVE')}
                               disabled={busy}
                               tone="neutral"
@@ -179,6 +189,7 @@ export function ReviewTable({
                               short="Spam"
                               icon={Ban}
                               active={row.dispositionReason === 'SPAM_SOLICITATION'}
+                              proposed={proposedButton(row) === 'SPAM'}
                               onClick={() => decide(row, 'SPAM')}
                               disabled={busy}
                               tone="danger"
@@ -221,10 +232,24 @@ export function ReviewTable({
 /** Says whether a document was decided, and whether it has actually been filed yet. */
 function ReviewMark({ row }: { row: ReviewRow }) {
   if (row.disposition === 'UNREVIEWED') {
+    if (!row.ai) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[11px] text-subtle">
+          <CircleDot className="size-3" aria-hidden />
+          Not read yet
+        </span>
+      )
+    }
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-subtle">
-        <CircleDot className="size-3" aria-hidden />
-        Not looked at yet
+      <span
+        className={`inline-flex max-w-lg items-start gap-1 rounded px-1.5 py-0.5 text-[11px] leading-relaxed ${
+          row.ai.ambiguous ? 'bg-gold-100 text-gold-800' : 'text-muted'
+        }`}
+        title={row.ai.rationale}
+      >
+        <Sparkles className="mt-0.5 size-3 flex-none" aria-hidden />
+        <span className="truncate">{row.ai.rationale}</span>
+        <span className="flex-none opacity-70">{Math.round(row.ai.confidence * 100)}%</span>
       </span>
     )
   }
@@ -273,6 +298,7 @@ function QuickButton({
   short,
   icon: Icon,
   active,
+  proposed,
   onClick,
   disabled,
   tone,
@@ -281,6 +307,8 @@ function QuickButton({
   short: string
   icon: typeof Wallet
   active: boolean
+  /** The reader's proposal, on a row no human has decided yet. */
+  proposed?: boolean
   onClick: () => void
   disabled: boolean
   tone: 'navy' | 'neutral' | 'danger'
@@ -303,7 +331,11 @@ function QuickButton({
         onClick()
       }}
       className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-50 ${
-        active ? activeTone : 'border-line text-muted hover:border-navy-500 hover:bg-navy-50'
+        active
+          ? activeTone
+          : proposed
+            ? 'border-gold-500 bg-gold-50 text-gold-800'
+            : 'border-line text-muted hover:border-navy-500 hover:bg-navy-50'
       }`}
     >
       <Icon className="size-3.5" aria-hidden />
@@ -314,4 +346,16 @@ function QuickButton({
 
 function parseDate(iso: string | null) {
   return iso ? new Date(`${iso}T00:00:00Z`) : null
+}
+
+/**
+ * Which quick button the reader proposed. Only meaningful before a human decides —
+ * afterwards the active state shows what was actually chosen.
+ */
+function proposedButton(row: ReviewRow): 'PAY' | 'ARCHIVE' | 'SPAM' | null {
+  if (row.disposition !== 'UNREVIEWED' || !row.ai) return null
+  if (row.ai.dispositionReason === 'SPAM_SOLICITATION') return 'SPAM'
+  if (row.ai.disposition === 'ARCHIVE') return 'ARCHIVE'
+  if (row.ai.disposition === 'ACTION') return 'PAY'
+  return null
 }

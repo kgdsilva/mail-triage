@@ -3,6 +3,9 @@ import { prisma } from '@/server/db/client'
 import { listForReview } from '@/server/documents'
 import { requireTriage } from '@/server/session'
 import { ReviewTable, type ReviewRow } from '@/components/review-table'
+import { RunReader } from '@/components/run-reader'
+import { aiConfigured } from '@/server/ai/read-document'
+import { Prisma } from '@/generated/prisma/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,6 +62,18 @@ export default async function ReviewPage({
 
   const pendingCount = rows.filter((r) => r.disposition === 'UNREVIEWED').length
 
+  const aiAvailable = aiConfigured()
+  const unread = aiAvailable
+    ? await prisma.document.count({
+        where: {
+          companyGroupId: session.companyGroupId,
+          deletedAt: null,
+          aiSuggestion: { equals: Prisma.DbNull },
+          storageKey: { not: null },
+        },
+      })
+    : 0
+
   return (
     <div className="space-y-5">
       <header>
@@ -89,6 +104,16 @@ export default async function ReviewPage({
           />
         ))}
       </div>
+
+      {aiAvailable && (
+        <div className="rounded-xl border border-line bg-surface px-4 py-3 shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
+          <RunReader initialUnread={unread} />
+          <p className="mt-1.5 text-[12px] text-subtle">
+            Uploads are read automatically in the background. Run this after dropping in a
+            batch, or for anything uploaded before the reader existed.
+          </p>
+        </div>
+      )}
 
       <ReviewTable groups={groups} showingDecided={includeDecided} />
     </div>
@@ -140,5 +165,23 @@ function toRow(d: Awaited<ReturnType<typeof listForReview>>[number]): ReviewRow 
     typeLabel: d.documentType?.label ?? null,
     vendorName: d.vendor?.name ?? null,
     batchLabel: d.batch?.label ?? null,
+    ai: toAi(d.aiSuggestion),
+  }
+}
+
+/**
+ * A read that failed is stored as an error marker so it stops blocking the queue; it is
+ * not a suggestion, so the row shows as unread rather than pretending to have one.
+ */
+function toAi(raw: unknown): ReviewRow['ai'] {
+  if (!raw || typeof raw !== 'object') return null
+  const s = raw as Record<string, unknown>
+  if (typeof s.disposition !== 'string' || typeof s.rationale !== 'string') return null
+  return {
+    disposition: s.disposition,
+    dispositionReason: typeof s.dispositionReason === 'string' ? s.dispositionReason : null,
+    rationale: s.rationale,
+    confidence: typeof s.confidence === 'number' ? s.confidence : 0,
+    ambiguous: s.ambiguous === true,
   }
 }

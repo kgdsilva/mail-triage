@@ -1,6 +1,8 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { Prisma } from '@/generated/prisma/client'
+import { prisma } from '@/server/db/client'
 import { analyzeDocument, type AiSuggestion } from '@/server/ai/suggest'
 import { aiConfigured } from '@/server/ai/read-document'
 import { requireTriage } from '@/server/session'
@@ -29,4 +31,84 @@ export async function analyzeForClassify(
 export async function isAiAvailable() {
   await requireTriage()
   return aiConfigured()
+}
+
+/**
+ * Reads a slice of the documents that have never been read, and reports what is left.
+ *
+ * Deliberately a slice rather than the whole backlog. A serverless function is killed
+ * at a few minutes, and a read takes several seconds, so one request can only ever get
+ * through a handful — an "analyse everything" endpoint would simply time out partway
+ * through an import and leave no record of where it stopped. The caller loops instead,
+ * which also means progress is visible and the work can be stopped or resumed.
+ */
+export async function analyzeUnread(
+  limit = 4,
+): Promise<{ processed: number; failed: number; remaining: number; lastError?: string }> {
+  const session = await requireTriage()
+  if (!aiConfigured()) {
+    return { processed: 0, failed: 0, remaining: 0, lastError: 'ANTHROPIC_API_KEY is not set' }
+  }
+
+  const batch = await prisma.document.findMany({
+    where: {
+      companyGroupId: session.companyGroupId,
+      deletedAt: null,
+      aiSuggestion: { equals: Prisma.DbNull },
+      storageKey: { not: null },
+    },
+    orderBy: { createdAt: 'asc' },
+    take: Math.min(Math.max(1, limit), 10),
+    select: { id: true },
+  })
+
+  let processed = 0
+  let failed = 0
+  let lastError: string | undefined
+
+  for (const doc of batch) {
+    const result = await analyzeDocument(session.companyGroupId, doc.id)
+    if (result.ok) {
+      processed += 1
+    } else {
+      failed += 1
+      lastError = result.error
+      // Mark it so a document that cannot be read never blocks the queue behind it —
+      // otherwise the same failure is retried forever and the loop never drains.
+      await prisma.document.update({
+        where: { id: doc.id },
+        data: { aiSuggestion: { error: result.error, failedAt: new Date().toISOString() } },
+      })
+    }
+  }
+
+  const remaining = await prisma.document.count({
+    where: {
+      companyGroupId: session.companyGroupId,
+      deletedAt: null,
+      aiSuggestion: { equals: Prisma.DbNull },
+      storageKey: { not: null },
+    },
+  })
+
+  if (processed > 0) {
+    revalidatePath('/review')
+    revalidatePath('/log')
+  }
+
+  return { processed, failed, remaining, lastError }
+}
+
+/** How many documents are still waiting to be read — drives the button's label. */
+export async function countUnread(): Promise<{ unread: number; available: boolean }> {
+  const session = await requireTriage()
+  const unread = await prisma.document.count({
+    where: {
+      companyGroupId: session.companyGroupId,
+      deletedAt: null,
+      aiSuggestion: { equals: Prisma.DbNull },
+      storageKey: { not: null },
+    },
+  })
+  return { unread, available: aiConfigured() }
 }
