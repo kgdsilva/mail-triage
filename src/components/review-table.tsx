@@ -113,8 +113,10 @@ export function ReviewTable({
               <span className="text-[12px] text-subtle">{group.rows.length}</span>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
+              {/* Fixed layout so a long line of reasoning cannot widen a column and push
+                  the buttons off the screen — the document column absorbs the slack. */}
+              <table className="w-full table-fixed text-sm">
                 <tbody className="divide-y divide-line-soft">
                   {group.rows.map((row) => {
                     const Icon = documentTypeIcon(row.typeCode)
@@ -152,16 +154,17 @@ export function ReviewTable({
                                   .filter(Boolean)
                                   .join(' · ') || row.batchLabel}
                               </p>
+                              <ReasonLine row={row} />
                             </div>
                           </div>
                         </td>
 
-                        <td className="tabular whitespace-nowrap px-3 py-3 text-right text-[13.5px] font-semibold text-navy-900">
+                        <td className="tabular w-24 whitespace-nowrap px-2 py-3 text-right align-top text-[13.5px] font-semibold text-navy-900">
                           {row.amount ? formatMoney({ toString: () => row.amount! }) : ''}
                         </td>
 
-                        <td className="px-3 py-3">
-                          <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        <td className="w-72 px-3 py-3 align-top">
+                          <div className="flex flex-nowrap items-center justify-end gap-1.5">
                             <QuickButton
                               label="Needs paying"
                               short="Pay"
@@ -198,7 +201,7 @@ export function ReviewTable({
                           </div>
 
                           <div className="mt-1.5 flex flex-wrap items-center justify-end gap-2">
-                            <ReviewMark row={row} />
+                            <StatusMarks row={row} />
                           </div>
                         </td>
                       </tr>
@@ -230,36 +233,50 @@ export function ReviewTable({
   )
 }
 
-/** Says whether a document was decided, and whether it has actually been filed yet. */
-function ReviewMark({ row }: { row: ReviewRow }) {
+/**
+ * What the reader concluded, under the document it is about.
+ *
+ * It lives here rather than beside the buttons because a sentence is not a control, and
+ * because a table cell holding both a paragraph and three buttons stretches its column
+ * until the buttons are pushed off the screen. Two lines, then it stops.
+ */
+function ReasonLine({ row }: { row: ReviewRow }) {
+  if (row.disposition !== 'UNREVIEWED' || !row.ai) return null
+
+  return (
+    <p
+      className={`mt-1 line-clamp-2 rounded px-1.5 py-0.5 text-[11.5px] leading-relaxed ${
+        row.ai.ambiguous ? 'bg-gold-100 text-gold-800' : 'text-muted'
+      }`}
+      title={row.ai.rationale}
+    >
+      <Sparkles className="mr-1 inline size-3 -translate-y-px" aria-hidden />
+      {row.ai.rationale}
+    </p>
+  )
+}
+
+/** The short marks that belong next to the buttons: read, decided, filed. */
+function StatusMarks({ row }: { row: ReviewRow }) {
   if (row.disposition === 'UNREVIEWED') {
     if (!row.ai) {
       return (
-        <span className="inline-flex items-center gap-1 text-[11px] text-subtle">
+        <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] text-subtle">
           <CircleDot className="size-3" aria-hidden />
           Not read yet
         </span>
       )
     }
     return (
-      <span
-        className={`inline-flex max-w-lg items-start gap-1 rounded px-1.5 py-0.5 text-[11px] leading-relaxed ${
-          row.ai.ambiguous ? 'bg-gold-100 text-gold-800' : 'text-muted'
-        }`}
-        title={row.ai.rationale}
-      >
-        <Sparkles className="mt-0.5 size-3 flex-none" aria-hidden />
-        <span className="truncate">{row.ai.rationale}</span>
-        <span className="flex-none opacity-70">
-          {row.ai.ambiguous ? 'needs you' : `${Math.round(row.ai.decisionConfidence * 100)}%`}
-        </span>
+      <span className="whitespace-nowrap text-[11px] text-subtle">
+        {row.ai.ambiguous ? 'needs you' : `${Math.round(row.ai.decisionConfidence * 100)}%`}
       </span>
     )
   }
 
   return (
     <>
-      <span className="inline-flex items-center gap-1 rounded-full bg-ok-100 px-2 py-0.5 text-[11px] font-medium text-ok-700">
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-ok-100 px-2 py-0.5 text-[11px] font-medium text-ok-700">
         <Check className="size-3" aria-hidden />
         Reviewed
       </span>
@@ -285,7 +302,7 @@ function ReviewMark({ row }: { row: ReviewRow }) {
       {!row.isFiled && (
         <Link
           href={`/classify/${row.id}`}
-          className="inline-flex items-center gap-1 text-[11px] text-gold-800 underline underline-offset-2"
+          className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] text-gold-800 underline underline-offset-2"
           title="Decided, but no filename or folder yet"
         >
           <Pencil className="size-3" aria-hidden />
