@@ -263,9 +263,37 @@ archive-needs-a-reason constraint while making it useless six months later.
 
 ## Checks
 
-`/checks` lists incoming third-party checks on their own, with a per-entity filter and a
-running total for reconciliation. Deliberately read-only: these are archived on arrival
-and never enter a queue, and what action belongs here is still an open question.
+`/checks` lists incoming third-party checks on their own, with a per-company filter and
+a running total for reconciliation. Deliberately read-only: these are archived on
+arrival and never enter a queue, and what action belongs here is still an open question.
+
+## Bills to pay
+
+`/bills` is every open document with money to send out, in one place, grouped by how
+soon it is due — overdue, within a week, later, no date on the document — with a total
+per group and two headline figures above.
+
+It exists because the master log answers "what happened to this document" and a queue
+answers "what is mine", and neither answers the only question a payment run asks: what
+has to leave, and when. Three actions sit on each row: **Done** (paid and finished),
+**Archive** (nothing to pay after all) and **Spam**. The last two go through
+`quickDecide`, the same path and the same invariants as the classify form and the review
+table, and they are only rendered for people who triage — the server refuses them for
+anyone else, and a button that always errors is worse than no button.
+
+A MEMBER sees only bills routed to them; everyone else sees the whole group's.
+
+## Reading a document without leaving the screen
+
+Every list — queue, bills, checks, the master log — opens the PDF in place from a
+chevron at the end of the row (`src/components/pdf-peek.tsx`). Opening a document used
+to mean the classify screen, a form of a dozen fields when all that was wanted was a
+look at the page, or a new tab, which loses your place in the list.
+
+The frame only mounts once expanded, so a list of forty documents does not fetch forty
+PDFs, and the native viewer's thumbnail sidebar is turned off (`navpanes=0`) — it costs
+a third of the width to show one page. "Edit the details" inside the expanded area is
+the way through to the form, for the times the form is actually wanted.
 
 ## Visual language
 
@@ -277,21 +305,51 @@ shapes in `src/lib/theme.ts`.
 Light only, deliberately — navy on white is the brand, and a dark theme would be a
 second design to keep in step.
 
-Colour carries meaning and nothing else:
+Navy and gold carry the brand; a wider set of hues carries meaning, so a screen of
+forty documents can be read by colour before it is read by word. The rule is that a hue
+is spent on one idea and never a second — money in is always teal, a tax authority
+always plum — which is what makes the colour worth anything. Every assignment lives in
+`src/lib/theme.ts` and nowhere else.
 
-- **Entity badges** are coloured by the entity's position, not by hardcoding CP or MMT.
-  Entity codes belong to a company group, and the next group onboarded has different
-  ones; assigning from an 8-slot palette by `sortOrder` means any group gets colours.
+- **The top bar is navy.** It separates "where am I in the app" from "what am I working
+  on", and stops the whole screen reading as one continuous sheet of pale grey.
+- **Entity colour comes from the entity's `code`**, not from hardcoding CP or MMT and
+  not from its position. Codes belong to a company group and the next group onboarded
+  has different ones, so the code is hashed into an 8-slot palette and any group gets
+  colours for free. It was `sortOrder % 8` until the real data proved that wrong: the
+  seeded orders are 10, 20, 30, 40, 50, and modulo eight put **CP and OP on the same
+  colour** — OP being the one entity that must never be mistaken for another. A code is
+  also stable when someone re-orders the entities, which a position is not.
+- **The company is a card's loudest signal**: a coloured left edge plus the tag. It is
+  the first question anyone asks of a piece of mail, and an edge answers it from further
+  away than a pill does.
+- **Document types** have their own hue and icon, keyed on the type's `code` with a
+  generic fallback because types are editable per company group. Gold for a bill, teal
+  for a check (money in — the one piece of good news anywhere in the app), plum, clay
+  and violet for the federal, local and payroll authorities so three notices in a row do
+  not blur into one, red for spam.
+- **What a document asks of you** — pay, confirm, review — is a pill, not a section
+  heading. One person's queue mixes all three, and splitting a short queue into three
+  lists made it look like three chores.
 - **Status** — gold for waiting, navy for in progress, green for done, grey for
   archived. Waiting reuses the brand gold on purpose: "needs attention" and the accent
   colour are the same idea, so they reinforce instead of competing.
 - **Overdue** is the one thing allowed to interrupt: a red pill with a clock, not just
-  red text.
-- Icons (lucide-react) are keyed on the document type's `code` with a generic fallback,
-  because types are editable per company group.
+  red text. Red appears nowhere else on a bill screen, which is what keeps it meaning
+  "today" rather than "this week".
 
-Type is Inter throughout, with JetBrains Mono only where alignment carries meaning —
-filenames and entity codes. Money and dates use tabular figures so columns line up.
+Colours are written out literally in `theme.ts` rather than built from a hue name.
+Tailwind generates utilities by scanning the source text, so `bg-${hue}-100` compiles to
+a class that does not exist in the stylesheet.
+
+Type is Inter for reading and Plus Jakarta Sans for headings and figures — wider and
+heavier at the same size, so a title reads as a title without being twice the body size.
+JetBrains Mono only where alignment carries meaning: filenames and entity codes. Money
+and dates use tabular figures so columns line up.
+
+One thing to watch when passing icons around: a lucide icon is a component, and a
+component cannot cross from a server component into a client one. `NavLink` therefore
+takes an icon **name** and holds the map itself.
 
 ## Roles, and what they are not
 

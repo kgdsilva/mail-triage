@@ -34,11 +34,41 @@
   /* Status. Waiting deliberately reuses the brand gold: "needs attention" and the
      accent colour are the same idea, so they reinforce rather than compete. */
   --color-ok-700: #1b6b45;
+  --color-ok-500: #2f9163;
   --color-ok-100: #def0e6;
   --color-danger-700: #a8322a;
+  --color-danger-500: #c9544a;
   --color-danger-100: #f8e3e1;
 
+  /*
+   * A wider set of hues. Navy and gold carry the brand; these carry meaning, so a
+   * screen of forty documents can be read by colour before it is read by word.
+   *
+   * Each hue is spent on exactly one idea and never reused for a second — money in is
+   * always teal, a tax authority always plum — which is what makes the colour worth
+   * anything. `lib/theme.ts` is the single place those assignments live.
+   */
+  --color-teal-700: #0d5f52;
+  --color-teal-500: #199483;
+  --color-teal-100: #d1ebe5;
+  --color-violet-700: #46368c;
+  --color-violet-500: #6a55bf;
+  --color-violet-100: #e3ddf5;
+  --color-sky-700: #1b5878;
+  --color-sky-500: #2e86b3;
+  --color-sky-100: #d6e9f4;
+  --color-plum-700: #6d2450;
+  --color-plum-500: #a1447f;
+  --color-plum-100: #f4dcea;
+  --color-moss-700: #47601f;
+  --color-moss-500: #74963a;
+  --color-moss-100: #e5eed4;
+  --color-clay-700: #7a4a22;
+  --color-clay-500: #b07340;
+  --color-clay-100: #f2e2d2;
+
   --font-sans: var(--font-inter);
+  --font-display: var(--font-jakarta);
   --font-mono: var(--font-jetbrains);
 }
 
@@ -48,6 +78,16 @@ body {
   font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * Headings in a second family, heavier and a little wider than the body text. One
+ * family at one weight was legible but flat: nothing on the screen announced itself as
+ * a title, so every screen read as an undifferentiated wall.
+ */
+h1, h2, h3, .display {
+  font-family: var(--font-jakarta), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.015em;
 }
 
 /* Money and dates line up column-to-column in the log rather than jittering. */

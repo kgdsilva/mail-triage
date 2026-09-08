@@ -1,38 +1,12 @@
 import Link from 'next/link'
-import { ArrowRight, Banknote, CheckCheck, Eye, Inbox, ShieldQuestion } from 'lucide-react'
+import { ArrowRight, CircleAlert, Inbox, Wallet } from 'lucide-react'
 import { prisma } from '@/server/db/client'
 import { canSeeWholeLog, requireSession } from '@/server/session'
 import { DocumentCard } from '@/components/dashboard-card'
+import { CompanyPicker } from '@/components/company-picker'
+import { urgency } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
-
-/**
- * The landing screen: what is on my plate, grouped by what it is asking of me.
- *
- * Deliberately not "the payer's screen" or "the confirmer's screen". Whoever pays or
- * confirms varies document by document, so one person can have items in more than one
- * group at once, and the groups are a property of the documents rather than of them.
- */
-const GROUPS = [
-  {
-    kind: 'PAY' as const,
-    title: 'To pay',
-    blurb: 'Bills routed to you. Amount and due date are what matter.',
-    Icon: Banknote,
-  },
-  {
-    kind: 'CONFIRM' as const,
-    title: 'To confirm',
-    blurb: 'Needs your decision or verification before money moves.',
-    Icon: ShieldQuestion,
-  },
-  {
-    kind: 'REVIEW' as const,
-    title: 'To review',
-    blurb: 'Worth your eyes, nothing to pay yet.',
-    Icon: Eye,
-  },
-]
 
 const OPEN = ['WAITING', 'IN_PROGRESS'] as const
 
@@ -42,11 +16,26 @@ const CARD_INCLUDE = {
   documentType: { select: { label: true, code: true } },
 } as const
 
-export default async function Dashboard() {
+/**
+ * The landing screen: what is on my plate, soonest first.
+ *
+ * Deliberately not "the payer's screen" or "the confirmer's screen". Whoever pays or
+ * confirms varies document by document, so one person can have items of every kind at
+ * once — which is why this is one list ordered by when it is due, with the company and
+ * the ask carried on each card, rather than three lists to check in turn.
+ */
+export default async function Dashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ entity?: string }>
+}) {
   const session = await requireSession()
   const oversees = canSeeWholeLog(session.role)
+  const { entity } = await searchParams
 
-  const [mine, unassigned, people] = await Promise.all([
+  const forEntity = entity ? { entityId: entity } : {}
+
+  const [mine, unassigned, people, entities] = await Promise.all([
     prisma.document.findMany({
       where: {
         companyGroupId: session.companyGroupId,
@@ -54,6 +43,7 @@ export default async function Dashboard() {
         assignedToUserId: session.userId,
         status: { in: [...OPEN] },
         disposition: 'ACTION',
+        ...forEntity,
       },
       include: CARD_INCLUDE,
       orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
@@ -69,6 +59,7 @@ export default async function Dashboard() {
             assignedToUserId: null,
             status: { in: [...OPEN] },
             disposition: 'ACTION',
+            ...forEntity,
           },
           include: CARD_INCLUDE,
           orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
@@ -81,91 +72,103 @@ export default async function Dashboard() {
       include: { user: { select: { id: true, name: true, email: true } } },
       orderBy: { createdAt: 'asc' },
     }),
+
+    prisma.entity.findMany({
+      where: { companyGroupId: session.companyGroupId, isActive: true },
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, code: true, legalName: true, sortOrder: true },
+    }),
   ])
 
   const options = people.map((m) => ({ id: m.user.id, label: m.user.name ?? m.user.email }))
   const firstName = session.userName.split(' ')[0]
+  const cards = mine.map(serialize)
+
+  const owed = cards.reduce(
+    (sum, c) => sum + (c.amount ? Number(c.amount.replace(/,/g, '')) : 0),
+    0,
+  )
+  const overdue = cards.filter((c) => urgency(c.dueDate) === 'overdue').length
 
   return (
     <div className="mx-auto max-w-4xl">
-      <header className="mb-9">
-        <h1 className="text-[26px] font-bold tracking-tight text-navy-900">
-          {firstName}&rsquo;s queue
-        </h1>
+      <header className="mb-6">
+        <h1 className="text-[28px] font-extrabold text-navy-900">{firstName}&rsquo;s queue</h1>
         <p className="mt-1 text-[15px] text-muted">
-          {mine.length === 0
+          {cards.length === 0
             ? 'Nothing is waiting on you.'
-            : `${mine.length} item${mine.length === 1 ? '' : 's'} waiting on you.`}
+            : `${cards.length} item${cards.length === 1 ? '' : 's'} waiting on you.`}
         </p>
       </header>
 
-      <div className="space-y-10">
-        {GROUPS.map(({ kind, title, blurb, Icon }) => {
-          const items = mine.filter((d) => d.actionKind === kind)
-          if (items.length === 0) return null
+      {/* The two numbers worth knowing before reading a single card. */}
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <CompanyPicker entities={entities} value={entity ?? null} />
 
-          return (
-            <section key={kind}>
-              <div className="mb-3 flex items-baseline gap-2.5">
-                <Icon className="size-4 translate-y-0.5 text-navy-500" aria-hidden />
-                <h2 className="text-[13px] font-semibold uppercase tracking-[0.09em] text-navy-900">
-                  {title}
-                </h2>
-                <span className="rounded-full bg-navy-50 px-1.5 py-0.5 text-[11px] font-semibold text-navy-700">
-                  {items.length}
-                </span>
-                <span className="hidden text-[12.5px] text-subtle sm:inline">{blurb}</span>
-              </div>
-              <div className="space-y-2.5">
-                {items.map((doc) => (
-                  <DocumentCard key={doc.id} doc={serialize(doc)} people={options} />
-                ))}
-              </div>
-            </section>
-          )
-        })}
-
-        {mine.length === 0 && (
-          <div className="rounded-xl border border-dashed border-line bg-surface/60 px-6 py-12 text-center">
-            <span className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-navy-50 text-navy-500">
-              <Inbox className="size-6" strokeWidth={1.6} aria-hidden />
+        {owed > 0 && (
+          <span className="inline-flex items-center gap-2 rounded-full bg-gold-50 px-3 py-1.5 text-[12.5px] font-semibold text-gold-800">
+            <Wallet className="size-3.5" aria-hidden />
+            <span className="tabular">
+              {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(owed)}
             </span>
-            <h3 className="text-[14.5px] font-semibold text-navy-900">Nothing is waiting on you</h3>
-            <p className="mx-auto mt-1 max-w-sm text-[13px] leading-relaxed text-muted">
-              When someone routes a document to you, it shows up here grouped by what it
-              needs — pay, confirm, or review.
-            </p>
-          </div>
+            in your queue
+          </span>
         )}
-
-        {unassigned.length > 0 && (
-          <section>
-            <div className="mb-3 flex items-baseline gap-2.5">
-              <CheckCheck className="size-4 translate-y-0.5 text-subtle" aria-hidden />
-              <h2 className="text-[13px] font-semibold uppercase tracking-[0.09em] text-navy-900">
-                Unassigned
-              </h2>
-              <span className="rounded-full bg-line-soft px-1.5 py-0.5 text-[11px] font-semibold text-muted">
-                {unassigned.length}
-              </span>
-              <span className="hidden text-[12.5px] text-subtle sm:inline">
-                Marked for action but not routed to anyone yet.
-              </span>
-            </div>
-            <div className="space-y-2.5">
-              {unassigned.map((doc) => (
-                <DocumentCard key={doc.id} doc={serialize(doc)} people={options} />
-              ))}
-            </div>
-          </section>
+        {overdue > 0 && (
+          <span className="inline-flex items-center gap-2 rounded-full bg-danger-100 px-3 py-1.5 text-[12.5px] font-bold text-danger-700">
+            <CircleAlert className="size-3.5" aria-hidden />
+            {overdue} overdue
+          </span>
         )}
       </div>
 
+      <div className="space-y-2.5">
+        {cards.map((doc) => (
+          <DocumentCard key={doc.id} doc={doc} people={options} />
+        ))}
+      </div>
+
+      {cards.length === 0 && (
+        <div className="rounded-xl border border-dashed border-line bg-surface/60 px-6 py-12 text-center">
+          <span className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-teal-100 text-teal-700">
+            <Inbox className="size-6" strokeWidth={1.6} aria-hidden />
+          </span>
+          <h3 className="text-[15px] font-bold text-navy-900">
+            {entity ? 'Nothing for this company' : 'Nothing is waiting on you'}
+          </h3>
+          <p className="mx-auto mt-1 max-w-sm text-[13px] leading-relaxed text-muted">
+            When someone routes a document to you it shows up here, soonest due first,
+            tagged with the company it belongs to.
+          </p>
+        </div>
+      )}
+
+      {unassigned.length > 0 && (
+        <section className="mt-9">
+          <div className="mb-3 flex items-baseline gap-2.5">
+            <h2 className="text-[13px] font-bold uppercase tracking-[0.09em] text-navy-900">
+              Not routed to anyone
+            </h2>
+            <span className="rounded-full bg-line-soft px-1.5 py-0.5 text-[11px] font-bold text-muted">
+              {unassigned.length}
+            </span>
+            <span className="hidden text-[12.5px] text-subtle sm:inline">
+              Marked for action, waiting on someone to own it.
+            </span>
+          </div>
+          <div className="space-y-2.5">
+            {unassigned.map((doc) => (
+              <DocumentCard key={doc.id} doc={serialize(doc)} people={options} />
+            ))}
+          </div>
+        </section>
+      )}
+
       <Link
         href="/log"
-        className="mt-10 inline-flex items-center gap-1.5 text-[13px] text-muted transition-colors hover:text-navy-700"
+        className="mt-10 inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-navy-700"
       >
-        {canSeeWholeLog(session.role) ? 'Open the full master log' : 'See everything routed to you'}
+        {oversees ? 'Open the full master log' : 'See everything routed to you'}
         <ArrowRight className="size-3.5" aria-hidden />
       </Link>
     </div>

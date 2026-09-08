@@ -6,7 +6,7 @@ import { Ban, Check, CircleDot, FileText, Pencil, Sparkles, Wallet } from 'lucid
 import { decideQuickly, refineArchiveReason } from '@/server/actions/documents'
 import { resolveEntity } from '@/server/actions/ai'
 import { EntityBadge, formatDate, formatMoney } from '@/components/badges'
-import { documentTypeIcon } from '@/lib/theme'
+import { documentTypeIcon, documentTypeInk } from '@/lib/theme'
 
 export type ReviewRow = {
   id: string
@@ -92,7 +92,7 @@ export function ReviewTable({
         <span className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-ok-100 text-ok-700">
           <Check className="size-6" strokeWidth={1.8} aria-hidden />
         </span>
-        <h3 className="text-[14.5px] font-semibold text-navy-900">Nothing left to look at</h3>
+        <h3 className="text-[15px] font-bold text-navy-900">Nothing left to look at</h3>
         <p className="mt-1 text-[13px] text-muted">
           {showingDecided
             ? 'No documents match this view.'
@@ -159,8 +159,8 @@ export function ReviewTable({
                         <td className="px-3 py-2.5">
                           <div className="flex items-start gap-2.5">
                             <Icon
-                              className="mt-0.5 size-4 flex-none text-subtle"
-                              strokeWidth={1.8}
+                              className={`mt-0.5 size-4 flex-none ${documentTypeInk(row.typeCode)}`}
+                              strokeWidth={2}
                               aria-hidden
                             />
                             <div className="min-w-0">

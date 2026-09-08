@@ -2,7 +2,7 @@ import { Clock } from 'lucide-react'
 import type { Disposition, DocStatus } from '@/generated/prisma/enums'
 import { entityColor } from '@/lib/theme'
 
-const PILL = 'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium'
+const PILL = 'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold'
 
 /** Entity code, coloured by position so it is recognisable down a long log. */
 export function EntityBadge({
@@ -15,15 +15,20 @@ export function EntityBadge({
   if (!code) return <span className="text-subtle">—</span>
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wider ${entityColor(index)}`}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[11px] font-bold tracking-wider ${entityColor(code, index)}`}
     >
       {code}
     </span>
   )
 }
 
+/*
+ * Three states that have to be told apart in one column, so they get three tones.
+ * Unreviewed used to share grey with archived, which read as "nothing to do here" for
+ * the one state that means the opposite.
+ */
 const DISPOSITION_STYLE: Record<Disposition, string> = {
-  UNREVIEWED: 'bg-line-soft text-muted',
+  UNREVIEWED: 'bg-navy-100 text-navy-900',
   ARCHIVE: 'bg-line-soft text-muted',
   // Action items are the whole point of the platform, so they carry the brand accent.
   ACTION: 'bg-gold-100 text-gold-800',
@@ -79,7 +84,7 @@ export function DueBadge({ date }: { date: Date | string | null }) {
   if (!overdue) return <span className="tabular text-[12.5px] text-muted">{label}</span>
 
   return (
-    <span className={`${PILL} gap-1 bg-danger-100 font-semibold text-danger-700`}>
+    <span className={`${PILL} gap-1 bg-danger-100 font-bold text-danger-700`}>
       <Clock className="size-3" aria-hidden />
       <span className="tabular">Overdue {label}</span>
     </span>

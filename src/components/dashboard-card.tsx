@@ -1,11 +1,19 @@
 'use client'
 
-import Link from 'next/link'
 import { useState } from 'react'
-import { ArrowRightLeft, Check, ChevronDown, ExternalLink } from 'lucide-react'
+import { ArrowRightLeft, Check } from 'lucide-react'
 import { handOffDocument, resolveDocument } from '@/server/actions/documents'
 import { DueBadge } from '@/components/badges'
-import { BTN, CARD, documentTypeIcon, documentTypeTone, entityColor } from '@/lib/theme'
+import { PdfFrame, PeekToggle } from '@/components/pdf-peek'
+import {
+  ACTION_KINDS,
+  BTN,
+  CARD,
+  documentTypeIcon,
+  documentTypeTone,
+  entityAccent,
+  entityColor,
+} from '@/lib/theme'
 
 export type CardDoc = {
   id: string
@@ -27,6 +35,12 @@ export type CardDoc = {
  * One item in someone's queue, with the two things they actually do with it: finish it,
  * or hand it to whoever does the next step. Money sits large on the right because it is
  * what the person paying is looking for.
+ *
+ * The company is the card's loudest signal — a coloured edge and a tag — because that
+ * is the first question anyone asks of a piece of mail. What it wants from you is a
+ * quiet pill beside it rather than a section heading: one person's queue mixes paying,
+ * confirming and reading, and splitting it into three lists made a short queue look
+ * like three chores.
  */
 export function DocumentCard({
   doc,
@@ -38,22 +52,28 @@ export function DocumentCard({
   const [handingOff, setHandingOff] = useState(false)
   const [open, setOpen] = useState(false)
   const Icon = documentTypeIcon(doc.typeCode)
+  const ask = doc.actionKind ? ACTION_KINDS[doc.actionKind as keyof typeof ACTION_KINDS] : null
 
   return (
-    <div className={`${CARD} p-4`}>
+    <div className={`${CARD} relative overflow-hidden p-4 pl-5`}>
+      <span
+        className={`absolute inset-y-0 left-0 w-1.5 ${doc.entityCode ? entityAccent(doc.entityCode, doc.entityIndex) : 'bg-line'}`}
+        aria-hidden
+      />
+
       <div className="flex gap-3.5">
         <span
           className={`grid size-10 flex-none place-items-center rounded-[10px] ${documentTypeTone(doc.typeCode)}`}
           aria-hidden
         >
-          <Icon className="size-5" strokeWidth={1.8} />
+          <Icon className="size-5" strokeWidth={1.9} />
         </span>
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {doc.entityCode && (
               <span
-                className={`rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wider ${entityColor(doc.entityIndex)}`}
+                className={`rounded-full px-2 py-0.5 font-mono text-[11px] font-bold tracking-wider ${entityColor(doc.entityCode, doc.entityIndex)}`}
               >
                 {doc.entityCode}
               </span>
@@ -61,11 +81,21 @@ export function DocumentCard({
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
-              className="truncate text-left text-[14.5px] font-semibold text-navy-900 hover:underline"
+              className="truncate text-left text-[15px] font-bold text-navy-900 hover:underline"
             >
               {doc.vendorName ?? doc.title}
             </button>
-            {doc.typeLabel && <span className="text-[12.5px] text-subtle">{doc.typeLabel}</span>}
+            {ask && (
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full pl-1.5 pr-2 py-0.5 text-[11px] font-semibold ${ask.tone}`}
+              >
+                <span className={`size-1.5 rounded-full ${ask.dot}`} aria-hidden />
+                {ask.label}
+              </span>
+            )}
+            {doc.typeLabel && (
+              <span className="text-[12.5px] font-medium text-subtle">{doc.typeLabel}</span>
+            )}
           </div>
 
           {doc.summaryNote && (
@@ -74,7 +104,7 @@ export function DocumentCard({
 
           <div className="mt-3.5 flex flex-wrap items-center gap-2">
             <form action={resolveDocument.bind(null, doc.id)}>
-              <button className={BTN.primary}>
+              <button className={BTN.done}>
                 <Check className="size-3.5" aria-hidden />
                 Mark done
               </button>
@@ -83,20 +113,13 @@ export function DocumentCard({
               <ArrowRightLeft className="size-3.5" aria-hidden />
               {handingOff ? 'Cancel' : 'Hand off'}
             </button>
-            <button type="button" onClick={() => setOpen((v) => !v)} className={BTN.ghost}>
-              <ChevronDown
-                className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
-                aria-hidden
-              />
-              {open ? 'Hide' : 'View'}
-            </button>
           </div>
         </div>
 
         <div className="flex flex-none items-start gap-2">
           <div className="flex flex-col items-end gap-1.5 text-right">
             {doc.amount && (
-              <span className="tabular text-[21px] font-semibold tracking-tight text-navy-900">
+              <span className="display tabular text-[22px] font-extrabold tracking-tight text-navy-900">
                 ${doc.amount}
               </span>
             )}
@@ -104,51 +127,13 @@ export function DocumentCard({
             {doc.dueDate && <DueBadge date={doc.dueDate} />}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-            aria-label={open ? 'Hide the document' : 'Show the document'}
-            className="mt-0.5 grid size-7 place-items-center rounded-lg text-subtle transition-colors hover:bg-navy-50 hover:text-navy-700"
-          >
-            <ChevronDown
-              className={`size-4 transition-transform ${open ? 'rotate-180' : ''}`}
-              aria-hidden
-            />
-          </button>
+          <PeekToggle open={open} onToggle={() => setOpen((v) => !v)} />
         </div>
       </div>
 
-      {/*
-        The document itself, read where the decision is made.
-        Opening it used to mean the classify screen — a form of a dozen fields, when all
-        that was wanted was a look at the page. The iframe only mounts once expanded, so
-        a queue of twenty cards does not fetch twenty PDFs.
-      */}
       {open && (
         <div className="mt-3.5 border-t border-line-soft pt-3.5">
-          {doc.hasFile ? (
-            <div className="h-[32rem] overflow-hidden rounded-lg border border-line bg-line-soft">
-              <iframe
-                src={`/api/files/${doc.id}#view=FitH&navpanes=0`}
-                title={doc.title}
-                className="h-full w-full"
-              />
-            </div>
-          ) : (
-            <p className="rounded-lg border border-dashed border-line px-4 py-10 text-center text-[13px] text-muted">
-              No file attached to this record.
-            </p>
-          )}
-          <div className="mt-2 flex items-center justify-end">
-            <Link
-              href={`/classify/${doc.id}`}
-              className="inline-flex items-center gap-1.5 text-[12px] text-muted transition-colors hover:text-navy-700"
-            >
-              <ExternalLink className="size-3.5" aria-hidden />
-              Edit the details
-            </Link>
-          </div>
+          <PdfFrame id={doc.id} title={doc.title} hasFile={doc.hasFile} />
         </div>
       )}
 

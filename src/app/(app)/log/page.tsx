@@ -1,15 +1,22 @@
 import Link from 'next/link'
 import { ChevronRight, FileQuestion, Search, Trash2, Undo2 } from 'lucide-react'
 import { DispositionBadge, DueBadge, EntityBadge, StatusBadge, formatDate, formatMoney } from '@/components/badges'
-import { documentTypeIcon } from '@/lib/theme'
+import { documentTypeIcon, documentTypeInk } from '@/lib/theme'
 import { LogFilters } from '@/components/log-filters'
 import { parseFilters } from '@/lib/filters'
 import { prisma } from '@/server/db/client'
 import { countByEntity, countByType, listDocuments } from '@/server/documents'
 import { deleteDocument, restoreDocument } from '@/server/actions/documents'
 import { canSeeWholeLog, requireSession } from '@/server/session'
+import { PeekRow } from '@/components/pdf-peek'
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * The nine facts, the remove button, and the chevron that opens the document.
+ * `PeekRow` spans this many cells when it expands.
+ */
+const COLUMNS = 11
 
 export default async function LogPage({
   searchParams,
@@ -69,7 +76,7 @@ export default async function LogPage({
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 className="text-[22px] font-bold tracking-tight text-navy-900">
+        <h1 className="text-[26px] font-extrabold text-navy-900">
           {wholeLog ? 'Master log' : 'My documents'}
         </h1>
         <p className="text-[13px] text-muted">
@@ -243,23 +250,30 @@ export default async function LogPage({
         <>
           <div className="overflow-x-auto rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
             <table className="w-full min-w-[1100px] text-sm">
-              <thead className="border-b border-line text-left text-[10.5px] uppercase tracking-[0.07em] text-subtle">
+              <thead className="border-b border-line bg-navy-50/60 text-left text-[10.5px] uppercase tracking-[0.07em] text-navy-700">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Entity</th>
-                  <th className="px-4 py-3 font-semibold">Date</th>
-                  <th className="px-4 py-3 font-semibold">Document</th>
-                  <th className="px-4 py-3 font-semibold">Type</th>
-                  <th className="px-4 py-3 font-semibold">Vendor</th>
-                  <th className="px-4 py-3 text-right font-semibold">Amount</th>
-                  <th className="px-4 py-3 font-semibold">Due</th>
-                  <th className="px-4 py-3 font-semibold">Decision</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
+                  <th className="px-4 py-3 font-bold">Entity</th>
+                  <th className="px-4 py-3 font-bold">Date</th>
+                  <th className="px-4 py-3 font-bold">Document</th>
+                  <th className="px-4 py-3 font-bold">Type</th>
+                  <th className="px-4 py-3 font-bold">Vendor</th>
+                  <th className="px-4 py-3 text-right font-bold">Amount</th>
+                  <th className="px-4 py-3 font-bold">Due</th>
+                  <th className="px-4 py-3 font-bold">Decision</th>
+                  <th className="px-4 py-3 font-bold">Status</th>
                   <th className="px-4 py-3" />
+                  <th className="px-3 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-line-soft">
                 {listing.rows.map((d) => (
-                  <tr key={d.id} className="transition-colors hover:bg-navy-50/60">
+                  <PeekRow
+                    key={d.id}
+                    id={d.id}
+                    title={d.finalFilename ?? d.originalFilename}
+                    hasFile={Boolean(d.storageKey)}
+                    colSpan={COLUMNS}
+                  >
                     <td className="whitespace-nowrap px-4 py-3">
                       <EntityBadge code={d.entity?.code} index={d.entity?.sortOrder ?? 0} />
                       {d.entity?.isSegregated && (
@@ -270,13 +284,14 @@ export default async function LogPage({
                       {formatDate(d.documentDate)}
                     </td>
                     <td className="max-w-[320px] px-4 py-3">
-                      <Link
-                        href={`/classify/${d.id}`}
-                        className="block truncate font-mono text-[12px] text-navy-700 hover:underline"
+                      {/* The chevron at the end of the row opens it; a link out of the
+                          log to a form was never what someone scanning wanted. */}
+                      <span
+                        className="block truncate font-mono text-[12px] font-medium text-navy-700"
                         title={d.finalFilename ?? d.originalFilename}
                       >
                         {d.finalFilename ?? d.originalFilename}
-                      </Link>
+                      </span>
                       {d.summaryNote && (
                         <span className="mt-0.5 block truncate text-[12px] text-subtle">
                           {d.summaryNote}
@@ -288,7 +303,13 @@ export default async function LogPage({
                         <span className="inline-flex items-center gap-1.5">
                           {(() => {
                             const Icon = documentTypeIcon(d.documentType.code)
-                            return <Icon className="size-3.5 text-subtle" strokeWidth={1.8} aria-hidden />
+                            return (
+                              <Icon
+                                className={`size-3.5 ${documentTypeInk(d.documentType.code)}`}
+                                strokeWidth={2}
+                                aria-hidden
+                              />
+                            )
                           })()}
                           {d.documentType.label}
                         </span>
@@ -299,7 +320,7 @@ export default async function LogPage({
                     <td className="max-w-[180px] truncate px-4 py-3 text-[12.5px] text-muted">
                       {d.vendor?.name ?? <span className="text-subtle">—</span>}
                     </td>
-                    <td className="tabular whitespace-nowrap px-4 py-3 text-right text-[13.5px] font-semibold text-navy-900">
+                    <td className="tabular whitespace-nowrap px-4 py-3 text-right text-[13.5px] font-bold text-navy-900">
                       {formatMoney(d.amount)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
@@ -336,16 +357,16 @@ export default async function LogPage({
                         </form>
                       )}
                     </td>
-                  </tr>
+                  </PeekRow>
                 ))}
 
                 {listing.rows.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-4 py-16 text-center">
+                    <td colSpan={COLUMNS} className="px-4 py-16 text-center">
                       <span className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-navy-50 text-navy-500">
                         <Search className="size-5" strokeWidth={1.6} aria-hidden />
                       </span>
-                      <span className="block text-[14.5px] font-semibold text-navy-900">
+                      <span className="block text-[15px] font-bold text-navy-900">
                         No documents match
                       </span>
                       <span className="mt-1 block text-[13px] text-muted">
