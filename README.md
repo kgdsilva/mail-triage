@@ -25,21 +25,36 @@ classification · 5 pattern detection.
 `notifiedAt` column exist and nothing writes to them, so a document routed to someone is
 only discovered by opening the app.
 
+## This group's confirmed data is a migration, not a script
+
+`20260909003000_colab_confirmed_data` carries MM's corrected legal name, the eleven
+entity aliases, the seven confirmed autopay arrangements and the vendors they hang off.
+
+Data in a migration is not the default and needs the reason stated: the build runs
+migrations and not the seed, and nobody with a database credential is reliably at a
+keyboard when a deploy happens. Left as console scripts, these sat unapplied in
+production — and an empty autopay list has exactly one consequence, which is that every
+bill already paid automatically gets escalated for a human decision. The whole point of
+the list is to stop that.
+
+Every statement is guarded on the company group's slug, so a group onboarded later never
+receives CoLAB's vendors or rules, and every insert is guarded on the row already
+existing, so it is a no-op on a database where the scripts were run by hand.
+
+The one case it does not cover: migrations run *before* the seed, so rebuilding this
+database from scratch leaves no group for the rules to attach to. `docs/` keeps the
+scripts for that.
+
 ## One-off scripts
 
-`docs/` holds the scripts that cannot be a migration, because they carry this group's
-data rather than the shape of the schema. Each is idempotent and each was run against a
-local database before being handed over.
+`docs/` holds what should not run automatically. Each is idempotent and each was run
+against a local database before being handed over.
 
-- `fix-production-entities.sql` — MM's legal name and the eleven entity aliases. The
-  build runs migrations, not the seed, so a name corrected in code never reaches an
-  already-seeded database.
-- `seed-autopay-rules.sql` — the seven confirmed autopay arrangements and any missing
-  vendor. Read the header: `effective_from` is backdated on purpose, and one rule is
-  deliberately *not* backdated.
-- `reset-documents.sql` — clears the test documents so the real log starts empty. For
-  use once, before go-live; after that, removing a document is the Remove button, which
-  is a soft delete.
+- `seed-autopay-rules.sql`, `fix-production-entities.sql` — the manual equivalents of
+  the migration above, for a from-scratch rebuild or a re-apply without a deploy.
+- `reset-documents.sql` — clears the test documents so the real log starts empty.
+  Destructive, and deliberately not a migration: for use once, before go-live. After
+  that, removing a document is the Remove button, which is a soft delete.
 
 ## Google sign-in
 

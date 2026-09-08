@@ -1,6 +1,17 @@
 -- The seven confirmed autopay arrangements, for the production database (Neon SQL
 -- editor). Creates any missing vendor first, then the rules.
 --
+-- YOU PROBABLY DO NOT NEED THIS ANY MORE. The same inserts now ship as the migration
+-- 20260909003000_colab_confirmed_data, which the build applies on deploy — leaving this
+-- as a console script meant the autopay list stayed empty in production until somebody
+-- remembered to paste it, and an empty list escalates every already-automatic bill for
+-- a human decision.
+--
+-- It is kept for two cases: rebuilding CoLAB's database from scratch, where migrations
+-- run before the seed and so there is no group for the migration to attach rules to;
+-- and wanting to re-apply the rules without a deploy. Both are safe — everything here
+-- is idempotent.
+--
 -- Safe to run more than once: every insert is guarded by the table's own unique
 -- constraint, so a second run changes nothing.
 --

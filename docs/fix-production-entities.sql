@@ -1,5 +1,9 @@
 -- One-off, for the production database (Neon SQL editor).
 --
+-- YOU PROBABLY DO NOT NEED THIS ANY MORE: it is also carried by the migration
+-- 20260909003000_colab_confirmed_data, which the build applies on deploy. Kept as the
+-- manual fallback. Safe either way.
+--
 -- Two things the build does not carry across: the build runs migrations, not the seed,
 -- and the seed's entity upsert only ever touched sort order. So a legal name corrected
 -- in code does not reach a database that was already seeded.
