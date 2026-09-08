@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { BackButton } from '@/components/back'
 import { notFound } from 'next/navigation'
 import { ClassifyForm } from '@/components/classify-form'
 import { prisma } from '@/server/db/client'
@@ -57,9 +58,15 @@ export default async function ClassifyPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold" title={doc.originalFilename}>
+      <div className="flex items-center gap-3">
+        {/*
+          Reached from the master log, from the review sweep and from a queue card, so
+          there is no one place "up" would mean. Until now there was nothing at all and
+          the only way out was the browser's own button.
+        */}
+        <BackButton fallbackHref="/log" />
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-[15px] font-bold text-navy-900" title={doc.originalFilename}>
             {doc.originalFilename}
           </h1>
           <p className="text-xs text-muted">
@@ -67,13 +74,13 @@ export default async function ClassifyPage({ params }: { params: Promise<{ id: s
             {doc.createdAt.toLocaleDateString('en-US')}
           </p>
         </div>
-        <p className="shrink-0 text-xs text-muted">
+        <p className="shrink-0 text-xs font-medium text-muted">
           {remaining} awaiting a decision
         </p>
       </div>
 
       {duplicates.length > 0 && (
-        <div className="rounded-lg border border-amber-300 bg-gold-50 px-3 py-2 text-xs text-amber-900">
+        <div className="rounded-lg border border-gold-500/40 bg-gold-50 px-3 py-2 text-xs text-gold-800">
           Identical file content already in the log:{' '}
           {duplicates.map((d, i) => (
             <span key={d.toDocument.id}>

@@ -428,6 +428,22 @@ a normal accident during an import, or after a partial failure — put a second 
 Review to be decided all over again. The mark now appears on the row in both Review and
 the master log, and links to the original.
 
+## Getting back out
+
+Two different questions that look like one.
+
+Inside the master log's drill-down, "back" means **one level up** — companies, then
+types, then documents — so it is an ordinary link to a known place. It is a visible
+button rather than only the first breadcrumb, because small text links read as a label
+rather than as something to press. A search or the removed view jumped straight to the
+document list without passing through a company, so their button goes to the top instead
+of to a level nobody visited.
+
+On a document (`/classify/[id]`), "back" means **where you came from** — the log, the
+review sweep or a queue card, and no single href is right for all three. That one pops
+browser history, falling back to the log for a link opened in a fresh tab, where
+`router.back()` would be a button that does nothing.
+
 ## Searching for a filename
 
 The log's search matches the generated tsvector, the vendor name, **and** both filename

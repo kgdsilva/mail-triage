@@ -9,6 +9,7 @@ import { countByEntity, countByType, listDocuments } from '@/server/documents'
 import { deleteDocument, restoreDocument } from '@/server/actions/documents'
 import { canSeeWholeLog, requireSession } from '@/server/session'
 import { PeekRow } from '@/components/pdf-peek'
+import { BackLink } from '@/components/back'
 import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
@@ -74,6 +75,21 @@ export default async function LogPage({
   const crumbEntity = entities.find((e) => e.id === entitySel)
   const crumbType = types.find((t) => t.id === typeSel)
 
+  /*
+   * One step up the drill-down.
+   *
+   * A search or the removed view jumped straight to level 3 without passing through a
+   * company, so their way out is the top rather than a level that was never visited.
+   */
+  const upOneLevel =
+    level === 3 && entitySel && typeSel && !searching && !showingDeleted
+      ? hrefFor(sp, { entity: entitySel })
+      : hrefFor(sp, {})
+  const upLabel =
+    level === 3 && entitySel && typeSel && !searching && !showingDeleted
+      ? `Back to ${crumbEntity ? crumbEntity.code : 'the company'}`
+      : 'Back to all companies'
+
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -107,10 +123,19 @@ export default async function LogPage({
         level={level}
       />
 
-      {/* Where you are, and every step back. */}
+      {/*
+        Where you are, and every step back.
+
+        The button repeats what the first crumb already links to, on purpose: the crumbs
+        are small text and read as a label rather than as something to press, so "how do
+        I get out of this company" had no visible answer. One level up, not browser
+        history — this is a hierarchy, and going up is not always going back.
+      */}
       {level > 1 && (
-        <nav className="flex flex-wrap items-center gap-1.5 text-[13px]">
-          <Link href={hrefFor(sp, {})} className="text-navy-700 hover:underline">
+        <nav className="flex flex-wrap items-center gap-2 text-[13px]">
+          <BackLink href={upOneLevel} label={upLabel} />
+          <span className="mx-0.5 h-4 w-px bg-line" aria-hidden />
+          <Link href={hrefFor(sp, {})} className="font-medium text-navy-700 hover:underline">
             All companies
           </Link>
           <span className="text-subtle">/</span>
@@ -126,7 +151,7 @@ export default async function LogPage({
                 <>
                   <Link
                     href={hrefFor(sp, { entity: entitySel })}
-                    className="text-navy-700 hover:underline"
+                    className="font-medium text-navy-700 hover:underline"
                   >
                     {crumbEntity ? crumbEntity.code : 'No entity'}
                   </Link>

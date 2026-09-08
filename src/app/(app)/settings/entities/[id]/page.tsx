@@ -1,7 +1,7 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { EntityBadge } from '@/components/badges'
+import { BackLink } from '@/components/back'
 import {
   addEntityAlias,
   removeEntityAlias,
@@ -45,13 +45,7 @@ export default async function EntityDetailPage({
   return (
     <div className="max-w-3xl space-y-5">
       <div>
-        <Link
-          href="/settings/entities"
-          className="inline-flex items-center gap-1.5 text-[13px] text-muted transition-colors hover:text-navy-700"
-        >
-          <ArrowLeft className="size-3.5" aria-hidden />
-          All entities
-        </Link>
+        <BackLink href="/settings/entities" label="All entities" />
         <div className="mt-2 flex items-center gap-3">
           <EntityBadge code={entity.code} index={entity.sortOrder} />
           <h1 className="text-[22px] font-bold tracking-tight text-navy-900">
