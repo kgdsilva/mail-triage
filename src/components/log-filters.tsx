@@ -14,10 +14,17 @@ export function LogFilters({
   entities,
   types,
   total,
+  level,
 }: {
   entities: Option[]
   types: Option[]
   total: number
+  /**
+   * Which drill-down level is on screen. Entity and type are the navigation now, so
+   * their chips are gone; decision and status only make sense once a list exists to
+   * refine.
+   */
+  level: 1 | 2 | 3
 }) {
   const router = useRouter()
   const sp = useSearchParams()
@@ -45,9 +52,10 @@ export function LogFilters({
   }
 
   const view = sp.get('view') ?? 'main'
+  // Entity and type are the drill-down's position, not filters. Counting them here made
+  // "Clear 2 filters" sit beside a breadcrumb offering the same journey back, and
+  // clearing dropped you to the top level rather than refining what you were looking at.
   const activeCount =
-    selected('entity').size +
-    selected('type').size +
     selected('status').size +
     selected('disposition').size +
     (sp.get('q') ? 1 : 0)
@@ -101,8 +109,8 @@ export function LogFilters({
       </div>
 
       <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-xs shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
-        <FilterGroup label="Entity" options={entities} selected={selected('entity')} onToggle={(v) => toggle('entity', v)} />
-        <FilterGroup label="Type" options={types} selected={selected('type')} onToggle={(v) => toggle('type', v)} />
+        {level === 3 && (
+        <>
         <FilterGroup
           label="Decision"
           options={[
@@ -123,11 +131,25 @@ export function LogFilters({
           selected={selected('status')}
           onToggle={(v) => toggle('status', v)}
         />
+        </>
+        )}
 
         <div className="mt-0.5 flex items-center gap-3 border-t border-line-soft pt-2.5">
           {activeCount > 0 && (
             <button
-              onClick={() => startTransition(() => router.push('/log'))}
+              onClick={() =>
+                startTransition(() => {
+                  // Keeps where you are, drops only what refines it.
+                  const next = new URLSearchParams(sp)
+                  next.delete('status')
+                  next.delete('disposition')
+                  next.delete('q')
+                  next.delete('from')
+                  next.delete('to')
+                  next.delete('page')
+                  router.push(next.toString() ? `/log?${next}` : '/log')
+                })
+              }
               className="font-medium text-navy-700 underline underline-offset-2"
             >
               Clear {activeCount} filter{activeCount === 1 ? '' : 's'}

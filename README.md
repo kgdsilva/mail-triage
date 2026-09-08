@@ -96,6 +96,29 @@ npx tsx prisma/seed.ts
 npm run dev
 ```
 
+## The log is a drill-down, not one long table
+
+`/log` opens on the companies, each with a document count. Choosing one shows the
+document types within that company. Only the third level lists documents. The URL is the
+position — `?entity=…&type=…` — so every level is linkable and the back button works.
+
+`entity=none` and `type=none` reach the documents whose entity or type was never
+established. A screen that navigates by entity would otherwise have no route to them.
+
+Two things skip straight to the list: a search, because looking for a filename confined
+to one company makes little sense, and the removed-documents view. The breadcrumb says
+so rather than inventing an entity step that was not taken.
+
+Counts run through the same `buildWhere` as the rows, so the Main/Ops Perfection split
+and a member's restriction to their own documents apply to both. A tile promising 42
+documents that opens onto 3 would be worse than no count.
+
+Export follows the position: everything at the top, one company at the second level, the
+filtered list at the third. It needs no code of its own — the route reads the same
+params. Decision and status filters appear only at the third level, where there is a
+list to refine; entity and type are the navigation and are no longer counted as filters,
+so clearing keeps where you are.
+
 ## Autopay is not always all of the bill
 
 `AutopayRule.coversFullBalance` is false for an arrangement that settles only part of a

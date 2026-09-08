@@ -21,6 +21,13 @@ export type LogFilters = {
   restrictToUserId?: string
   /** Shows the removed rows instead of hiding them, so a removal can be undone. */
   showDeleted?: boolean
+  /**
+   * Drilling into the documents whose entity or type was never established. The log
+   * navigates by entity and then type, so without a way to select "none" those
+   * documents would have no route to them at all.
+   */
+  entityIsNull?: boolean
+  typeIsNull?: boolean
   page?: number
   pageSize?: number
 }
@@ -62,8 +69,11 @@ export async function buildWhere(
   if (filters.q?.trim()) {
     where.id = { in: await searchIds(companyGroupId, filters.q.trim()) }
   }
-  if (filters.entityIds?.length) where.entityId = { in: filters.entityIds }
-  if (filters.documentTypeIds?.length) where.documentTypeId = { in: filters.documentTypeIds }
+  if (filters.entityIsNull) where.entityId = null
+  else if (filters.entityIds?.length) where.entityId = { in: filters.entityIds }
+
+  if (filters.typeIsNull) where.documentTypeId = null
+  else if (filters.documentTypeIds?.length) where.documentTypeId = { in: filters.documentTypeIds }
   if (filters.statuses?.length) where.status = { in: filters.statuses }
   if (filters.dispositions?.length) where.disposition = { in: filters.dispositions }
 
@@ -498,4 +508,72 @@ export function listChecks(companyGroupId: string, entityId?: string | null) {
     orderBy: [{ documentDate: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
     take: 500,
   })
+}
+
+/**
+ * Counts per entity, for the first level of the log.
+ *
+ * Runs through buildWhere like every other listing, so the Main/Ops Perfection split,
+ * a member's restriction to their own documents and the removed-documents view all
+ * apply to the counts as well as to the rows. A tile promising 42 documents that opens
+ * onto 3 would be worse than no count at all.
+ */
+export async function countByEntity(companyGroupId: string, filters: LogFilters) {
+  const where = await buildWhere(companyGroupId, filters)
+
+  const [groups, entities] = await Promise.all([
+    prisma.document.groupBy({ by: ['entityId'], where, _count: { _all: true } }),
+    prisma.entity.findMany({
+      where: { companyGroupId },
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, code: true, legalName: true, sortOrder: true, isSegregated: true },
+    }),
+  ])
+
+  const counts = new Map(groups.map((g) => [g.entityId, g._count._all]))
+
+  const known = entities
+    .map((e) => ({ ...e, count: counts.get(e.id) ?? 0 }))
+    // An entity with nothing in it is not a place to drill into.
+    .filter((e) => e.count > 0)
+
+  const orphans = counts.get(null) ?? 0
+  return {
+    entities: known,
+    /// Documents whose entity was never established. They have to be reachable, or they
+    /// are invisible in a screen that navigates by entity.
+    unassigned: orphans,
+    total: [...counts.values()].reduce((a, b) => a + b, 0),
+  }
+}
+
+/** Counts per document type within one entity, for the second level. */
+export async function countByType(
+  companyGroupId: string,
+  entityId: string | null,
+  filters: LogFilters,
+) {
+  const where = {
+    ...(await buildWhere(companyGroupId, filters)),
+    entityId,
+  }
+
+  const [groups, types] = await Promise.all([
+    prisma.document.groupBy({ by: ['documentTypeId'], where, _count: { _all: true } }),
+    prisma.documentType.findMany({
+      where: { companyGroupId },
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, code: true, label: true },
+    }),
+  ])
+
+  const counts = new Map(groups.map((g) => [g.documentTypeId, g._count._all]))
+
+  return {
+    types: types
+      .map((t) => ({ ...t, count: counts.get(t.id) ?? 0 }))
+      .filter((t) => t.count > 0),
+    untyped: counts.get(null) ?? 0,
+    total: [...counts.values()].reduce((a, b) => a + b, 0),
+  }
 }

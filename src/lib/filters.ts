@@ -16,10 +16,20 @@ export function parseFilters(sp: URLSearchParams): LogFilters {
 
   const view = sp.get('view')
 
+  // `none` is the drill-down's way of naming the documents that never got an entity or
+  // a type. Kept out of the id lists, which would otherwise look for an entity with
+  // that id and find nothing.
+  const entityValues = list('entity')
+  const typeValues = list('type')
+  const entityIsNull = entityValues.includes('none')
+  const typeIsNull = typeValues.includes('none')
+
   return {
     q: sp.get('q') ?? undefined,
-    entityIds: list('entity'),
-    documentTypeIds: list('type'),
+    entityIds: entityValues.filter((v) => v !== 'none'),
+    documentTypeIds: typeValues.filter((v) => v !== 'none'),
+    entityIsNull,
+    typeIsNull,
     statuses: list('status') as DocStatus[],
     dispositions: list('disposition') as Disposition[],
     dateFrom: date('from'),
