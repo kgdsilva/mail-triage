@@ -22,3 +22,9 @@ CREATE INDEX IF NOT EXISTS "vendor_name_trgm_idx"
 
 CREATE INDEX IF NOT EXISTS "entity_alias_text_trgm_idx"
   ON "entity_alias" USING GIN ("alias_text" gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS "document_original_filename_trgm_idx"
+  ON "document" USING GIN ("original_filename" gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS "document_final_filename_trgm_idx"
+  ON "document" USING GIN ("final_filename" gin_trgm_ops);
