@@ -175,6 +175,15 @@ and record, never decide and forget.
 
 ## AI-assisted reading
 
+The reader runs on `claude-sonnet-5`, overridable with `ANTHROPIC_MODEL`. This call reads
+a form and reports the fields on it; the archive-or-act judgement is made afterwards by
+the deterministic filter and the merge rules, from what was read. Measured across six
+documents — two entity matches by trading name, an incoming cheque, a personal renewal, a
+solicitation and a lender rate sheet — Sonnet reached the same decision as Opus on every
+one, at roughly a third of the cost per document. It reports confidence a few points
+lower, so a document near the 0.85 auto-apply gate escalates where Opus would have filed
+it; `ANTHROPIC_MODEL=claude-opus-5` re-reads a batch that needs it.
+
 Set `ANTHROPIC_API_KEY` and uploads are read automatically; leave it blank and the
 feature is simply off, with classification fully manual. There is no OCR step — Claude
 reads scanned PDFs natively.

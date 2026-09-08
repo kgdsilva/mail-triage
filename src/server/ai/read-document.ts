@@ -13,7 +13,19 @@ import { EXTRACTION_SCHEMA, type Extraction } from '@/server/ai/schema'
  * Claude reads PDFs natively, including poor scans, so there is no OCR step.
  */
 
-const MODEL = 'claude-opus-5'
+/**
+ * Sonnet rather than Opus, deliberately.
+ *
+ * This call reads a form and reports the fields on it — an extraction task, not a hard
+ * reasoning one. The judgement that actually matters (archive or act, and why) is made
+ * afterwards by the deterministic filter and the merge rules, from what was read. Sonnet
+ * is a little over a third of Opus per token, and this runs once for every document in
+ * a months-long backlog.
+ *
+ * Overridable so a difficult batch can be re-read on a stronger model without a deploy:
+ * set ANTHROPIC_MODEL and run the reader again with force.
+ */
+const MODEL = process.env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5'
 
 /** Anything larger than this is almost certainly a mis-scan, and costs real money to read. */
 const MAX_READABLE_BYTES = 25 * 1024 * 1024
