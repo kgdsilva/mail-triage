@@ -410,6 +410,28 @@ typing "Berkheimer" matched nothing while the box promised to search filenames.
 Trigram indexes on `original_filename` and `final_filename` keep the substring match
 cheap.
 
+## Passwords
+
+Admin-set only: no self-service change, no reset email. An admin sets one here and tells
+the person what it is.
+
+Two things follow from that, and they shape the screen:
+
+- **The field is not masked, and Generate is the main way to fill it.** Masking protects
+  a password from someone reading over your shoulder, which is not the situation — the
+  admin is choosing one *in order to say it out loud*. Generate produces four groups of
+  four from a 32-character alphabet with no `l`, `1`, `o` or `0`: 80 bits of entropy,
+  still readable down the phone. A password a person invents under time pressure is
+  `colab2026`.
+- **It stays on screen after saving** until dismissed, because that is the only moment it
+  can be read.
+
+**It cannot be read back later, and that is not a display setting.** `passwordHash` is
+scrypt — the database holds enough to check a password and not enough to reproduce one,
+which is what stops a copy of the database being a list of everyone's credentials. This
+project has already rotated a leaked database URL once. The way back from "nobody
+remembers it" is a new password, which Generate makes a two-second job, not a lookup.
+
 ## Roles, and what they are not
 
 Access roles say what a person may **see and change**: OWNER, ADMIN, OPERATOR, MEMBER,

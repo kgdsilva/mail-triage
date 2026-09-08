@@ -1,6 +1,10 @@
-import { addMember, setMemberActive, setMemberPassword } from '@/server/actions/settings'
+import { CircleSlash, Info, RotateCcw } from 'lucide-react'
+import { setMemberActive } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
 import { requireAdmin } from '@/server/session'
+import { AddMemberForm } from '@/components/add-member-form'
+import { MemberPassword } from '@/components/member-password'
+import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,12 +12,25 @@ export const dynamic = 'force-dynamic'
  * Access roles only. Who pays or confirms a given document is decided per document on
  * the classify screen, not here — the same person may confirm one item and pay the next.
  */
-const ROLE_HELP: Record<string, string> = {
-  OWNER: 'Everything, including members and ownership',
-  ADMIN: 'Everything except ownership transfer',
-  OPERATOR: 'Uploads and classifies; sees the whole log',
-  MEMBER: 'Works the documents routed to them',
-  VIEWER: 'Read-only across the whole log',
+const ROLES = [
+  { role: 'OWNER', help: 'Everything, including members and ownership' },
+  { role: 'ADMIN', help: 'Everything except ownership transfer' },
+  { role: 'OPERATOR', help: 'Uploads and classifies; sees the whole log' },
+  { role: 'MEMBER', help: 'Works the documents routed to them' },
+  { role: 'VIEWER', help: 'Read-only across the whole log' },
+] as const
+
+const ROLE_HELP: Record<string, string> = Object.fromEntries(
+  ROLES.map((r) => [r.role, r.help]),
+)
+
+/** Colour by how much the role can do, so the list reads by weight before by word. */
+const ROLE_TONE: Record<string, string> = {
+  OWNER: 'bg-gold-100 text-gold-800',
+  ADMIN: 'bg-plum-100 text-plum-700',
+  OPERATOR: 'bg-navy-100 text-navy-900',
+  MEMBER: 'bg-sky-100 text-sky-700',
+  VIEWER: 'bg-line-soft text-muted',
 }
 
 export default async function MembersPage() {
@@ -22,117 +39,121 @@ export default async function MembersPage() {
   const members = await prisma.membership.findMany({
     where: { companyGroupId: session.companyGroupId },
     orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }],
-    include: { user: { select: { id: true, name: true, email: true, lastLoginAt: true, passwordHash: true } } },
+    include: {
+      user: {
+        select: { id: true, name: true, email: true, lastLoginAt: true, passwordHash: true },
+      },
+    },
   })
 
+  const active = members.filter((m) => m.isActive)
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="space-y-2">
-        <div className="rounded-lg border border-line bg-navy-50 px-3 py-2 text-xs text-muted">
-          This list is the allowlist. Signing in proves who someone is; being on this list
-          is what grants access. There is no invitation email and no self-signup — add the
-          address, and either set a password to hand them, or leave it blank so they sign
-          in with Google.
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="space-y-3">
+        <div className="flex items-start gap-2.5 rounded-xl border border-navy-100 bg-navy-50 px-3.5 py-3 text-[12.5px] leading-relaxed text-navy-900">
+          <Info className="mt-0.5 size-4 flex-none text-navy-500" aria-hidden />
+          <p>
+            <strong className="font-bold">This list is the allowlist.</strong> Signing in
+            proves who someone is; being on this list is what grants access. There is no
+            invitation email and no self-signup — add the address, then either set a
+            password to hand them or leave it blank so they sign in with Google.
+          </p>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-line bg-surface">
-          <table className="w-full text-sm">
-            <thead className="border-b border-line text-left text-[10.5px] uppercase tracking-[0.07em] text-subtle">
-              <tr>
-                <th className="px-4 py-3 font-semibold">Person</th>
-                <th className="px-4 py-3 font-semibold">Role</th>
-                <th className="px-4 py-3 font-semibold">Signs in with</th>
-                <th className="px-4 py-3 font-semibold">Last signed in</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line-soft">
-              {members.map((m) => (
-                <tr key={m.id} className={m.isActive ? '' : 'text-subtle'}>
-                  <td className="px-3 py-2 align-top">
-                    <span className="block">{m.user.name ?? '—'}</span>
-                    <span className="block text-xs text-muted">{m.user.email}</span>
-                  </td>
-                  <td className="px-3 py-2 align-top">
-                    <span className="text-xs">{m.role.toLowerCase()}</span>
-                    <span className="block text-[11px] text-muted">{ROLE_HELP[m.role]}</span>
-                  </td>
-                  <td className="px-3 py-2 align-top text-xs">
-                    {m.user.passwordHash ? 'Password or Google' : 'Google only'}
-                    <form
-                      action={setMemberPassword.bind(null, m.id)}
-                      className="mt-1 flex items-center gap-1"
-                    >
-                      <input
-                        name="password"
-                        type="password"
-                        placeholder={m.user.passwordHash ? 'New password' : 'Set password'}
-                        autoComplete="new-password"
-                        className="w-32 rounded-lg border border-line bg-transparent px-1.5 py-1 text-[11px] outline-none focus:border-navy-500"
-                      />
-                      <button className="text-[11px] text-muted underline hover:text-ink">
-                        Save
-                      </button>
-                    </form>
-                    {m.user.passwordHash && (
-                      <span className="mt-0.5 block text-[10px] text-subtle">
-                        Save blank to remove the password
+        <p className="text-[12.5px] font-semibold text-muted">
+          {active.length} {active.length === 1 ? 'person' : 'people'} with access
+          {members.length > active.length && `, ${members.length - active.length} revoked`}
+        </p>
+
+        <div className="space-y-2.5">
+          {members.map((m) => {
+            const label = m.user.name ?? m.user.email
+            const initials = label
+              .split(/[\s@.]+/)
+              .slice(0, 2)
+              .map((part) => part[0])
+              .join('')
+              .toUpperCase()
+
+            return (
+              <div
+                key={m.id}
+                className={`rounded-xl border bg-surface p-4 shadow-[0_1px_2px_rgba(18,40,74,0.05)] ${
+                  m.isActive ? 'border-line' : 'border-dashed border-line opacity-70'
+                }`}
+              >
+                <div className="flex flex-wrap items-start gap-3">
+                  <span
+                    className={`grid size-10 flex-none place-items-center rounded-full text-[12px] font-extrabold ${
+                      m.isActive ? 'bg-navy-700 text-white' : 'bg-line-soft text-muted'
+                    }`}
+                    aria-hidden
+                  >
+                    {initials}
+                  </span>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[15px] font-bold text-navy-900">
+                        {m.user.name ?? m.user.email}
                       </span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${ROLE_TONE[m.role] ?? 'bg-line-soft text-muted'}`}
+                      >
+                        {m.role.toLowerCase()}
+                      </span>
+                      {!m.isActive && (
+                        <span className="rounded-full bg-danger-100 px-2 py-0.5 text-[11px] font-bold text-danger-700">
+                          revoked
+                        </span>
+                      )}
+                    </div>
+                    {m.user.name && (
+                      <p className="mt-0.5 text-[12.5px] text-muted">{m.user.email}</p>
                     )}
-                  </td>
-                  <td className="px-3 py-2 align-top text-xs">
-                    {m.user.lastLoginAt ? (
-                      m.user.lastLoginAt.toLocaleDateString('en-US')
-                    ) : (
-                      <span className="text-subtle">never</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right align-top">
-                    <form action={setMemberActive.bind(null, m.id, !m.isActive)}>
-                      <button className="text-xs text-muted underline hover:text-ink">
-                        {m.isActive ? 'Revoke' : 'Restore'}
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <p className="mt-0.5 text-[12px] text-subtle">
+                      {ROLE_HELP[m.role]} ·{' '}
+                      {m.user.lastLoginAt
+                        ? `last signed in ${m.user.lastLoginAt.toLocaleDateString('en-US')}`
+                        : 'never signed in'}
+                    </p>
+                  </div>
+
+                  <form
+                    action={setMemberActive.bind(null, m.id, !m.isActive)}
+                    className="flex-none"
+                  >
+                    <button className={BTN.quiet}>
+                      {m.isActive ? (
+                        <>
+                          <CircleSlash className="size-3.5" aria-hidden />
+                          Revoke
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw className="size-3.5" aria-hidden />
+                          Restore
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </div>
+
+                <div className="mt-3 border-t border-line-soft pt-3">
+                  <MemberPassword
+                    membershipId={m.id}
+                    email={m.user.email}
+                    hasPassword={Boolean(m.user.passwordHash)}
+                  />
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      <form
-        action={addMember}
-        className="h-fit space-y-3 rounded-lg border border-line bg-surface p-4"
-      >
-        <p className="text-sm font-medium">Add a member</p>
-        <input name="email" type="email" required placeholder="name@example.com" className={inputClass} />
-        <input name="name" placeholder="Full name (optional)" className={inputClass} />
-        <select name="role" defaultValue="MEMBER" className={inputClass}>
-          {Object.entries(ROLE_HELP).map(([role, help]) => (
-            <option key={role} value={role}>
-              {role.toLowerCase()} — {help}
-            </option>
-          ))}
-        </select>
-        <input
-          name="password"
-          type="password"
-          autoComplete="new-password"
-          placeholder="Password (blank = Google only)"
-          className={inputClass}
-        />
-        <button className="w-full rounded-lg bg-navy-700 px-3 py-2 text-sm text-white">
-          Add member
-        </button>
-        <p className="text-[11px] text-muted">
-          If you set a password, hand it to them directly — there is no reset email. To
-          use Google instead, leave it blank; the address must match their Google account.
-        </p>
-      </form>
+      <AddMemberForm roles={ROLES.map((r) => ({ role: r.role, help: r.help }))} />
     </div>
   )
 }
-
-const inputClass =
-  'w-full rounded-lg border border-line bg-transparent px-2 py-1.5 text-sm outline-none focus:border-navy-500'
