@@ -1,6 +1,7 @@
 import { saveVendor } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
 import { requireSession } from '@/server/session'
+import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,9 +72,7 @@ export default async function VendorsPage() {
           <input type="checkbox" name="knownSpam" />
           Solicitation mill — always archive
         </label>
-        <button className="w-full rounded-lg bg-navy-700 px-3 py-2 text-sm text-white">
-          Add vendor
-        </button>
+        <button className={`w-full ${BTN.primary}`}>Add vendor</button>
       </form>
     </div>
   )

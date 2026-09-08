@@ -416,12 +416,12 @@ function QuickButton({
         e.stopPropagation()
         onClick()
       }}
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-50 ${
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition-colors active:bg-navy-100 disabled:opacity-50 ${
         active
           ? activeTone
           : proposed
-            ? 'border-gold-500 bg-gold-50 text-gold-800'
-            : 'border-line text-muted hover:border-navy-500 hover:bg-navy-50'
+            ? 'border-gold-500 bg-gold-50 text-gold-800 hover:bg-gold-100'
+            : 'border-line text-muted hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700'
       }`}
     >
       <Icon className="size-3.5" aria-hidden />

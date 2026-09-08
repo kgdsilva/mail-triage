@@ -95,6 +95,40 @@ h1, h2, h3, .display {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * Anything clickable gets the hand cursor.
+ *
+ * Not a preference — a missing default. Tailwind v4's Preflight sets `appearance:
+ * button` on <button> and deliberately stops short of `cursor: pointer`, so the
+ * browser's own default wins and every button in the app showed a plain arrow. Links
+ * were fine, which is what made it look arbitrary: the same row could have a hand over
+ * one word and an arrow over the next.
+ */
+:where(button, summary, select, [role='button'], [role='tab'], input[type='file'], label:has(input[type='checkbox']), label:has(input[type='radio']), label:has(input[type='file'])):not(:disabled):not([aria-disabled='true']) {
+  cursor: pointer;
+}
+::file-selector-button {
+  cursor: pointer;
+}
+:where(button, input, select, textarea):disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+/*
+ * And a press that looks like a press.
+ *
+ * Hover states alone left every click ambiguous — nothing moved, so the only way to
+ * know it registered was to wait and see whether the screen changed. A pixel of travel
+ * on mousedown is enough to feel it. Buttons carry their own colour change on :active
+ * as well; this is the part that is the same everywhere.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  :where(button, [role='button'], [role='tab']):not(:disabled):active {
+    transform: translateY(1px);
+  }
+}
+
 /* Native controls follow the brand rather than the OS accent colour. */
 :where(input, select, textarea, button) {
   font-family: inherit;

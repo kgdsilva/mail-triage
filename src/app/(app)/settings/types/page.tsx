@@ -1,6 +1,7 @@
 import { saveDocumentType } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
 import { requireSession } from '@/server/session'
+import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,9 +58,7 @@ export default async function TypesPage() {
           <option value="ARCHIVE">Archive</option>
         </select>
         <input name="sortOrder" type="number" defaultValue={100} className={inputClass} />
-        <button className="w-full rounded-lg bg-navy-700 px-3 py-2 text-sm text-white">
-          Add type
-        </button>
+        <button className={`w-full ${BTN.primary}`}>Add type</button>
       </form>
     </div>
   )

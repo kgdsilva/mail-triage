@@ -377,6 +377,19 @@ Colours are written out literally in `theme.ts` rather than built from a hue nam
 Tailwind generates utilities by scanning the source text, so `bg-${hue}-100` compiles to
 a class that does not exist in the stylesheet.
 
+Anything clickable shows the hand cursor, and every button moves a pixel and changes
+colour when pressed. The first half was a missing default rather than a preference:
+Tailwind v4's Preflight sets `appearance: button` on `<button>` and deliberately stops
+short of `cursor: pointer`, so the browser's own default won and every button in the app
+showed a plain arrow while links beside them showed a hand. The second half is the same
+problem from the other side — with only a hover state, the only way to know a click
+registered was to wait and see whether the screen changed. Both live in
+`src/app/globals.css`; the per-button colour change is in the `BTN` tokens.
+
+The corollary is that an action has to look like a control. Several were underlined prose
+— Save, Revoke, Restore, End, Clear filters — which is why the app read as "writing, not
+buttons". They are bordered buttons now.
+
 Type is Inter for reading and Plus Jakarta Sans for headings and figures — wider and
 heavier at the same size, so a title reads as a title without being twice the body size.
 JetBrains Mono only where alignment carries meaning: filenames and entity codes. Money

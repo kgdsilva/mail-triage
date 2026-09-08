@@ -1,8 +1,9 @@
 'use client'
 
-import { Search } from 'lucide-react'
+import { Search, Trash2, X } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useTransition } from 'react'
+import { BTN } from '@/lib/theme'
 
 type Option = { id: string; label: string }
 
@@ -91,8 +92,10 @@ export function LogFilters({
             <button
               key={v}
               onClick={() => apply((next) => next.set('view', v))}
-              className={`px-3 py-2 font-medium transition-colors ${
-                view === v ? 'bg-navy-700 text-white' : 'text-muted hover:bg-navy-50'
+              className={`px-3 py-2 font-semibold transition-colors ${
+                view === v
+                  ? 'bg-navy-700 text-white'
+                  : 'text-muted hover:bg-navy-50 hover:text-navy-700 active:bg-navy-100'
               }`}
             >
               {v === 'main' ? 'Main' : v === 'segregated' ? 'Ops Perfection' : 'All'}
@@ -102,7 +105,7 @@ export function LogFilters({
 
         <a
           href={`/api/export?${sp.toString()}`}
-          className="rounded-lg border border-line bg-surface px-3 py-2 text-[13px] font-medium text-navy-700 transition-colors hover:border-navy-500 hover:bg-navy-50"
+          className="rounded-lg border border-line bg-surface px-3 py-2 text-[13px] font-semibold text-navy-700 transition-colors hover:border-navy-500 hover:bg-navy-50 active:bg-navy-100"
         >
           Export CSV
         </a>
@@ -150,15 +153,14 @@ export function LogFilters({
                   router.push(next.toString() ? `/log?${next}` : '/log')
                 })
               }
-              className="font-medium text-navy-700 underline underline-offset-2"
+              className={BTN.quiet}
             >
+              <X className="size-3" aria-hidden />
               Clear {activeCount} filter{activeCount === 1 ? '' : 's'}
             </button>
           )}
-          <a
-            href="/log?deleted=1"
-            className="text-muted underline underline-offset-2 hover:text-navy-700"
-          >
+          <a href="/log?deleted=1" className={BTN.quiet}>
+            <Trash2 className="size-3" aria-hidden />
             Removed documents
           </a>
           <span className="ml-auto tabular text-muted">
@@ -192,10 +194,10 @@ function FilterGroup({
         <button
           key={o.id}
           onClick={() => onToggle(o.id)}
-          className={`rounded-full border px-2.5 py-1 font-medium transition-colors ${
+          className={`rounded-full border px-2.5 py-1 font-semibold transition-colors ${
             selected.has(o.id)
-              ? 'border-navy-700 bg-navy-700 text-white'
-              : 'border-line text-muted hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700'
+              ? 'border-navy-700 bg-navy-700 text-white active:bg-navy-900'
+              : 'border-line text-muted hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700 active:bg-navy-100'
           }`}
         >
           {o.label}

@@ -4,6 +4,7 @@ import { EntityBadge } from '@/components/badges'
 import { saveEntity } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
 import { requireSession } from '@/server/session'
+import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
 
@@ -99,9 +100,7 @@ export default async function EntitiesPage() {
           <input type="checkbox" name="isSegregated" />
           Keep in its own tab
         </label>
-        <button className="w-full rounded-lg bg-navy-700 px-3 py-2 text-sm text-white">
-          Add entity
-        </button>
+        <button className={`w-full ${BTN.primary}`}>Add entity</button>
       </form>
     </div>
   )

@@ -172,7 +172,7 @@ export default async function EntityDetailPage({
       </form>
 
       <form action={toggleEntityActive.bind(null, entity.id, !entity.isActive)}>
-        <button className="text-[12.5px] text-muted underline underline-offset-2 transition-colors hover:text-navy-700">
+        <button className={entity.isActive ? BTN.danger : BTN.quiet}>
           {entity.isActive ? 'Deactivate this entity' : 'Reactivate this entity'}
         </button>
         <p className="mt-1 text-[12px] text-subtle">

@@ -9,6 +9,7 @@ import { countByEntity, countByType, listDocuments } from '@/server/documents'
 import { deleteDocument, restoreDocument } from '@/server/actions/documents'
 import { canSeeWholeLog, requireSession } from '@/server/session'
 import { PeekRow } from '@/components/pdf-peek'
+import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
 
@@ -153,7 +154,7 @@ export default async function LogPage({
             <Link
               key={e.id}
               href={hrefFor(sp, { entity: e.id })}
-              className="group flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3.5 shadow-[0_1px_2px_rgba(18,40,74,0.05)] transition-colors hover:border-navy-500 hover:bg-navy-50"
+              className="group flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3.5 shadow-[0_1px_2px_rgba(18,40,74,0.05)] transition-colors hover:border-navy-500 hover:bg-navy-50 active:bg-navy-100"
             >
               <EntityBadge code={e.code} index={e.sortOrder} />
               <span className="min-w-0 flex-1">
@@ -171,7 +172,7 @@ export default async function LogPage({
           {byEntity.unassigned > 0 && (
             <Link
               href={hrefFor(sp, { entity: 'none' })}
-              className="group flex items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 py-3.5 transition-colors hover:border-navy-500 hover:bg-navy-50"
+              className="group flex items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 py-3.5 transition-colors hover:border-navy-500 hover:bg-navy-50 active:bg-navy-100"
             >
               <span className="rounded-full bg-line-soft px-2 py-0.5 text-[11px] font-medium text-muted">
                 None
@@ -203,7 +204,7 @@ export default async function LogPage({
               <Link
                 key={t.id}
                 href={hrefFor(sp, { entity: entitySel, type: t.id })}
-                className="group flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3.5 shadow-[0_1px_2px_rgba(18,40,74,0.05)] transition-colors hover:border-navy-500 hover:bg-navy-50"
+                className="group flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3.5 shadow-[0_1px_2px_rgba(18,40,74,0.05)] transition-colors hover:border-navy-500 hover:bg-navy-50 active:bg-navy-100"
               >
                 <span className="grid size-9 flex-none place-items-center rounded-[10px] bg-navy-50 text-navy-700">
                   <Icon className="size-4.5" strokeWidth={1.8} aria-hidden />
@@ -224,7 +225,7 @@ export default async function LogPage({
           {byType.untyped > 0 && (
             <Link
               href={hrefFor(sp, { entity: entitySel, type: 'none' })}
-              className="group flex items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 py-3.5 transition-colors hover:border-navy-500 hover:bg-navy-50"
+              className="group flex items-center gap-3 rounded-xl border border-dashed border-line bg-surface px-4 py-3.5 transition-colors hover:border-navy-500 hover:bg-navy-50 active:bg-navy-100"
             >
               <span className="grid size-9 flex-none place-items-center rounded-[10px] bg-line-soft text-muted">
                 <FileQuestion className="size-4.5" strokeWidth={1.8} aria-hidden />
@@ -352,7 +353,7 @@ export default async function LogPage({
                     <td className="whitespace-nowrap px-3 py-3 text-right">
                       {showingDeleted ? (
                         <form action={restoreDocument.bind(null, d.id)}>
-                          <button className="inline-flex items-center gap-1 text-[12px] text-navy-700 transition-colors hover:underline">
+                          <button className={BTN.quiet}>
                             <Undo2 className="size-3.5" aria-hidden />
                             Restore
                           </button>
@@ -360,7 +361,7 @@ export default async function LogPage({
                       ) : (
                         <form action={deleteDocument.bind(null, d.id)}>
                           <button
-                            className="inline-flex items-center gap-1 text-[12px] text-subtle transition-colors hover:text-danger-700"
+                            className={BTN.danger}
                             title="Remove from the log. The record and its history are kept, and this can be undone."
                             aria-label={`Remove ${d.finalFilename ?? d.originalFilename} from the log`}
                           >
@@ -445,7 +446,7 @@ function PageLink({ sp, page, label }: { sp: URLSearchParams; page: number; labe
   return (
     <Link
       href={`/log?${next.toString()}`}
-      className="rounded-lg border border-line bg-surface px-2.5 py-1.5 font-medium text-navy-700 transition-colors hover:border-navy-500 hover:bg-navy-50"
+      className="rounded-lg border border-line bg-surface px-2.5 py-1.5 font-semibold text-navy-700 transition-colors hover:border-navy-500 hover:bg-navy-50 active:bg-navy-100"
     >
       {label}
     </Link>

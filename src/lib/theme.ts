@@ -150,16 +150,26 @@ export const URGENCY_BAR = {
 export const CARD = 'rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(18,40,74,0.05)]'
 export const INPUT =
   'w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-subtle outline-none transition-colors focus:border-navy-500'
+/**
+ * Buttons.
+ *
+ * Each one changes colour on hover *and* again on :active, so a click is confirmed by
+ * the button itself rather than only by whatever happens next. The global stylesheet
+ * adds the pixel of travel and the hand cursor.
+ */
 export const BTN = {
   primary:
-    'inline-flex items-center justify-center gap-1.5 rounded-lg bg-navy-700 px-3.5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-navy-900 disabled:opacity-50',
+    'inline-flex items-center justify-center gap-1.5 rounded-lg bg-navy-700 px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_1px_1px_rgba(18,40,74,0.15)] transition-colors hover:bg-navy-900 active:bg-navy-900 active:shadow-none disabled:opacity-50 disabled:shadow-none',
   secondary:
-    'inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-navy-700 transition-colors hover:border-navy-500 hover:bg-navy-50',
+    'inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-navy-700 transition-colors hover:border-navy-500 hover:bg-navy-50 active:bg-navy-100 disabled:opacity-50',
   ghost:
-    'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:bg-navy-50 hover:text-navy-700',
+    'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:bg-navy-50 hover:text-navy-700 active:bg-navy-100 disabled:opacity-50',
   /** Finishing something is the good outcome, so it gets the only green button. */
   done:
-    'inline-flex items-center justify-center gap-1.5 rounded-lg bg-ok-700 px-3.5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-[#155538] disabled:opacity-50',
+    'inline-flex items-center justify-center gap-1.5 rounded-lg bg-ok-700 px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_1px_1px_rgba(18,40,74,0.15)] transition-colors hover:bg-[#155538] active:bg-[#0f3f29] active:shadow-none disabled:opacity-50 disabled:shadow-none',
   quiet:
-    'inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[12px] font-medium text-muted transition-colors hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700',
+    'inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[12px] font-medium text-muted transition-colors hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700 active:bg-navy-100 disabled:opacity-50',
+  /** For a destructive row action: quiet until you are over it. */
+  danger:
+    'inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[12px] font-medium text-muted transition-colors hover:border-danger-500 hover:bg-danger-100 hover:text-danger-700 active:bg-danger-100 disabled:opacity-50',
 } as const

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { AuthError } from 'next-auth'
 import { signIn } from '@/auth'
 import { getSession } from '@/server/session'
+import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,9 +76,7 @@ export default async function SignInPage({
               className={inputClass}
             />
           </div>
-          <button className="w-full rounded-lg bg-navy-700 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-navy-900">
-            Sign in
-          </button>
+          <button className={`w-full py-2.5 text-sm ${BTN.primary}`}>Sign in</button>
         </form>
 
         <div className="my-5 flex items-center gap-3 text-xs text-subtle">
@@ -92,7 +91,7 @@ export default async function SignInPage({
             await signIn('google', { redirectTo: '/' })
           }}
         >
-          <button className="w-full rounded-lg border border-line bg-surface px-4 py-2.5 text-sm font-medium text-navy-700 transition-colors hover:border-navy-500 hover:bg-navy-50">
+          <button className={`w-full py-2.5 text-sm ${BTN.secondary}`}>
             Continue with Google
           </button>
         </form>

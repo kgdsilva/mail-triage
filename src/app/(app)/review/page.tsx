@@ -155,10 +155,10 @@ function Tab({ href, active, label }: { href: string; active: boolean; label: st
   return (
     <Link
       href={href}
-      className={`rounded-full border px-2.5 py-1 font-medium transition-colors ${
+      className={`rounded-full border px-2.5 py-1 font-semibold transition-colors ${
         active
-          ? 'border-navy-700 bg-navy-700 text-white'
-          : 'border-line text-muted hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700'
+          ? 'border-navy-700 bg-navy-700 text-white active:bg-navy-900'
+          : 'border-line text-muted hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700 active:bg-navy-100'
       }`}
     >
       {label}

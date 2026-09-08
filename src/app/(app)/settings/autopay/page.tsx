@@ -2,6 +2,7 @@ import { endAutopayRule, saveAutopayRule } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
 import { requireSession } from '@/server/session'
 import { formatDate } from '@/components/badges'
+import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
 
@@ -81,9 +82,7 @@ export default async function AutopayPage() {
                     <td className="px-3 py-2 text-right">
                       {!ended && (
                         <form action={endAutopayRule.bind(null, r.id)}>
-                          <button className="text-xs text-muted underline hover:text-ink">
-                            End
-                          </button>
+                          <button className={BTN.quiet}>End</button>
                         </form>
                       )}
                     </td>
@@ -149,9 +148,7 @@ export default async function AutopayPage() {
             </span>
           </span>
         </label>
-        <button className="w-full rounded-lg bg-navy-700 px-3 py-2 text-sm text-white">
-          Confirm rule
-        </button>
+        <button className={`w-full ${BTN.primary}`}>Confirm rule</button>
         <p className="text-[11px] text-muted">
           Recorded against your name — this is the record of who vouched for it.
         </p>
