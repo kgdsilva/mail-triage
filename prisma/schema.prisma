@@ -483,6 +483,19 @@ model Document {
   aiSuggestion Json?    @map("ai_suggestion")
   aiConfidence Decimal? @map("ai_confidence") @db.Decimal(4, 3)
 
+  /// How many times a read has been tried, and why the last one failed.
+  ///
+  /// A failed read used to be written into `aiSuggestion` so it would not block the
+  /// queue behind it. That worked, and cost more than it saved: the field then held
+  /// something that was not a conclusion, "documents still to read" stopped counting
+  /// it, and nothing could ever retry it. A transient API error retired a document
+  /// silently — the worst possible outcome during a bulk import.
+  ///
+  /// Counted here instead, so a read can be retried a few times and then genuinely
+  /// given up on, out loud.
+  aiReadAttempts Int     @default(0) @map("ai_read_attempts")
+  aiReadError    String? @map("ai_read_error")
+
   reviewedByUserId String?   @map("reviewed_by_user_id")
   reviewedBy       User?     @relation("DocumentReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
   reviewedAt       DateTime? @map("reviewed_at")

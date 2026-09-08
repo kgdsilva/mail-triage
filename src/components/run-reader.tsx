@@ -2,8 +2,8 @@
 
 import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
-import { Sparkles, Square } from 'lucide-react'
-import { analyzeUnread } from '@/server/actions/ai'
+import { RotateCcw, Sparkles, Square } from 'lucide-react'
+import { analyzeUnread, retryUnreadable } from '@/server/actions/ai'
 import { BTN } from '@/lib/theme'
 
 /**
@@ -20,9 +20,12 @@ import { BTN } from '@/lib/theme'
  */
 export function RunReader({
   initialUnread,
+  unreadable = 0,
   enabledHint = false,
 }: {
   initialUnread: number
+  /** Documents the reader has tried three times and given up on. */
+  unreadable?: number
   /** Suppresses the "turn it on" nudge when it already is. */
   enabledHint?: boolean
 }) {
@@ -39,8 +42,37 @@ export function RunReader({
   // A ref, not state: the loop has to see a stop request that arrives mid-run, and
   // state captured when the loop started would never change under it.
   const stopRequested = useRef(false)
+  const [resetting, setResetting] = useState(false)
+
+  /*
+   * Re-sync the count when the server sends a new one.
+   *
+   * `remaining` has to be local because it changes many times during a run, between
+   * renders the server knows nothing about. But seeding it from a prop once meant the
+   * button kept the old number after anything else moved it — putting three documents
+   * back with "Try again" left the button still offering two. Adjusting during render
+   * rather than in an effect, which is what React recommends for exactly this.
+   */
+  const [syncedFrom, setSyncedFrom] = useState(initialUnread)
+  if (syncedFrom !== initialUnread && !running) {
+    setSyncedFrom(initialUnread)
+    setRemaining(initialUnread)
+  }
 
   const total = initialUnread
+
+  async function retry() {
+    setResetting(true)
+    setError(null)
+    try {
+      await retryUnreadable()
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not reset those documents.')
+    } finally {
+      setResetting(false)
+    }
+  }
 
   async function run() {
     setRunning(true)
@@ -89,9 +121,12 @@ export function RunReader({
 
   if (total === 0 && done === 0) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted">
-        <Sparkles className="size-3.5 text-navy-500" aria-hidden />
-        Everything uploaded has been read.
+      <span className="flex flex-wrap items-center gap-3">
+        <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted">
+          <Sparkles className="size-3.5 text-navy-500" aria-hidden />
+          Everything uploaded has been read.
+        </span>
+        <Unreadable count={unreadable} onRetry={retry} busy={resetting} />
       </span>
     )
   }
@@ -161,11 +196,47 @@ export function RunReader({
       )}
 
       {failed > 0 && (
-        <span className="text-[12.5px] text-danger-700">
+        <span className="text-[12.5px] font-semibold text-danger-700">
           {failed} could not be read
         </span>
       )}
+      {!running && <Unreadable count={unreadable} onRetry={retry} busy={resetting} />}
       {error && <span className="text-[12.5px] text-danger-700">{error}</span>}
     </div>
+  )
+}
+
+/**
+ * The documents the reader gave up on, and the way to put them back.
+ *
+ * These used to vanish: a failure was recorded as if it were an answer, so nothing
+ * counted them and no screen mentioned them. Saying the number out loud is most of the
+ * fix — the button is for the case where the failures were an outage rather than the
+ * files.
+ */
+function Unreadable({
+  count,
+  onRetry,
+  busy,
+}: {
+  count: number
+  onRetry: () => void
+  busy: boolean
+}) {
+  if (count === 0) return null
+
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full bg-danger-100 py-1 pl-3 pr-1 text-[12px] font-semibold text-danger-700">
+      {count} could not be read
+      <button
+        type="button"
+        onClick={onRetry}
+        disabled={busy}
+        className="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 font-semibold text-danger-700 transition-opacity hover:opacity-80 disabled:opacity-50"
+      >
+        <RotateCcw className="size-3" aria-hidden />
+        {busy ? 'Resetting…' : 'Try again'}
+      </button>
+    </span>
   )
 }

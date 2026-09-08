@@ -42,6 +42,7 @@ export const DEFAULT_PAGE_SIZE = 50
  * Returns null when there is no query, meaning "do not constrain by id".
  */
 async function searchIds(companyGroupId: string, q: string): Promise<string[]> {
+  const like = `%${q}%`
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT d.id
     FROM "document" d
@@ -49,7 +50,9 @@ async function searchIds(companyGroupId: string, q: string): Promise<string[]> {
     WHERE d.company_group_id = ${companyGroupId}
       AND (
         d.search_vector @@ websearch_to_tsquery('english', ${q})
-        OR v.name ILIKE ${'%' + q + '%'}
+        OR v.name ILIKE ${like}
+        OR d.original_filename ILIKE ${like}
+        OR d.final_filename ILIKE ${like}
       )
     LIMIT 5000
   `
@@ -98,6 +101,7 @@ export async function buildWhere(
 export const LOG_INCLUDE = {
   // sortOrder drives the entity's badge colour; code drives the type icon.
   entity: { select: { code: true, legalName: true, isSegregated: true, sortOrder: true } },
+  linksFrom: { where: { relation: 'DUPLICATE_OF' }, select: { toDocumentId: true }, take: 1 },
   batch: { select: { label: true } },
   documentType: { select: { label: true, code: true } },
   vendor: { select: { name: true } },
@@ -480,6 +484,14 @@ export function listForReview(
       documentType: { select: { label: true, code: true } },
       vendor: { select: { name: true } },
       batch: { select: { label: true } },
+      // Enough to say "this is a duplicate" and link to the original. Uploading the
+      // same folder twice is a normal accident during an import, and a duplicate that
+      // only shows up on the classify screen is a decision made twice.
+      linksFrom: {
+        where: { relation: 'DUPLICATE_OF' },
+        select: { toDocumentId: true },
+        take: 1,
+      },
     },
     orderBy: [
       { disposition: 'asc' },

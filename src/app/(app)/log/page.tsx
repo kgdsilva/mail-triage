@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ChevronRight, FileQuestion, Search, Trash2, Undo2 } from 'lucide-react'
+import { ChevronRight, Copy, FileQuestion, Search, Trash2, Undo2 } from 'lucide-react'
 import { DispositionBadge, DueBadge, EntityBadge, StatusBadge, formatDate, formatMoney } from '@/components/badges'
 import { documentTypeIcon, documentTypeInk } from '@/lib/theme'
 import { LogFilters } from '@/components/log-filters'
@@ -296,6 +296,18 @@ export default async function LogPage({
                         <span className="mt-0.5 block truncate text-[12px] text-subtle">
                           {d.summaryNote}
                         </span>
+                      )}
+                      {/* The same file arriving twice is a normal accident during an
+                          import. Saying so here is what stops it being decided twice. */}
+                      {d.linksFrom[0] && (
+                        <Link
+                          href={`/log?q=${encodeURIComponent(d.finalFilename ?? d.originalFilename)}`}
+                          className="mt-1 inline-flex items-center gap-1 rounded bg-clay-100 px-1.5 py-0.5 text-[11px] font-semibold text-clay-700 hover:underline"
+                          title="An identical file is already in the log."
+                        >
+                          <Copy className="size-3" aria-hidden />
+                          Duplicate
+                        </Link>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-muted">

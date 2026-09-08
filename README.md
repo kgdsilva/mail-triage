@@ -21,6 +21,26 @@ before anyone can sign in — see "Google sign-in" below.
 Roadmap: 1.5 historical import · 2 role-scoped queues · 3 Drive/Box sync · 4 AI-assisted
 classification · 5 pattern detection.
 
+**Not built yet, and worth knowing:** nothing sends email. The `notification` table and
+`notifiedAt` column exist and nothing writes to them, so a document routed to someone is
+only discovered by opening the app.
+
+## One-off scripts
+
+`docs/` holds the scripts that cannot be a migration, because they carry this group's
+data rather than the shape of the schema. Each is idempotent and each was run against a
+local database before being handed over.
+
+- `fix-production-entities.sql` — MM's legal name and the eleven entity aliases. The
+  build runs migrations, not the seed, so a name corrected in code never reaches an
+  already-seeded database.
+- `seed-autopay-rules.sql` — the seven confirmed autopay arrangements and any missing
+  vendor. Read the header: `effective_from` is backdated on purpose, and one rule is
+  deliberately *not* backdated.
+- `reset-documents.sql` — clears the test documents so the real log starts empty. For
+  use once, before go-live; after that, removing a document is the Remove button, which
+  is a soft delete.
+
 ## Google sign-in
 
 Access is **allowlist-based**. Signing in with Google proves identity; it does not grant
@@ -350,6 +370,45 @@ and dates use tabular figures so columns line up.
 One thing to watch when passing icons around: a lucide icon is a component, and a
 component cannot cross from a server component into a client one. `NavLink` therefore
 takes an icon **name** and holds the map itself.
+
+## When the reader cannot read something
+
+A read fails for two reasons that look identical from the outside: the API was briefly
+unavailable, or the file genuinely cannot be read. The failure used to be written into
+`aiSuggestion` so that one bad file could not block the queue behind it. That worked,
+and cost more than it saved — the field then held something that was not a conclusion,
+"documents still to read" stopped counting it, and nothing could ever retry it. During
+an import of hundreds, which is exactly when a rate limit or a 529 happens, a single
+transient error retired a document silently.
+
+Attempts are counted on the document instead (`aiReadAttempts`, `aiReadError`).
+`MAX_READ_ATTEMPTS` is 3: a transient failure clears long before the third try and a
+corrupt scan never will, which tells the two cases apart without anyone deciding. After
+three, the row says "Could not be read" with the message behind it, the Review header
+says how many, and one button puts them all back — for the case where the failures were
+an outage rather than the files.
+
+## Duplicates
+
+Both upload paths — the direct-to-storage one and the fallback — hash the file and, on
+an identical sha256, record a `DUPLICATE_OF` link to the copy that arrived first.
+Nothing is refused: the log never loses a row, and a scan that genuinely arrived twice
+is a fact about the mail.
+
+The link was only ever shown on the classify screen, which meant a re-uploaded folder —
+a normal accident during an import, or after a partial failure — put a second copy into
+Review to be decided all over again. The mark now appears on the row in both Review and
+the master log, and links to the original.
+
+## Searching for a filename
+
+The log's search matches the generated tsvector, the vendor name, **and** both filename
+columns with ILIKE. The last part is not redundant: Postgres's text-search parser
+classifies `MUNAR_7-5-26_Berkheimer payment.pdf` as a single "file" token and indexes it
+whole, so no word inside a filename was reachable through full-text search at all —
+typing "Berkheimer" matched nothing while the box promised to search filenames.
+Trigram indexes on `original_filename` and `final_filename` keep the substring match
+cheap.
 
 ## Roles, and what they are not
 

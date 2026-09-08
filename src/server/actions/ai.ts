@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/server/db/client'
-import { analyzeDocument, type AiSuggestion } from '@/server/ai/suggest'
+import { MAX_READ_ATTEMPTS, analyzeDocument, type AiSuggestion } from '@/server/ai/suggest'
 import { recordEvent } from '@/server/documents'
 import { aiConfigured } from '@/server/ai/read-document'
 import { requireTriage } from '@/server/session'
@@ -34,6 +34,17 @@ export async function isAiAvailable() {
   return aiConfigured()
 }
 
+/** Documents the reader still owes an answer on, including failures worth retrying. */
+function unreadWhere(companyGroupId: string) {
+  return {
+    companyGroupId,
+    deletedAt: null,
+    aiSuggestion: { equals: Prisma.DbNull },
+    storageKey: { not: null },
+    aiReadAttempts: { lt: MAX_READ_ATTEMPTS },
+  } as const
+}
+
 /**
  * Reads a slice of the documents that have never been read, and reports what is left.
  *
@@ -42,6 +53,13 @@ export async function isAiAvailable() {
  * through a handful — an "analyse everything" endpoint would simply time out partway
  * through an import and leave no record of where it stopped. The caller loops instead,
  * which also means progress is visible and the work can be stopped or resumed.
+ *
+ * A failure counts as an attempt rather than as an answer. Writing the error into
+ * `aiSuggestion` — which is what this used to do, to stop one bad file blocking the
+ * queue behind it — worked and cost more than it saved: nothing counted the document as
+ * unread any more, so a single transient API error retired it silently, and during an
+ * import of hundreds that is exactly when transient errors happen. Now it comes back
+ * round, twice, and is then reported as unreadable instead of disappearing.
  */
 export async function analyzeUnread(
   limit = 4,
@@ -62,13 +80,10 @@ export async function analyzeUnread(
   }
 
   const batch = await prisma.document.findMany({
-    where: {
-      companyGroupId: session.companyGroupId,
-      deletedAt: null,
-      aiSuggestion: { equals: Prisma.DbNull },
-      storageKey: { not: null },
-    },
-    orderBy: { createdAt: 'asc' },
+    where: unreadWhere(session.companyGroupId),
+    // Never-tried documents first, so one unreadable file cannot keep taking the slots
+    // at the front of an import that still has hundreds of readable pages behind it.
+    orderBy: [{ aiReadAttempts: 'asc' }, { createdAt: 'asc' }],
     take: Math.min(Math.max(1, limit), 10),
     select: { id: true },
   })
@@ -85,26 +100,23 @@ export async function analyzeUnread(
       processed += 1
       if (result.applied) applied += 1
       else escalated += 1
+      // A read that succeeded on the second try should not leave the first one's
+      // message sitting on the record as if it were still true.
+      await prisma.document.update({
+        where: { id: doc.id },
+        data: { aiReadError: null },
+      })
     } else {
       failed += 1
       lastError = result.error
-      // Mark it so a document that cannot be read never blocks the queue behind it —
-      // otherwise the same failure is retried forever and the loop never drains.
       await prisma.document.update({
         where: { id: doc.id },
-        data: { aiSuggestion: { error: result.error, failedAt: new Date().toISOString() } },
+        data: { aiReadAttempts: { increment: 1 }, aiReadError: result.error ?? 'Read failed' },
       })
     }
   }
 
-  const remaining = await prisma.document.count({
-    where: {
-      companyGroupId: session.companyGroupId,
-      deletedAt: null,
-      aiSuggestion: { equals: Prisma.DbNull },
-      storageKey: { not: null },
-    },
-  })
+  const remaining = await prisma.document.count({ where: unreadWhere(session.companyGroupId) })
 
   if (processed > 0) {
     // Layout scope: the nav badge is rendered there and has to move with the screen.
@@ -114,18 +126,54 @@ export async function analyzeUnread(
   return { processed, applied, escalated, failed, remaining, lastError }
 }
 
-/** How many documents are still waiting to be read — drives the button's label. */
-export async function countUnread(): Promise<{ unread: number; available: boolean }> {
+/**
+ * How many documents are still waiting to be read — drives the button's label — and how
+ * many the reader has given up on.
+ *
+ * The second number is the point. The button used to say "0 to read" while rows still
+ * showed nothing from the reader, because a failure had been recorded as an answer.
+ */
+export async function countUnread(): Promise<{
+  unread: number
+  unreadable: number
+  available: boolean
+}> {
   const session = await requireTriage()
-  const unread = await prisma.document.count({
+  const [unread, unreadable] = await Promise.all([
+    prisma.document.count({ where: unreadWhere(session.companyGroupId) }),
+    prisma.document.count({
+      where: {
+        companyGroupId: session.companyGroupId,
+        deletedAt: null,
+        aiSuggestion: { equals: Prisma.DbNull },
+        storageKey: { not: null },
+        aiReadAttempts: { gte: MAX_READ_ATTEMPTS },
+      },
+    }),
+  ])
+  return { unread, unreadable, available: aiConfigured() }
+}
+
+/**
+ * Puts the given-up documents back in the queue, once someone has had a look at why.
+ *
+ * Three failures usually means the file itself, not the API — but "usually" is not
+ * "always", and an outage that outlasts a whole import would retire everything. This is
+ * the way back without a database console.
+ */
+export async function retryUnreadable(): Promise<{ reset: number }> {
+  const session = await requireTriage()
+  const { count } = await prisma.document.updateMany({
     where: {
       companyGroupId: session.companyGroupId,
       deletedAt: null,
       aiSuggestion: { equals: Prisma.DbNull },
-      storageKey: { not: null },
+      aiReadAttempts: { gte: MAX_READ_ATTEMPTS },
     },
+    data: { aiReadAttempts: 0, aiReadError: null },
   })
-  return { unread, available: aiConfigured() }
+  revalidatePath('/', 'layout')
+  return { reset: count }
 }
 
 /**

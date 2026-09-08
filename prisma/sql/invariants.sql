@@ -46,3 +46,15 @@ CREATE INDEX IF NOT EXISTS "document_open_queue_idx" ON "document" ("company_gro
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX IF NOT EXISTS "vendor_name_trgm_idx" ON "vendor" USING GIN ("name" gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS "entity_alias_text_trgm_idx" ON "entity_alias" USING GIN ("alias_text" gin_trgm_ops);
+
+-- Filenames are searched with ILIKE, not through the tsvector, so these keep it quick.
+--
+-- Postgres's text-search parser classifies "MUNAR_7-5-26_Berkheimer payment.pdf" as a
+-- single "file" token and indexes it whole. Every word inside a filename is therefore
+-- unreachable through full-text search — typing "Berkheimer" matched nothing at all,
+-- while the search box promised to search filenames. Trigram indexes make the substring
+-- match that people actually expect cheap enough to keep.
+CREATE INDEX IF NOT EXISTS "document_original_filename_trgm_idx"
+  ON "document" USING GIN ("original_filename" gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS "document_final_filename_trgm_idx"
+  ON "document" USING GIN ("final_filename" gin_trgm_ops);

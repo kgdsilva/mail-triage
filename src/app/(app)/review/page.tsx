@@ -1,13 +1,13 @@
 import Link from 'next/link'
 import { prisma } from '@/server/db/client'
 import { countNotFiled, countUnreviewed, listForReview } from '@/server/documents'
+import { countUnread } from '@/server/actions/ai'
 import { requireTriage } from '@/server/session'
 import { ReviewTable, type ReviewRow } from '@/components/review-table'
 import { RunReader } from '@/components/run-reader'
 import { AutoApplyToggle } from '@/components/auto-apply-toggle'
 import { aiConfigured } from '@/server/ai/read-document'
-import { autoApplyEnabled } from '@/server/ai/suggest'
-import { Prisma } from '@/generated/prisma/client'
+import { MAX_READ_ATTEMPTS, autoApplyEnabled } from '@/server/ai/suggest'
 
 export const dynamic = 'force-dynamic'
 
@@ -73,16 +73,11 @@ export default async function ReviewPage({
 
   const aiAvailable = aiConfigured()
   const autoApply = aiAvailable ? await autoApplyEnabled(session.companyGroupId) : false
-  const unread = aiAvailable
-    ? await prisma.document.count({
-        where: {
-          companyGroupId: session.companyGroupId,
-          deletedAt: null,
-          aiSuggestion: { equals: Prisma.DbNull },
-          storageKey: { not: null },
-        },
-      })
-    : 0
+  // One source for both numbers, so the button and the rows cannot disagree about
+  // whether there is anything left to read.
+  const { unread, unreadable } = aiAvailable
+    ? await countUnread()
+    : { unread: 0, unreadable: 0 }
 
   return (
     <div className="space-y-4">
@@ -90,7 +85,9 @@ export default async function ReviewPage({
           be swept, and the button that fills it should not be three cards down. */}
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 className="text-[22px] font-bold tracking-tight text-navy-900">Review</h1>
-        {aiAvailable && <RunReader initialUnread={unread} enabledHint={autoApply} />}
+        {aiAvailable && (
+          <RunReader initialUnread={unread} unreadable={unreadable} enabledHint={autoApply} />
+        )}
         {aiAvailable && (
           <div className="ml-auto">
             <AutoApplyToggle enabled={autoApply} />
@@ -191,13 +188,19 @@ function toRow(d: Awaited<ReturnType<typeof listForReview>>[number]): ReviewRow 
     typeLabel: d.documentType?.label ?? null,
     vendorName: d.vendor?.name ?? null,
     batchLabel: d.batch?.label ?? null,
+    duplicateOfId: d.linksFrom[0]?.toDocumentId ?? null,
+    readError:
+      d.aiSuggestion === null && d.aiReadAttempts >= MAX_READ_ATTEMPTS ? d.aiReadError : null,
     ai: toAi(d.aiSuggestion),
   }
 }
 
 /**
- * A read that failed is stored as an error marker so it stops blocking the queue; it is
- * not a suggestion, so the row shows as unread rather than pretending to have one.
+ * What the reader concluded, or nothing.
+ *
+ * A failed read is no longer written here — it is counted on the document instead — so
+ * this only has to be defensive about shape, not about error markers pretending to be
+ * suggestions.
  */
 function toAi(raw: unknown): ReviewRow['ai'] {
   if (!raw || typeof raw !== 'object') return null

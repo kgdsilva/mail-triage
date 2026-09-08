@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
-import { Ban, Check, CircleDot, FileText, Pencil, Sparkles, Wallet } from 'lucide-react'
+import { Ban, Check, CircleDot, Copy, FileText, Pencil, Sparkles, TriangleAlert, Wallet } from 'lucide-react'
 import { decideQuickly, refineArchiveReason } from '@/server/actions/documents'
 import { resolveEntity } from '@/server/actions/ai'
 import { EntityBadge, formatDate, formatMoney } from '@/components/badges'
@@ -28,6 +28,10 @@ export type ReviewRow = {
   typeLabel: string | null
   vendorName: string | null
   batchLabel: string | null
+  /** Set when an identical file (same sha256) is already in the log. */
+  duplicateOfId: string | null
+  /** The last failure message, once the reader has given up on this document. */
+  readError: string | null
   /** What the reader proposed, when this document has been read. */
   ai: {
     disposition: string
@@ -172,6 +176,7 @@ export function ReviewTable({
                                   .filter(Boolean)
                                   .join(' · ') || row.batchLabel}
                               </p>
+                              <Flags row={row} />
                               <ReasonLine row={row} />
                             </div>
                           </div>
@@ -252,6 +257,44 @@ export function ReviewTable({
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * The two things about a row that are neither a decision nor a reason: that the same
+ * file is already in the log, and that the reader could not read it.
+ *
+ * Both used to be invisible here. A duplicate was recorded as a link only the classify
+ * screen showed, so re-uploading a folder — a normal accident during an import — put a
+ * second copy in this table to be decided all over again. A failed read was written
+ * into the suggestion field, so the row said "not read yet" forever with no way to say
+ * why or to try again.
+ */
+function Flags({ row }: { row: ReviewRow }) {
+  if (!row.duplicateOfId && !row.readError) return null
+
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-1.5">
+      {row.duplicateOfId && (
+        <Link
+          href={`/classify/${row.duplicateOfId}`}
+          className="inline-flex items-center gap-1 rounded bg-clay-100 px-1.5 py-0.5 text-[11px] font-semibold text-clay-700 hover:underline"
+          title="An identical file is already in the log. Opens the one that arrived first."
+        >
+          <Copy className="size-3" aria-hidden />
+          Duplicate
+        </Link>
+      )}
+      {row.readError && (
+        <span
+          className="inline-flex items-center gap-1 rounded bg-danger-100 px-1.5 py-0.5 text-[11px] font-semibold text-danger-700"
+          title={row.readError}
+        >
+          <TriangleAlert className="size-3" aria-hidden />
+          Could not be read
+        </span>
+      )}
+    </span>
   )
 }
 

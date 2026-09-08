@@ -324,6 +324,19 @@ export function mergeVerdict(
 }
 
 /** Below this, a decision is never applied without a person seeing it. */
+/**
+ * How many times a document is offered to the reader before giving up on it.
+ *
+ * A read fails for two very different reasons and they look identical from the caller:
+ * the API was briefly unavailable, or the file cannot be read at all. Three tries tells
+ * them apart without a human deciding — a rate limit or a 529 clears long before the
+ * third, and a corrupt scan never will.
+ *
+ * Lives here rather than in the action module because a 'use server' file may only
+ * export async functions, and the review screen needs the same number to label a row.
+ */
+export const MAX_READ_ATTEMPTS = 3
+
 export const AUTO_APPLY_THRESHOLD = 0.85
 
 /**
