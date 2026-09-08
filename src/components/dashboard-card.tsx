@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { ArrowRightLeft, Check, ExternalLink } from 'lucide-react'
+import { ArrowRightLeft, Check, ChevronDown, ExternalLink } from 'lucide-react'
 import { handOffDocument, resolveDocument } from '@/server/actions/documents'
 import { DueBadge } from '@/components/badges'
 import { BTN, CARD, documentTypeIcon, documentTypeTone, entityColor } from '@/lib/theme'
@@ -19,6 +19,8 @@ export type CardDoc = {
   typeCode: string | null
   vendorName: string | null
   typeLabel: string | null
+  /** A historical row can exist before its PDF is attached; an iframe would 404. */
+  hasFile: boolean
 }
 
 /**
@@ -34,6 +36,7 @@ export function DocumentCard({
   people: { id: string; label: string }[]
 }) {
   const [handingOff, setHandingOff] = useState(false)
+  const [open, setOpen] = useState(false)
   const Icon = documentTypeIcon(doc.typeCode)
 
   return (
@@ -55,12 +58,13 @@ export function DocumentCard({
                 {doc.entityCode}
               </span>
             )}
-            <Link
-              href={`/classify/${doc.id}`}
-              className="truncate text-[14.5px] font-semibold text-navy-900 hover:underline"
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="truncate text-left text-[14.5px] font-semibold text-navy-900 hover:underline"
             >
               {doc.vendorName ?? doc.title}
-            </Link>
+            </button>
             {doc.typeLabel && <span className="text-[12.5px] text-subtle">{doc.typeLabel}</span>}
           </div>
 
@@ -79,23 +83,74 @@ export function DocumentCard({
               <ArrowRightLeft className="size-3.5" aria-hidden />
               {handingOff ? 'Cancel' : 'Hand off'}
             </button>
-            <Link href={`/classify/${doc.id}`} className={BTN.ghost}>
-              <ExternalLink className="size-3.5" aria-hidden />
-              Open
-            </Link>
+            <button type="button" onClick={() => setOpen((v) => !v)} className={BTN.ghost}>
+              <ChevronDown
+                className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`}
+                aria-hidden
+              />
+              {open ? 'Hide' : 'View'}
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-none flex-col items-end gap-1.5 text-right">
-          {doc.amount && (
-            <span className="tabular text-[21px] font-semibold tracking-tight text-navy-900">
-              ${doc.amount}
-            </span>
-          )}
-          {/* No due date is simply absent here — a dash would dangle under the amount. */}
-          {doc.dueDate && <DueBadge date={doc.dueDate} />}
+        <div className="flex flex-none items-start gap-2">
+          <div className="flex flex-col items-end gap-1.5 text-right">
+            {doc.amount && (
+              <span className="tabular text-[21px] font-semibold tracking-tight text-navy-900">
+                ${doc.amount}
+              </span>
+            )}
+            {/* No due date is simply absent here — a dash would dangle under the amount. */}
+            {doc.dueDate && <DueBadge date={doc.dueDate} />}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-label={open ? 'Hide the document' : 'Show the document'}
+            className="mt-0.5 grid size-7 place-items-center rounded-lg text-subtle transition-colors hover:bg-navy-50 hover:text-navy-700"
+          >
+            <ChevronDown
+              className={`size-4 transition-transform ${open ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          </button>
         </div>
       </div>
+
+      {/*
+        The document itself, read where the decision is made.
+        Opening it used to mean the classify screen — a form of a dozen fields, when all
+        that was wanted was a look at the page. The iframe only mounts once expanded, so
+        a queue of twenty cards does not fetch twenty PDFs.
+      */}
+      {open && (
+        <div className="mt-3.5 border-t border-line-soft pt-3.5">
+          {doc.hasFile ? (
+            <div className="h-[32rem] overflow-hidden rounded-lg border border-line bg-line-soft">
+              <iframe
+                src={`/api/files/${doc.id}#view=FitH&navpanes=0`}
+                title={doc.title}
+                className="h-full w-full"
+              />
+            </div>
+          ) : (
+            <p className="rounded-lg border border-dashed border-line px-4 py-10 text-center text-[13px] text-muted">
+              No file attached to this record.
+            </p>
+          )}
+          <div className="mt-2 flex items-center justify-end">
+            <Link
+              href={`/classify/${doc.id}`}
+              className="inline-flex items-center gap-1.5 text-[12px] text-muted transition-colors hover:text-navy-700"
+            >
+              <ExternalLink className="size-3.5" aria-hidden />
+              Edit the details
+            </Link>
+          </div>
+        </div>
+      )}
 
       {handingOff && (
         <form

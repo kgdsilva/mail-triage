@@ -241,7 +241,7 @@ export function ReviewTable({
         {selected?.hasFile ? (
           <iframe
             key={selected.id}
-            src={`/api/files/${selected.id}#view=FitH`}
+            src={`/api/files/${selected.id}#view=FitH&navpanes=0`}
             title={selected.originalFilename}
             className="h-full w-full"
           />

@@ -92,7 +92,7 @@ export default async function ClassifyPage({ params }: { params: Promise<{ id: s
         <div className="h-[calc(100vh-190px)] min-h-[520px] overflow-hidden rounded-lg border border-line bg-line-soft">
           {doc.storageKey ? (
             <iframe
-              src={`/api/files/${doc.id}#view=FitH`}
+              src={`/api/files/${doc.id}#view=FitH&navpanes=0`}
               title={doc.originalFilename}
               className="h-full w-full"
             />

@@ -181,6 +181,7 @@ function serialize(doc: {
   amount: unknown
   dueDate: Date | null
   actionKind: string | null
+  storageKey: string | null
   entity: { code: string; sortOrder: number } | null
   vendor: { name: string } | null
   documentType: { label: string; code: string } | null
@@ -202,5 +203,6 @@ function serialize(doc: {
     typeCode: doc.documentType?.code ?? null,
     vendorName: doc.vendor?.name ?? null,
     typeLabel: doc.documentType?.label ?? null,
+    hasFile: Boolean(doc.storageKey),
   }
 }
