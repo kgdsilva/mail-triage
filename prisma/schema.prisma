@@ -46,6 +46,7 @@ model CompanyGroup {
   routingRules  RoutingRule[]
   batches       Batch[]
   documents     Document[]
+  payments      Payment[]
 
   @@map("company_group")
 }
@@ -72,6 +73,7 @@ model User {
   sessions          Session[]
   uploadedBatches   Batch[]           @relation("BatchUploader")
   assignedDocuments Document[]        @relation("DocumentAssignee")
+  recordedPayments  Payment[]         @relation("PaymentRecorder")
   reviewedDocuments Document[]        @relation("DocumentReviewer")
   confirmedAutopay  AutopayRule[]
   routedTo          RoutingRule[]
@@ -158,6 +160,7 @@ model Entity {
   folders      StorageFolder[]
   autopayRules AutopayRule[]
   documents    Document[]
+  payments     Payment[]
 
   @@unique([companyGroupId, code])
   @@index([companyGroupId, isActive])
@@ -272,6 +275,7 @@ model Vendor {
 
   autopayRules AutopayRule[]
   documents    Document[]
+  payments     Payment[]
 
   @@unique([companyGroupId, name])
   @@index([companyGroupId, knownSpam])
@@ -320,6 +324,66 @@ model AutopayRule {
   @@unique([vendorId, entityId, effectiveFrom])
   @@index([companyGroupId, entityId])
   @@map("autopay_rule")
+}
+
+/// A bill that was paid, and the proof.
+///
+/// Its own table rather than a state on Document, for two reasons. A payment is not a
+/// piece of incoming mail: a receipt is something this office produces, and pushing it
+/// through the triage pipeline would put every proof of payment into the Review queue
+/// asking to be classified. And a payment carries facts a document does not — when the
+/// money actually left, how, and how much of the balance it covered.
+///
+/// `documentId` is nullable and deliberately not unique. Nullable because a bill can be
+/// paid before its scan ever arrives, or never have one at all. Not unique because one
+/// statement can take more than one payment — Marquette Bank is exactly that case, with
+/// the minimum drafted automatically and the principal paid by hand.
+model Payment {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  documentId String?   @map("document_id")
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  entityId String @map("entity_id")
+  entity   Entity @relation(fields: [entityId], references: [id], onDelete: Restrict)
+
+  vendorId String? @map("vendor_id")
+  vendor   Vendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  /// Who was paid, when they are not a vendor on record yet. Typing a name should never
+  /// be blocked by having to create a vendor first.
+  payeeName String? @map("payee_name")
+
+  amount   Decimal @db.Decimal(12, 2)
+  currency String  @default("USD")
+
+  /// The day the money left, which is not the day it was recorded here.
+  paidOn DateTime @map("paid_on") @db.Date
+
+  /// "Check 1043", "ACH", "Amex" — how it was paid, in the words the team uses.
+  method String?
+  note   String?
+
+  /// The proof itself, stored the same way document scans are. Kept on this row rather
+  /// than as another Document so it never enters the triage queue.
+  receiptStorageKey    String? @map("receipt_storage_key")
+  receiptStorageBucket String? @map("receipt_storage_bucket")
+  receiptFilename      String? @map("receipt_filename")
+  receiptMimeType      String? @map("receipt_mime_type")
+  receiptByteSize      Int?    @map("receipt_byte_size")
+
+  recordedByUserId String @map("recorded_by_user_id")
+  recordedBy       User   @relation("PaymentRecorder", fields: [recordedByUserId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([companyGroupId, paidOn])
+  @@index([companyGroupId, entityId])
+  @@index([documentId])
+  @@map("payment")
 }
 
 model RoutingRule {
@@ -512,6 +576,7 @@ model Document {
   linksFrom     DocumentLink[]  @relation("LinkFrom")
   linksTo       DocumentLink[]  @relation("LinkTo")
   events        DocumentEvent[]
+  payments      Payment[]
   notifications Notification[]
 
   @@index([companyGroupId, status, disposition])

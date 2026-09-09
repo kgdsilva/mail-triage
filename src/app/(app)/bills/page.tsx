@@ -66,6 +66,7 @@ export default async function BillsPage({
             Number(String(d.amount)),
           ),
     dueDate: d.dueDate ? d.dueDate.toISOString().slice(0, 10) : null,
+    entityId: d.entityId,
     entityCode: d.entity?.code ?? null,
     entityIndex: d.entity?.sortOrder ?? 0,
     assignee: d.assignedTo?.name ?? d.assignedTo?.email ?? null,
@@ -119,7 +120,7 @@ export default async function BillsPage({
           </p>
         </div>
       ) : (
-        <BillsList bills={bills} canTriage={isAdmin(session.role)} />
+        <BillsList bills={bills} canTriage={isAdmin(session.role)} entities={entities} />
       )}
     </div>
   )

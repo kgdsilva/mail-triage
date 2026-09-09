@@ -353,6 +353,37 @@ anyone else, and a button that always errors is worse than no button.
 
 A MEMBER sees only bills routed to them; everyone else sees the whole group's.
 
+## Bills paid, and the proof
+
+`/paid` is the counterpart to Bills to pay: that screen is the work ahead, this is the
+record of what is behind. Grouped by month, because that is the unit it gets read in —
+reconciling a statement, or answering "what went out in July".
+
+Two ways in, neither the lesser path. **Mark paid** on a bill records the payment and
+closes the bill in one act; splitting those is how a paid bill ended up with no record
+of what was paid, when, or by whom. **Record a payment** enters one that happened
+outside the platform — paid before the scan arrived, or never scanned at all. Both go
+through the same form and write the same row.
+
+`Payment` is its own table rather than a state on `Document`, for two reasons. A receipt
+is not incoming mail: pushing it through the triage pipeline would put every proof of
+payment into the Review queue asking to be classified. And a payment carries facts a
+document does not — when the money actually left, how, and how much of the balance it
+covered. `documentId` is nullable, and deliberately **not** unique: one statement can
+take more than one payment, which is exactly the Marquette Bank case where the minimum
+is drafted and the principal paid by hand.
+
+The receipt itself is stored the same way document scans are, keyed off the payment row,
+and served from `/api/receipts/[id]` — by payment id, so the tenant check happens before
+any bytes are read. Uploads take the same two paths as documents (presigned direct when
+object storage is configured, inside the form action otherwise), because a photo of a
+receipt clears Vercel's 4.5 MB body cap without trying. Images render in an `<img>` and
+PDFs in a frame: an image in an iframe sits at its natural size in the corner.
+
+A payment with no receipt says **No receipt** on the row and is counted at the top of
+the screen. That is the one row an audit stops on, and the usual reason is simply that
+the proof turned up later — so the row carries the button to attach it.
+
 ## Reading a document without leaving the screen
 
 Every list — queue, bills, checks, the master log — opens the PDF in place from a

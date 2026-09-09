@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Inbox,
   ListChecks,
+  Receipt,
   Settings,
   Table2,
   Upload,
@@ -17,6 +18,7 @@ import {
 const ICONS: Record<string, LucideIcon> = {
   queue: Inbox,
   bills: Wallet,
+  paid: Receipt,
   checks: Banknote,
   review: ListChecks,
   upload: Upload,

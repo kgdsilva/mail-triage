@@ -58,3 +58,19 @@ CREATE INDEX IF NOT EXISTS "document_original_filename_trgm_idx"
   ON "document" USING GIN ("original_filename" gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS "document_final_filename_trgm_idx"
   ON "document" USING GIN ("final_filename" gin_trgm_ops);
+
+-- A payment of nothing is not a payment, and a negative one is a refund — a different
+-- thing this table does not model. Refused at the door rather than silently averaged
+-- into a total later.
+ALTER TABLE "payment" DROP CONSTRAINT IF EXISTS "payment_amount_positive";
+ALTER TABLE "payment"
+  ADD CONSTRAINT "payment_amount_positive" CHECK ("amount" > 0);
+
+-- A receipt is either wholly there or wholly absent: a key with no bucket cannot be
+-- fetched, and a bucket with no key names nothing.
+ALTER TABLE "payment" DROP CONSTRAINT IF EXISTS "payment_receipt_complete";
+ALTER TABLE "payment"
+  ADD CONSTRAINT "payment_receipt_complete" CHECK (
+    ("receipt_storage_key" IS NULL AND "receipt_storage_bucket" IS NULL)
+    OR ("receipt_storage_key" IS NOT NULL AND "receipt_storage_bucket" IS NOT NULL)
+  );

@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Archive, Check, TriangleAlert } from 'lucide-react'
-import { decideQuickly, resolveDocument } from '@/server/actions/documents'
+import { Archive, BadgeCheck, TriangleAlert, Wallet } from 'lucide-react'
+import { decideQuickly } from '@/server/actions/documents'
 import { PdfFrame, PeekToggle } from '@/components/pdf-peek'
+import { PaymentForm, type PaymentEntity } from '@/components/payment-form'
 import {
   BTN,
   URGENCY_BAR,
@@ -24,6 +25,7 @@ export type Bill = {
   summaryNote: string | null
   amount: string | null
   dueDate: string | null
+  entityId: string | null
   entityCode: string | null
   entityIndex: number
   assignee: string | null
@@ -44,7 +46,16 @@ const BUCKETS = [
   { key: 'none' as const, label: 'No date on the document', blurb: 'Nothing states a deadline.' },
 ]
 
-export function BillsList({ bills, canTriage }: { bills: Bill[]; canTriage: boolean }) {
+export function BillsList({
+  bills,
+  canTriage,
+  entities,
+}: {
+  bills: Bill[]
+  canTriage: boolean
+  /** Needed by the payment form, which asks which company the money came from. */
+  entities: PaymentEntity[]
+}) {
   return (
     <div className="space-y-7">
       {BUCKETS.map((bucket) => {
@@ -74,7 +85,12 @@ export function BillsList({ bills, canTriage }: { bills: Bill[]; canTriage: bool
 
             <div className="space-y-2">
               {rows.map((bill) => (
-                <BillRow key={bill.id} bill={bill} canTriage={canTriage} />
+                <BillRow
+                  key={bill.id}
+                  bill={bill}
+                  canTriage={canTriage}
+                  entities={entities}
+                />
               ))}
             </div>
           </section>
@@ -84,8 +100,17 @@ export function BillsList({ bills, canTriage }: { bills: Bill[]; canTriage: bool
   )
 }
 
-function BillRow({ bill, canTriage }: { bill: Bill; canTriage: boolean }) {
+function BillRow({
+  bill,
+  canTriage,
+  entities,
+}: {
+  bill: Bill
+  canTriage: boolean
+  entities: PaymentEntity[]
+}) {
   const [open, setOpen] = useState(false)
+  const [paying, setPaying] = useState(false)
   const Icon = documentTypeIcon(bill.typeCode)
   const level = urgency(bill.dueDate)
 
@@ -142,12 +167,20 @@ function BillRow({ bill, canTriage }: { bill: Bill; canTriage: boolean }) {
         </span>
 
         <span className="flex flex-none items-center gap-1.5">
-          <form action={resolveDocument.bind(null, bill.id)}>
-            <button className={BTN.done} title="Paid and finished">
-              <Check className="size-3.5" aria-hidden />
-              Done
-            </button>
-          </form>
+          {/*
+            "Mark paid" rather than "Done". Finishing a bill and recording that money
+            left are the same act, and splitting them is how a paid bill ended up with
+            no record of what was paid, when, or by whom.
+          */}
+          <button
+            type="button"
+            onClick={() => setPaying((v) => !v)}
+            className={BTN.done}
+            title="Record the payment and close this bill"
+          >
+            <Wallet className="size-3.5" aria-hidden />
+            {paying ? 'Cancel' : 'Mark paid'}
+          </button>
 
           {/*
             Archive and Spam only for the people who triage. They rewrite the decision
@@ -178,6 +211,27 @@ function BillRow({ bill, canTriage }: { bill: Bill; canTriage: boolean }) {
           <PeekToggle open={open} onToggle={() => setOpen((v) => !v)} />
         </span>
       </div>
+
+      {paying && (
+        <div className="border-t border-line-soft bg-canvas px-4 py-3.5">
+          <p className="mb-3 flex items-center gap-1.5 text-[12.5px] font-bold text-navy-900">
+            <BadgeCheck className="size-4 text-ok-700" aria-hidden />
+            Record this payment
+          </p>
+          <PaymentForm
+            entities={entities}
+            bill={{
+              documentId: bill.id,
+              entityId: bill.entityId,
+              entityCode: bill.entityCode,
+              entityIndex: bill.entityIndex,
+              payee: bill.vendorName,
+              amount: bill.amount,
+            }}
+            onCancel={() => setPaying(false)}
+          />
+        </div>
+      )}
 
       {open && (
         <div className="border-t border-line-soft px-4 py-3.5">

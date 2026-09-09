@@ -53,6 +53,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           blurb: 'Everything open with money to send out, grouped by how soon it is due.',
           icon: 'bills' as const,
         },
+        {
+          href: '/paid',
+          label: 'Bills paid',
+          blurb: 'The history of what went out, each with its receipt attached.',
+          icon: 'paid' as const,
+        },
         ...(wholeLog
           ? [
               {
