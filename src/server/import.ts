@@ -1,5 +1,6 @@
 import { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/server/db/client'
+import { deleteObject } from '@/server/storage'
 import {
   COLUMNS,
   amountFromNote,
@@ -619,31 +620,52 @@ export async function reconciliation(companyGroupId: string) {
 // Matching the PDFs to the rows
 // ---------------------------------------------------------------------------
 
-export async function matchRowForFile(companyGroupId: string, filename: string) {
+export type RowMatch =
+  | { kind: 'row'; documentId: string }
+  | { kind: 'already'; finalFilename: string }
+  | { kind: 'none' }
+
+/**
+ * Which spreadsheet row a file belongs to.
+ *
+ * Three answers, and the third is the one that matters in practice. Uploading several
+ * hundred PDFs takes more than one sitting: a tab gets closed, a laptop sleeps, and the
+ * obvious way to resume is to drag the same folder in again. If a file whose row already
+ * has its PDF simply "matched nothing", every file already done would come back as an
+ * unplaceable duplicate on Review — the resume would create the mess it was meant to
+ * avoid.
+ *
+ * So a name whose row is already satisfied is reported as such and skipped, before any
+ * bytes are uploaded. The final filename is unique by convention, which is what makes
+ * the name enough to say "this one is done"; a genuinely different file arriving under a
+ * name already taken is reported as skipped rather than silently replacing the stored
+ * copy, because overwriting a filed document is a decision a person makes.
+ */
+export async function matchRowForFile(
+  companyGroupId: string,
+  filename: string,
+): Promise<RowMatch> {
   const key = matchKey(filename)
 
-  /*
-   * Only rows that are still waiting for a file. Re-dragging a folder that was already
-   * uploaded therefore matches nothing and creates unplaceable duplicates instead of
-   * silently replacing the stored copy — the report says so, and re-attaching is a
-   * decision a person makes.
-   */
   const candidates = await prisma.document.findMany({
     where: {
       companyGroupId,
       deletedAt: null,
-      storageKey: null,
       finalFilename: { not: null },
       batch: { source: 'HISTORICAL_IMPORT' },
     },
-    select: { id: true, finalFilename: true },
+    select: { id: true, finalFilename: true, storageKey: true },
   })
 
   const hits = candidates.filter((c) => matchKey(c.finalFilename!) === key)
-  return hits.length === 1 ? hits[0].id : null
+  if (hits.length !== 1) return { kind: 'none' }
+  if (hits[0].storageKey) return { kind: 'already', finalFilename: hits[0].finalFilename! }
+  return { kind: 'row', documentId: hits[0].id }
 }
 
-export type AttachResult = { ok: true; matched: boolean } | { ok: false; error: string }
+export type AttachResult =
+  | { ok: true; matched: boolean; duplicate?: boolean }
+  | { ok: false; error: string }
 
 export async function attachStoredFile(
   session: { companyGroupId: string; userId: string },
@@ -699,6 +721,26 @@ export async function attachStoredFile(
    * never to a silent archive. A PDF whose name nobody recognises is the likeliest
    * candidate for a document that quietly never existed here.
    */
+  /*
+   * A file that matched no row, and that we already hold byte for byte.
+   *
+   * Elsewhere in the app a re-uploaded scan is kept and linked to the original, so the
+   * repetition is visible. Here that is the wrong trade: resuming an interrupted drag of
+   * two hundred unrecognised PDFs would put two hundred linked copies on Review, and the
+   * duplicate is not news — it is the same drag, finishing. The stored object goes too,
+   * so nothing is left behind paying for storage.
+   */
+  if (file.sha256) {
+    const seen = await prisma.document.findFirst({
+      where: { companyGroupId: session.companyGroupId, sha256: file.sha256, deletedAt: null },
+      select: { id: true },
+    })
+    if (seen) {
+      await deleteObject(file.key, file.bucket)
+      return { ok: true, matched: false, duplicate: true }
+    }
+  }
+
   const batch = await unmatchedBatch(session)
 
   const doc = await prisma.document.create({

@@ -302,9 +302,12 @@ function Files({ direct }: { direct: boolean }) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<FileProgress | null>(null)
-  const [result, setResult] = useState<{ matched: number; unmatched: number; failed: string[] } | null>(
-    null,
-  )
+  const [result, setResult] = useState<{
+    matched: number
+    unmatched: number
+    skipped: number
+    failed: string[]
+  } | null>(null)
 
   async function send(files: File[]) {
     if (files.length === 0) return
@@ -312,6 +315,7 @@ function Files({ direct }: { direct: boolean }) {
 
     let matched = 0
     let unmatched = 0
+    let skipped = 0
     const failed: string[] = []
 
     for (const [i, file] of files.entries()) {
@@ -319,6 +323,10 @@ function Files({ direct }: { direct: boolean }) {
       const contentType = file.type || 'application/pdf'
       try {
         const target = await prepareFile(file.name, contentType, file.size)
+        if (target.mode === 'skip') {
+          skipped += 1
+          continue
+        }
 
         let res
         if (target.mode === 'form') {
@@ -343,6 +351,7 @@ function Files({ direct }: { direct: boolean }) {
 
         if (!res.ok) failed.push(`${file.name} — ${res.error}`)
         else if (res.matched) matched += 1
+        else if (res.duplicate) skipped += 1
         else unmatched += 1
       } catch (err) {
         failed.push(`${file.name} — ${err instanceof Error ? err.message : 'failed'}`)
@@ -350,7 +359,7 @@ function Files({ direct }: { direct: boolean }) {
     }
 
     setProgress(null)
-    setResult({ matched, unmatched, failed })
+    setResult({ matched, unmatched, skipped, failed })
     if (inputRef.current) inputRef.current.value = ''
     router.refresh()
   }
@@ -412,6 +421,8 @@ function Files({ direct }: { direct: boolean }) {
           <p className="rounded-lg bg-ok-100 px-3 py-2 text-[13px] text-emerald-900">
             {result.matched} matched a spreadsheet row. {result.unmatched} matched nothing and were
             filed as new documents on Review.
+            {result.skipped > 0 &&
+              ` ${result.skipped} were already here and were skipped without uploading — dragging the same folder again is free.`}
           </p>
           {result.failed.length > 0 && (
             <Detail

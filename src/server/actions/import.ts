@@ -102,6 +102,8 @@ export async function importState() {
 export type FileTarget =
   | { mode: 'direct'; documentId: string | null; key: string; url: string }
   | { mode: 'form' }
+  /** Its row already has this file. Nothing is uploaded, so resuming is free. */
+  | { mode: 'skip'; reason: string }
 
 /**
  * Finds the row a file belongs to, and hands back somewhere to put the bytes.
@@ -122,9 +124,15 @@ export async function prepareFile(
   if (size === 0 || size > MAX_BYTES) throw new Error(`${filename}: empty or over 50 MB.`)
   if (!ALLOWED.has(contentType)) throw new Error(`${filename}: ${contentType} not accepted.`)
 
+  const match = await matchRowForFile(session.companyGroupId, filename)
+  if (match.kind === 'already') {
+    return { mode: 'skip', reason: `${match.finalFilename} already has its file` }
+  }
+
+  // Checked after the match so a file that needs no upload costs nothing either way.
   if (!supportsDirectUpload()) return { mode: 'form' }
 
-  const documentId = await matchRowForFile(session.companyGroupId, filename)
+  const documentId = match.kind === 'row' ? match.documentId : null
   const key = buildKey(session.companyGroupId, path.extname(filename))
   return { mode: 'direct', documentId, key, url: await presignPut(key, contentType) }
 }
@@ -174,7 +182,9 @@ export async function attachFileForm(formData: FormData): Promise<AttachResult> 
   const contentType = file.type || 'application/pdf'
   if (!ALLOWED.has(contentType)) return { ok: false, error: `${contentType} not accepted` }
 
-  const documentId = await matchRowForFile(session.companyGroupId, file.name)
+  const match = await matchRowForFile(session.companyGroupId, file.name)
+  if (match.kind === 'already') return { ok: false, error: 'already has its file' }
+  const documentId = match.kind === 'row' ? match.documentId : null
   const bytes = Buffer.from(await file.arrayBuffer())
   const stored = await putObject(buildKey(session.companyGroupId, path.extname(file.name)), bytes, contentType)
 
