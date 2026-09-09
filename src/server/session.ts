@@ -2,6 +2,7 @@ import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { auth } from '@/auth'
 import { prisma } from '@/server/db/client'
+import { resolveMembership } from '@/server/workspace'
 
 /**
  * Who is acting, and in which company group.
@@ -16,6 +17,8 @@ export type Session = {
   userId: string
   companyGroupId: string
   role: string
+  /** The active workspace's name, for the switcher in the header. */
+  companyGroupName: string
   userName: string
   userEmail: string
   userImage: string | null
@@ -27,17 +30,17 @@ export const getSession = cache(async (): Promise<Session | null> => {
   const userId = authed?.user?.id
   if (!userId) return null
 
-  const membership = await prisma.membership.findFirst({
-    where: { userId, isActive: true },
-    include: { user: true },
-    orderBy: { createdAt: 'asc' },
-  })
+  // Which workspace, not just which person. Membership is re-read on every request, so
+  // a revoked one takes effect immediately and a cookie naming a workspace someone no
+  // longer belongs to is simply ignored.
+  const membership = await resolveMembership(userId)
   if (!membership) return null
 
   return {
     userId: membership.userId,
     companyGroupId: membership.companyGroupId,
     role: membership.role,
+    companyGroupName: membership.companyGroup.name,
     userName: membership.user.name ?? membership.user.email,
     userEmail: membership.user.email,
     userImage: membership.user.image,

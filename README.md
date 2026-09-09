@@ -25,6 +25,41 @@ classification · 5 pattern detection.
 `notifiedAt` column exist and nothing writes to them, so a document routed to someone is
 only discovered by opening the app.
 
+## Workspaces
+
+A workspace is a `CompanyGroup` — the tenant boundary the schema has had from the start.
+There are two: **Megan's Companies** (CoLAB and its entities) and **Megan's Personal
+Items** (MGP, LBP, HSH, LBC — provisional codes, and LBC's name still to be confirmed).
+
+They are two groups rather than two labels inside one because they share a person and
+nothing else: separate entities, separate document types, separate folder trees,
+separate autopay lists, separate logs. That is also what stops a household water bill
+ever reaching a business log — by construction, not by filtering.
+
+The active workspace lives in a cookie, which makes it a per-browser preference rather
+than a fact about the person. It is therefore untrusted input, and
+`resolveMembership` only honours it when an active membership backs it up; with no
+cookie, or one naming a workspace someone was just removed from, it falls back to the
+oldest membership. Every query in the app already scopes on `session.companyGroupId`, so
+nothing else had to change.
+
+Membership does not carry across. Only an OWNER of the businesses workspace was given
+the personal one, deliberately: the operators who triage CoLAB's mail have no reason to
+see a household bill, and access is granted by adding someone under Settings.
+
+## The top bar
+
+Two named menus and two plain links, not seven bare words. "Bills", "Checks", "Review"
+and "Master log" could each plausibly be where you go to find a document, and a flat tab
+bar has nowhere to put the sentence that would say otherwise — which is the actual reason
+for grouping. **Money** is what moves, **Mail** is what arrives, and every item carries
+its own one-line explanation inside the menu.
+
+A badge inside a closed menu is a badge nobody sees, so Review's count also surfaces on
+the Mail group. Items are filtered by role before the groups are built, so a MEMBER never
+gets an empty menu — and a group holding one item renders as a plain link rather than a
+dropdown with a single choice.
+
 ## This group's confirmed data is a migration, not a script
 
 `20260909003000_colab_confirmed_data` carries MM's corrected legal name, the eleven

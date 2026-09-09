@@ -30,32 +30,36 @@ const DOCUMENT_TYPES = [
 ] as const
 
 /**
- * Pilot company group. `isSegregated` puts an entity in its own tab rather than mixed
- * into the group-wide list — a display choice, never a permission.
- */
-const COLAB_ENTITIES = [
-  { code: 'CP', legalName: 'CoLAB Processing', sortOrder: 10, isSegregated: false },
-  { code: 'CCS', legalName: 'CoLAB Concierge Service', sortOrder: 20, isSegregated: false },
-  { code: 'MM', legalName: 'Munar Mortgage LLC', sortOrder: 30, isSegregated: false },
-  { code: 'MMT', legalName: 'Marsh & Munar Team LLC', sortOrder: 40, isSegregated: false },
-  { code: 'OP', legalName: 'CoLAB Ops Perfection LLC', sortOrder: 50, isSegregated: true },
-] as const
-
-/**
- * How a scan gets matched back to an entity. A document never prints the code — it
- * prints a legal name, a trading name, or a DBA that shares no words with either.
- * Both the filename parser and the AI reader match against these, so an entity with no
- * aliases is matched on its legal name alone, which is the case that quietly fails.
+ * The workspaces this database is bootstrapped with.
  *
- * MM is the one worth noting: it trades as Keystone Alliance Mortgage, which resembles
- * neither its code nor its legal name.
+ * A workspace is a `CompanyGroup`: the tenant boundary. Megan's businesses and Megan's
+ * personal affairs share a person and nothing else — separate entities, separate
+ * document types, separate folder trees, separate logs — so they are two groups rather
+ * than two labels inside one. That is also what stops a personal water bill ever
+ * appearing in a business log, by construction rather than by filtering.
+ *
+ * `isSegregated` puts an entity in its own tab rather than mixed into the group-wide
+ * list — a display choice, never a permission.
+ *
+ * How a scan gets matched back to an entity: a document never prints the code, it
+ * prints a legal name, a trading name, or a DBA that shares no words with either. Both
+ * the filename parser and the AI reader match against `aliases`, so an entity with none
+ * is matched on its legal name alone, which is the case that quietly fails. MM is the
+ * one worth noting — it trades as Keystone Alliance Mortgage, which resembles neither
+ * its code nor its legal name.
  */
-const ENTITY_ALIASES: Record<string, string[]> = {
-  CP: ['CoLAB Processing', 'Co/LAB Processing LLC'],
-  CCS: ['CoLAB Concierge Service', 'CoLAB Concierge Services'],
-  MM: ['Munar Mortgage', 'Munar Mortgage LLC', 'Keystone Alliance Mortgage'],
-  MMT: ['Marsh & Munar Team', 'Marsh & Munar Team LLC'],
-  OP: ['CO/LAB OPS PERFECTION, LLC', 'CoLAB Ops Perfection'],
+type SeedEntity = {
+  code: string
+  legalName: string
+  sortOrder: number
+  isSegregated: boolean
+  aliases?: string[]
+}
+
+type SeedGroup = {
+  name: string
+  slug: string
+  entities: SeedEntity[]
 }
 
 /** Default folder tree created under each entity, mirroring the current Box layout. */
@@ -66,87 +70,92 @@ const FOLDER_TREE: Record<string, string[]> = {
   Correspondence: ['Spam'],
 }
 
-async function main() {
-  const group = await prisma.companyGroup.upsert({
-    where: { slug: 'colab' },
-    create: {
-      name: 'CoLAB Lending Franchise',
-      slug: 'colab',
-      timezone: 'America/New_York',
-      settings: {
-        filenameTemplate: '{entity}_{date}_{type}_{amount}',
-        dateFormat: 'MM-DD-YY',
-        currency: 'USD',
+const GROUPS: SeedGroup[] = [
+  {
+    name: "Megan's Companies",
+    slug: 'colab',
+    entities: [
+      {
+        code: 'CP',
+        legalName: 'CoLAB Processing',
+        sortOrder: 10,
+        isSegregated: false,
+        aliases: ['CoLAB Processing', 'Co/LAB Processing LLC'],
       },
-    },
-    update: {},
-  })
-  console.log(`✔ company group ${group.name}`)
+      {
+        code: 'CCS',
+        legalName: 'CoLAB Concierge Service',
+        sortOrder: 20,
+        isSegregated: false,
+        aliases: ['CoLAB Concierge Service', 'CoLAB Concierge Services'],
+      },
+      {
+        code: 'MM',
+        legalName: 'Munar Mortgage LLC',
+        sortOrder: 30,
+        isSegregated: false,
+        aliases: ['Munar Mortgage', 'Munar Mortgage LLC', 'Keystone Alliance Mortgage'],
+      },
+      {
+        code: 'MMT',
+        legalName: 'Marsh & Munar Team LLC',
+        sortOrder: 40,
+        isSegregated: false,
+        aliases: ['Marsh & Munar Team', 'Marsh & Munar Team LLC'],
+      },
+      {
+        code: 'OP',
+        legalName: 'CoLAB Ops Perfection LLC',
+        sortOrder: 50,
+        isSegregated: true,
+        aliases: ['CO/LAB OPS PERFECTION, LLC', 'CoLAB Ops Perfection'],
+      },
+    ],
+  },
+  {
+    // Provisional, and named as such: the codes and the fourth entity's name are still
+    // being settled, and this side of the work has not started.
+    name: "Megan's Personal Items",
+    slug: 'megan-personal',
+    entities: [
+      {
+        code: 'MGP',
+        legalName: 'Megan Marsh (Personal)',
+        sortOrder: 10,
+        isSegregated: false,
+        aliases: ['Megan Marsh'],
+      },
+      {
+        code: 'LBP',
+        legalName: 'Laban Marsh (Personal)',
+        sortOrder: 20,
+        isSegregated: false,
+        aliases: ['Laban Marsh'],
+      },
+      {
+        code: 'HSH',
+        legalName: 'Household / Shared',
+        sortOrder: 30,
+        isSegregated: false,
+      },
+      {
+        code: 'LBC',
+        legalName: "Laban's Company (name to be confirmed)",
+        sortOrder: 40,
+        isSegregated: false,
+      },
+    ],
+  },
+]
 
-  for (const type of DOCUMENT_TYPES) {
-    await prisma.documentType.upsert({
-      where: { companyGroupId_code: { companyGroupId: group.id, code: type.code } },
-      create: { ...type, companyGroupId: group.id },
-      // Only re-sync ordering. Label and defaultAction are left alone so a seed
-      // re-run never silently reverts a change made in the admin UI.
-      update: { sortOrder: type.sortOrder },
-    })
-  }
-  console.log(`✔ ${DOCUMENT_TYPES.length} document types`)
-
-  for (const e of COLAB_ENTITIES) {
-    const entity = await prisma.entity.upsert({
-      where: { companyGroupId_code: { companyGroupId: group.id, code: e.code } },
-      create: { ...e, companyGroupId: group.id },
-      update: { legalName: e.legalName, sortOrder: e.sortOrder, isSegregated: e.isSegregated },
-    })
-
-    for (const alias of ENTITY_ALIASES[e.code] ?? []) {
-      await prisma.entityAlias.upsert({
-        where: { entityId_aliasText: { entityId: entity.id, aliasText: alias } },
-        create: { entityId: entity.id, aliasText: alias, source: 'NAME' },
-        update: {},
-      })
-    }
-
-    for (const [parentName, children] of Object.entries(FOLDER_TREE)) {
-      const parentPath = `${e.code} > ${parentName}`
-      const parent = await prisma.storageFolder.upsert({
-        where: { companyGroupId_pathCache: { companyGroupId: group.id, pathCache: parentPath } },
-        create: {
-          companyGroupId: group.id,
-          entityId: entity.id,
-          name: parentName,
-          pathCache: parentPath,
-        },
-        update: {},
-      })
-
-      for (const child of children) {
-        const childPath = `${parentPath} > ${child}`
-        await prisma.storageFolder.upsert({
-          where: { companyGroupId_pathCache: { companyGroupId: group.id, pathCache: childPath } },
-          create: {
-            companyGroupId: group.id,
-            entityId: entity.id,
-            parentId: parent.id,
-            name: child,
-            pathCache: childPath,
-          },
-          update: {},
-        })
-      }
-    }
-  }
-  console.log(`✔ ${COLAB_ENTITIES.length} entities with folder trees`)
-
+async function main() {
   // The first way in. Authentication is allowlist-based, so a freshly created database
   // locks everyone out: no member exists, so nobody can sign in, so nobody can add a
-  // member. This membership is what breaks that circle — see src/auth.ts.
+  // member. This owner is what breaks that circle — see src/auth.ts.
   //
   // Driven by BOOTSTRAP_OWNER_EMAIL rather than a hardcoded address, because the next
-  // company group onboarded will have a different owner. Emails are stored lowercased
-  // because that is what Google returns.
+  // group onboarded will have a different owner. Emails are stored lowercased because
+  // that is what Google returns.
   const ownerEmail = (process.env.BOOTSTRAP_OWNER_EMAIL || 'kg@colabservice.com')
     .trim()
     .toLowerCase()
@@ -156,11 +165,98 @@ async function main() {
     create: { email: ownerEmail },
     update: {},
   })
-  await prisma.membership.upsert({
-    where: { userId_companyGroupId: { userId: owner.id, companyGroupId: group.id } },
-    create: { userId: owner.id, companyGroupId: group.id, role: 'OWNER' },
-    update: { role: 'OWNER', isActive: true },
-  })
+
+  for (const definition of GROUPS) {
+    const group = await prisma.companyGroup.upsert({
+      where: { slug: definition.slug },
+      create: {
+        name: definition.name,
+        slug: definition.slug,
+        timezone: 'America/New_York',
+        settings: {
+          filenameTemplate: '{entity}_{date}_{type}_{amount}',
+          dateFormat: 'MM-DD-YY',
+          currency: 'USD',
+        },
+      },
+      update: { name: definition.name },
+    })
+
+    for (const type of DOCUMENT_TYPES) {
+      await prisma.documentType.upsert({
+        where: { companyGroupId_code: { companyGroupId: group.id, code: type.code } },
+        create: { ...type, companyGroupId: group.id },
+        // Only re-sync ordering. Label and defaultAction are left alone so a seed
+        // re-run never silently reverts a change made in the admin UI.
+        update: { sortOrder: type.sortOrder },
+      })
+    }
+
+    for (const e of definition.entities) {
+      const entity = await prisma.entity.upsert({
+        where: { companyGroupId_code: { companyGroupId: group.id, code: e.code } },
+        create: {
+          companyGroupId: group.id,
+          code: e.code,
+          legalName: e.legalName,
+          sortOrder: e.sortOrder,
+          isSegregated: e.isSegregated,
+        },
+        update: { legalName: e.legalName, sortOrder: e.sortOrder, isSegregated: e.isSegregated },
+      })
+
+      for (const alias of e.aliases ?? []) {
+        await prisma.entityAlias.upsert({
+          where: { entityId_aliasText: { entityId: entity.id, aliasText: alias } },
+          create: { entityId: entity.id, aliasText: alias, source: 'NAME' },
+          update: {},
+        })
+      }
+
+      for (const [parentName, children] of Object.entries(FOLDER_TREE)) {
+        const parentPath = `${e.code} > ${parentName}`
+        const parent = await prisma.storageFolder.upsert({
+          where: { companyGroupId_pathCache: { companyGroupId: group.id, pathCache: parentPath } },
+          create: {
+            companyGroupId: group.id,
+            entityId: entity.id,
+            name: parentName,
+            pathCache: parentPath,
+          },
+          update: {},
+        })
+
+        for (const child of children) {
+          const childPath = `${parentPath} > ${child}`
+          await prisma.storageFolder.upsert({
+            where: { companyGroupId_pathCache: { companyGroupId: group.id, pathCache: childPath } },
+            create: {
+              companyGroupId: group.id,
+              entityId: entity.id,
+              parentId: parent.id,
+              name: child,
+              pathCache: childPath,
+            },
+            update: {},
+          })
+        }
+      }
+    }
+
+    // The owner belongs to every workspace this seed creates, which is what makes the
+    // switcher in the header have anything to switch between.
+    await prisma.membership.upsert({
+      where: { userId_companyGroupId: { userId: owner.id, companyGroupId: group.id } },
+      create: { userId: owner.id, companyGroupId: group.id, role: 'OWNER' },
+      update: { role: 'OWNER', isActive: true },
+    })
+
+    console.log(
+      `✔ ${group.name} — ${DOCUMENT_TYPES.length} document types, ` +
+        `${definition.entities.length} entities with folder trees`,
+    )
+  }
+
   console.log(`✔ owner ${owner.email} — sign in with Google or set a password for them`)
 }
 

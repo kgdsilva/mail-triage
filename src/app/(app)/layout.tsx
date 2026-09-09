@@ -2,8 +2,9 @@ import Link from 'next/link'
 import { signOut } from '@/auth'
 import { countUnreviewed } from '@/server/documents'
 import { canSeeWholeLog, isAdmin, requireSession } from '@/server/session'
-import { prisma } from '@/server/db/client'
-import { NavLink } from '@/components/nav-link'
+import { listWorkspaces } from '@/server/workspace'
+import { NavMenu, type NavGroup } from '@/components/nav-menu'
+import { WorkspaceSwitcher } from '@/components/workspace-switcher'
 
 // Every page in this segment resolves the current user, so none of them can be
 // prerendered — the build has no session to render against.
@@ -11,16 +12,105 @@ export const dynamic = 'force-dynamic'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession()
-  const [group, pending] = await Promise.all([
-    prisma.companyGroup.findUnique({
-      where: { id: session.companyGroupId },
-      select: { name: true },
-    }),
+  const [workspaces, pending] = await Promise.all([
+    listWorkspaces(session.userId),
     // Only meaningful for people who actually triage; skip the query otherwise.
     isAdmin(session.role) ? countUnreviewed(session.companyGroupId) : Promise.resolve(0),
   ])
 
   const triages = isAdmin(session.role)
+  const wholeLog = canSeeWholeLog(session.role)
+
+  /*
+   * Two named menus and two plain links, rather than seven bare words in a row.
+   *
+   * The words did not explain themselves — "Bills", "Checks", "Review" and "Master log"
+   * could all plausibly be where you go to find a document — and a flat tab bar has
+   * nowhere to put the sentence that would say. Money is what moves, Mail is what
+   * arrives; each item carries its own one-line explanation inside the menu.
+   *
+   * Filtered by role here, so a MEMBER's menu has no empty groups: a group holding one
+   * item renders as a plain link instead of a dropdown with one choice.
+   */
+  const groups: NavGroup[] = [
+    {
+      label: 'My queue',
+      items: [
+        {
+          href: '/',
+          label: 'My queue',
+          blurb: 'The documents routed to you, soonest due first.',
+          icon: 'queue' as const,
+        },
+      ],
+    },
+    {
+      label: 'Money',
+      items: [
+        {
+          href: '/bills',
+          label: 'Bills to pay',
+          blurb: 'Everything open with money to send out, grouped by how soon it is due.',
+          icon: 'bills' as const,
+        },
+        ...(wholeLog
+          ? [
+              {
+                href: '/checks',
+                label: 'Checks received',
+                blurb: 'Money coming in from title companies and closing agents, for reconciling.',
+                icon: 'checks' as const,
+              },
+            ]
+          : []),
+      ],
+    },
+    {
+      label: 'Mail',
+      items: [
+        ...(triages
+          ? [
+              {
+                href: '/upload',
+                label: 'Upload a batch',
+                blurb: 'Drop the day\u2019s scans in. Nothing is read or decided until you ask.',
+                icon: 'upload' as const,
+              },
+              {
+                href: '/review',
+                label: 'Review',
+                blurb: 'Decide what each new document is. One list, three buttons.',
+                icon: 'review' as const,
+                badge: pending || undefined,
+              },
+            ]
+          : []),
+        {
+          href: '/log',
+          label: wholeLog ? 'Master log' : 'My documents',
+          blurb: wholeLog
+            ? 'Every document that ever arrived, by company and type. Nothing is deleted.'
+            : 'Every document routed to you, open or resolved.',
+          icon: 'log' as const,
+        },
+      ],
+    },
+    ...(isAdmin(session.role)
+      ? [
+          {
+            label: 'Settings',
+            items: [
+              {
+                href: '/settings',
+                label: 'Settings',
+                blurb: 'Companies, document types, vendors, autopay and members.',
+                icon: 'settings' as const,
+              },
+            ],
+          },
+        ]
+      : []),
+  ]
   const initials = session.userName
     .split(' ')
     .slice(0, 2)
@@ -43,41 +133,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               Mail Triage
             </span>
           </Link>
-          <span className="hidden text-[12.5px] font-medium text-navy-100/70 sm:inline">
-            {group?.name}
-          </span>
+          <WorkspaceSwitcher
+            workspaces={workspaces.map((w) => ({ id: w.id, name: w.name, slug: w.slug }))}
+            activeId={session.companyGroupId}
+          />
 
-          <nav className="ml-auto flex items-stretch gap-0.5">
-            <NavLink href="/" icon="queue">
-              My queue
-            </NavLink>
-            <NavLink href="/bills" icon="bills">
-              Bills
-            </NavLink>
-            {triages && (
-              <NavLink href="/review" icon="review" badge={pending || undefined}>
-                Review
-              </NavLink>
-            )}
-            {canSeeWholeLog(session.role) && (
-              <NavLink href="/checks" icon="checks">
-                Checks
-              </NavLink>
-            )}
-            <NavLink href="/log" icon="log">
-              {canSeeWholeLog(session.role) ? 'Master log' : 'My documents'}
-            </NavLink>
-            {triages && (
-              <NavLink href="/upload" icon="upload">
-                Upload
-              </NavLink>
-            )}
-            {isAdmin(session.role) && (
-              <NavLink href="/settings" icon="settings">
-                Settings
-              </NavLink>
-            )}
-          </nav>
+          <NavMenu groups={groups} />
 
           <div className="ml-3 hidden items-center gap-2.5 md:flex">
             <span
