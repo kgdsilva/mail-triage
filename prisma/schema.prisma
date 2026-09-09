@@ -552,6 +552,11 @@ model Document {
   /// A real column rather than a line in the notes: during the changeover it is the way
   /// back to the copy people already know, and it has to be clickable. Null for
   /// everything that arrived through the platform, which has no Box original.
+  ///
+  /// In practice the spreadsheet's link points at the *folder*, not the file — 338 rows
+  /// shared 21 links, one of them across a hundred and four cheques. It still opens the
+  /// right place in Box, which is what it is for; it is not an identifier for this
+  /// document, and nothing treats it as one.
   legacyBoxUrl String? @map("legacy_box_url")
 
   // --- narrative ----------------------------------------------------------

@@ -42,6 +42,7 @@ export type PreviewResult = {
   dateSwaps: { line: number; detail: string }[]
   folderRepairs: { line: number; detail: string }[]
   ambiguousAmounts: { line: number; detail: string }[]
+  duplicateScans: { line: number; detail: string }[]
   unknownPeople: string[]
   newFolders: { path: string; documents: number }[]
   byMonth: { label: string; rows: number }[]
@@ -69,6 +70,7 @@ export async function previewImport(csv: string): Promise<PreviewResult> {
     dateSwaps: plan.dateSwaps,
     folderRepairs: plan.folderRepairs,
     ambiguousAmounts: plan.ambiguousAmounts,
+    duplicateScans: plan.duplicateScans,
     unknownPeople: plan.unknownPeople,
     newFolders: plan.newFolders,
     byMonth: plan.byMonth,

@@ -52,6 +52,10 @@ it lands on Review asking to be identified — ambiguity resolves to action, nev
 silent archive, and an unrecognised PDF is the likeliest candidate for a document that
 quietly never existed here.
 
+The spreadsheet's Box link is kept on each row and shown as "folder in Box". It is a
+folder link rather than a file link — 338 rows shared 21 links, one across a hundred and
+four cheques — so it opens the right place and is not an identifier for the document.
+
 **What is left.** Two numbers at the bottom of the screen, counted from the data rather
 than remembered from the run: rows still waiting for a PDF, and files with no row. The
 import is finished when both are zero.

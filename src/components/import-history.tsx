@@ -188,6 +188,16 @@ function Spreadsheet() {
             />
           )}
 
+          {preview.duplicateScans.length > 0 && (
+            <Detail
+              title={`The same scan on more than one line (${preview.duplicateScans.length})`}
+              tone="warn"
+              open
+              lines={preview.duplicateScans.map((n) => `Line ${n.line}: ${n.detail}`)}
+              footer="Same original file or the same Box link, so these become two documents for one PDF — and since the file can only attach to one, the other sits in 'waiting for a PDF' for ever. Not merged here: which record to keep is your call."
+            />
+          )}
+
           {preview.folderRepairs.length > 0 && (
             <Detail
               title={`Folder names repaired (${preview.folderRepairs.length})`}

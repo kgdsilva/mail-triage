@@ -103,7 +103,7 @@ export default async function ImportPage() {
                       rel="noreferrer"
                       className="ml-auto shrink-0 text-[11.5px] font-semibold text-navy-700 underline"
                     >
-                      in Box
+                      folder in Box
                     </a>
                   )}
                 </li>

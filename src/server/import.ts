@@ -75,7 +75,9 @@ export type ImportPlan = {
   unknownPeople: string[]
   /** Folders the import would create, with how many documents land in each. */
   newFolders: { path: string; documents: number }[]
-  /** Rows already imported, matched by final filename — a re-run updates these. */
+  /** Two rows describing one scan — same original file, or the same Box link. */
+  duplicateScans: Note[]
+  /** Rows already imported — a re-run updates these rather than duplicating them. */
   existing: number
   byMonth: { label: string; rows: number }[]
 }
@@ -87,6 +89,12 @@ type Ctx = {
   users: { id: string; name: string | null; email: string }[]
   folders: Map<string, { id: string; name: string; parentPath: string | null }>
   existingKeys: Map<string, string>
+  /**
+   * The same rows indexed by the *incoming* scan's name, which is the one thing that
+   * does not change when a final filename is corrected. Only names belonging to exactly
+   * one row are in here; an ambiguous one is left out rather than guessed.
+   */
+  existingOriginals: Map<string, string>
 }
 
 async function loadContext(companyGroupId: string): Promise<Ctx> {
@@ -102,8 +110,12 @@ async function loadContext(companyGroupId: string): Promise<Ctx> {
       select: { id: true, name: true, pathCache: true },
     }),
     prisma.document.findMany({
-      where: { companyGroupId, finalFilename: { not: null }, deletedAt: null },
-      select: { id: true, finalFilename: true },
+      where: {
+        companyGroupId,
+        deletedAt: null,
+        batch: { source: 'HISTORICAL_IMPORT' },
+      },
+      select: { id: true, finalFilename: true, originalFilename: true },
     }),
   ])
 
@@ -123,8 +135,23 @@ async function loadContext(companyGroupId: string): Promise<Ctx> {
     types: new Map(types.map((t) => [t.code, t.id])),
     users: users.map((m) => m.user),
     folders: folderMap,
-    existingKeys: new Map(existing.map((d) => [matchKey(d.finalFilename!), d.id])),
+    existingKeys: new Map(
+      existing.filter((d) => d.finalFilename).map((d) => [matchKey(d.finalFilename!), d.id]),
+    ),
+    existingOriginals: indexUniqueOriginals(existing),
   }
+}
+
+function indexUniqueOriginals(rows: { id: string; originalFilename: string }[]) {
+  const seen = new Map<string, string | null>()
+  for (const row of rows) {
+    const key = matchKey(row.originalFilename)
+    seen.set(key, seen.has(key) ? null : row.id)
+  }
+
+  const index = new Map<string, string>()
+  for (const [key, id] of seen) if (id) index.set(key, id)
+  return index
 }
 
 /**
@@ -163,6 +190,23 @@ function initials(name: string | null) {
     .toLowerCase()
 }
 
+/**
+ * The row this spreadsheet line already created, if any.
+ *
+ * By final filename first, since that is the natural key. Then by the name the scan
+ * arrived under, which is what makes *correcting* a final filename safe: renaming
+ * "CP_07-13-26_CAEDD…" to "OP_07-13-26_CAEDD…" would otherwise match nothing, and the
+ * re-import would create a second document and leave the first one behind — a
+ * correction that duplicates the thing it corrects.
+ */
+function existingRowId(ctx: Ctx, finalFilename: string, originalFilename: string) {
+  return (
+    ctx.existingKeys.get(matchKey(finalFilename)) ??
+    ctx.existingOriginals.get(matchKey(originalFilename)) ??
+    null
+  )
+}
+
 export function planImport(ctx: Ctx, records: RawRow[]): ImportPlan {
   const plan: ImportPlan = {
     totalRows: records.length,
@@ -173,6 +217,7 @@ export function planImport(ctx: Ctx, records: RawRow[]): ImportPlan {
     ambiguousAmounts: [],
     unknownPeople: [],
     newFolders: [],
+    duplicateScans: [],
     existing: 0,
     byMonth: [],
   }
@@ -195,6 +240,38 @@ export function planImport(ctx: Ctx, records: RawRow[]): ImportPlan {
     }),
     existingPaths,
   )
+
+  /*
+   * Two lines describing one scan.
+   *
+   * A duplicated Final File Name is caught by the eye and was already fixed by hand;
+   * this catches the pair the eye misses, where the same document was entered twice and
+   * the final names differ only in formatting — "MMT_2-03-26_…" and "MMT_02-03-26_…",
+   * same original file. Left alone rather than merged, because deciding which of two
+   * records to keep is not an importer's call. But it has to be said: the PDF can only
+   * attach to one of them, so the other would sit in "rows waiting for a PDF" for ever,
+   * looking like a missing file.
+   *
+   * Matched on the incoming scan's name alone. The Box link cannot help: it points at
+   * the folder rather than the file — 338 rows share 21 links, and one of them is on a
+   * hundred and four different cheques — so as evidence of "the same document" it says
+   * only "filed in the same place".
+   */
+  const scanSeen = new Map<string, number>()
+  records.forEach((r, i) => {
+    const scan = matchKey(r[COLUMNS.originalFilename] ?? '')
+    if (!scan) return
+    const first = scanSeen.get(scan)
+    if (first === undefined) scanSeen.set(scan, i + 2)
+    else {
+      plan.duplicateScans.push({
+        line: i + 2,
+        detail: `${r[COLUMNS.finalFilename]} — same scan as line ${first} (${
+          r[COLUMNS.originalFilename]
+        })`,
+      })
+    }
+  })
 
   records.forEach((r, i) => {
     // Line number in the file the user exported, header included, so a reported problem
@@ -297,7 +374,7 @@ export function planImport(ctx: Ctx, records: RawRow[]): ImportPlan {
     }
     rawNotes.push(`Imported from the historical log — action taken: ${r[COLUMNS.actionTaken]}.`)
 
-    if (ctx.existingKeys.has(matchKey(finalFilename))) plan.existing += 1
+    if (existingRowId(ctx, finalFilename, originalFilename)) plan.existing += 1
     monthCounts.set(
       r[COLUMNS.monthFolder] || 'Historical import',
       (monthCounts.get(r[COLUMNS.monthFolder] || 'Historical import') ?? 0) + 1,
@@ -480,13 +557,14 @@ export async function commitPlan(
             reviewedAt: row.reviewedAt,
           }
 
-          const existingId = ctx.existingKeys.get(matchKey(row.finalFilename))
+          const existingId = existingRowId(ctx, row.finalFilename, row.originalFilename)
           if (existingId) {
             await tx.document.update({ where: { id: existingId }, data })
             updated += 1
           } else {
             const doc = await tx.document.create({ data, select: { id: true } })
             ctx.existingKeys.set(matchKey(row.finalFilename), doc.id)
+            ctx.existingOriginals.set(matchKey(row.originalFilename), doc.id)
             await tx.documentEvent.create({
               data: {
                 documentId: doc.id,
@@ -524,6 +602,7 @@ export async function commitPlan(
     dateSwaps: plan.dateSwaps,
     folderRepairs: plan.folderRepairs,
     ambiguousAmounts: plan.ambiguousAmounts,
+    duplicateScans: plan.duplicateScans,
     unknownPeople: plan.unknownPeople,
     newFolders: plan.newFolders,
   } as unknown as Prisma.InputJsonValue
@@ -566,6 +645,7 @@ export type StoredReport = {
   dateSwaps: Note[]
   folderRepairs: Note[]
   ambiguousAmounts: Note[]
+  duplicateScans: Note[]
   unknownPeople: string[]
   newFolders: { path: string; documents: number }[]
 }
