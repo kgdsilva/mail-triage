@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowRight, CircleAlert, Inbox, Wallet } from 'lucide-react'
 import { prisma } from '@/server/db/client'
-import { canSeeWholeLog, requireSession } from '@/server/session'
+import { canSeeWholeLog, requireWorker } from '@/server/session'
 import { DocumentCard } from '@/components/dashboard-card'
 import { CompanyPicker } from '@/components/company-picker'
 import { urgency } from '@/lib/theme'
@@ -29,7 +29,7 @@ export default async function Dashboard({
 }: {
   searchParams: Promise<{ entity?: string }>
 }) {
-  const session = await requireSession()
+  const session = await requireWorker()
   const oversees = canSeeWholeLog(session.role)
   const { entity } = await searchParams
 

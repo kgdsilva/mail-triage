@@ -53,11 +53,50 @@ export const requireSession = cache(async (): Promise<Session> => {
   return session
 })
 
-/** Roles that may change configuration. */
-export const ADMIN_ROLES = ['OWNER', 'ADMIN', 'OPERATOR'] as const
+/*
+ * Four questions, not one.
+ *
+ * These used to be two, and `isAdmin` answered both "can this person triage?" and "can
+ * this person change configuration?" — which meant an OPERATOR, the role you give
+ * somebody so they can upload and classify, also reached the autopay rules. Those rules
+ * decide which bills are safe to archive without a human ever seeing them, so that was
+ * the one permission not to hand out by accident.
+ *
+ * Every list is positive. A role added later gets nothing until it is named here, which
+ * is the failure people want.
+ */
 
-export function isAdmin(role: string) {
-  return (ADMIN_ROLES as readonly string[]).includes(role)
+/** Companies, document types, vendors, autopay, members. The dangerous screens. */
+const CONFIGURE_ROLES = ['OWNER', 'ADMIN'] as const
+
+/** Uploading, reading with the AI, classifying, importing history. */
+const TRIAGE_ROLES = ['OWNER', 'ADMIN', 'OPERATOR'] as const
+
+/** Putting scans in. The scanner can do this and nothing else. */
+const UPLOAD_ROLES = ['OWNER', 'ADMIN', 'OPERATOR', 'UPLOADER'] as const
+
+/**
+ * Doing the work: queues, bills, the log, documents. Everybody except the scanner.
+ *
+ * Named positively rather than as "not UPLOADER" so that the next narrow role added
+ * also starts with no access to any of it.
+ */
+const WORK_ROLES = ['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'VIEWER'] as const
+
+export function canConfigure(role: string) {
+  return (CONFIGURE_ROLES as readonly string[]).includes(role)
+}
+
+export function canTriage(role: string) {
+  return (TRIAGE_ROLES as readonly string[]).includes(role)
+}
+
+export function canUpload(role: string) {
+  return (UPLOAD_ROLES as readonly string[]).includes(role)
+}
+
+export function canWork(role: string) {
+  return (WORK_ROLES as readonly string[]).includes(role)
 }
 
 /**
@@ -74,18 +113,37 @@ export function canSeeWholeLog(role: string) {
 }
 
 /**
- * Triage work — uploading batches and classifying — belongs to the roles that oversee
- * the whole log. A MEMBER receives documents; they do not decide what arrives or how it
- * is filed. Hiding the nav link is not enough, so every such page and action calls this.
+ * Triage work — uploading batches, reading, classifying, importing. A MEMBER receives
+ * documents; they do not decide what arrives or how it is filed. Hiding the nav link is
+ * not enough, so every such page and action calls this.
  */
 export async function requireTriage(): Promise<Session> {
   const session = await requireSession()
-  if (!isAdmin(session.role)) redirect('/')
+  if (!canTriage(session.role)) redirect('/')
+  return session
+}
+
+/** Just the upload screen, which is all the scanner needs. */
+export async function requireUpload(): Promise<Session> {
+  const session = await requireSession()
+  if (!canUpload(session.role)) redirect('/')
+  return session
+}
+
+/**
+ * Any screen that shows a document, a queue or a total.
+ *
+ * The scanner is sent to the one screen she does have, rather than to a dead end: her
+ * landing page, every stray link and any old bookmark all end up at Upload.
+ */
+export async function requireWorker(): Promise<Session> {
+  const session = await requireSession()
+  if (!canWork(session.role)) redirect('/upload')
   return session
 }
 
 export async function requireAdmin(): Promise<Session> {
   const session = await requireSession()
-  if (!isAdmin(session.role)) redirect('/log')
+  if (!canConfigure(session.role)) redirect('/')
   return session
 }

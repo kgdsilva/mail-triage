@@ -4,6 +4,7 @@ import { prisma } from '@/server/db/client'
 import { requireAdmin } from '@/server/session'
 import { AddMemberForm } from '@/components/add-member-form'
 import { MemberPassword } from '@/components/member-password'
+import { MemberRole } from '@/components/member-role'
 import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
@@ -15,9 +16,10 @@ export const dynamic = 'force-dynamic'
 const ROLES = [
   { role: 'OWNER', help: 'Everything, including members and ownership' },
   { role: 'ADMIN', help: 'Everything except ownership transfer' },
-  { role: 'OPERATOR', help: 'Uploads and classifies; sees the whole log' },
+  { role: 'OPERATOR', help: 'Uploads, reads and classifies; sees the whole log' },
   { role: 'MEMBER', help: 'Works the documents routed to them' },
   { role: 'VIEWER', help: 'Read-only across the whole log' },
+  { role: 'UPLOADER', help: 'Puts scans in. One screen, and nothing else' },
 ] as const
 
 const ROLE_HELP: Record<string, string> = Object.fromEntries(
@@ -31,6 +33,7 @@ const ROLE_TONE: Record<string, string> = {
   OPERATOR: 'bg-navy-100 text-navy-900',
   MEMBER: 'bg-sky-100 text-sky-700',
   VIEWER: 'bg-line-soft text-muted',
+  UPLOADER: 'bg-moss-100 text-moss-700',
 }
 
 export default async function MembersPage() {
@@ -138,6 +141,15 @@ export default async function MembersPage() {
                       )}
                     </button>
                   </form>
+                </div>
+
+                <div className="mt-3 border-t border-line-soft pt-3">
+                  <MemberRole
+                    membershipId={m.id}
+                    role={m.role}
+                    roles={ROLES.map((r) => ({ role: r.role, help: r.help }))}
+                    self={m.userId === session.userId}
+                  />
                 </div>
 
                 <div className="mt-3 border-t border-line-soft pt-3">

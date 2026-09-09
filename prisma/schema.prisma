@@ -97,6 +97,16 @@ enum Role {
   /// Standard operational member. Works the documents routed to them; does not browse
   /// the group-wide log or change configuration.
   MEMBER
+  /// Puts scans in and nothing else.
+  ///
+  /// The narrowest role in the system, and the reason it exists: the person who
+  /// scans the post needs one screen, and until this role existed the smallest one
+  /// that could upload was OPERATOR — which also reached Settings, so letting
+  /// somebody drop PDFs in also let them rewrite the autopay rules that decide
+  /// which bills are safe to archive.
+  ///
+  /// Cannot see the log, any queue, or a document once it is uploaded.
+  UPLOADER
   /// Read-only across the whole log.
   VIEWER
 }

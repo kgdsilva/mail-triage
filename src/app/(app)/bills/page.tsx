@@ -1,6 +1,6 @@
 import { Wallet } from 'lucide-react'
 import { prisma } from '@/server/db/client'
-import { canSeeWholeLog, isAdmin, requireSession } from '@/server/session'
+import { canSeeWholeLog, canTriage, requireWorker } from '@/server/session'
 import { BillsList, type Bill } from '@/components/bills-list'
 import { CompanyPicker } from '@/components/company-picker'
 import { urgency } from '@/lib/theme'
@@ -20,7 +20,7 @@ export default async function BillsPage({
 }: {
   searchParams: Promise<{ entity?: string }>
 }) {
-  const session = await requireSession()
+  const session = await requireWorker()
   const { entity } = await searchParams
   const wholeLog = canSeeWholeLog(session.role)
 
@@ -120,7 +120,7 @@ export default async function BillsPage({
           </p>
         </div>
       ) : (
-        <BillsList bills={bills} canTriage={isAdmin(session.role)} entities={entities} />
+        <BillsList bills={bills} canTriage={canTriage(session.role)} entities={entities} />
       )}
     </div>
   )

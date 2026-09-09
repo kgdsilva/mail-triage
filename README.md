@@ -586,7 +586,29 @@ remembers it" is a new password, which Generate makes a two-second job, not a lo
 ## Roles, and what they are not
 
 Access roles say what a person may **see and change**: OWNER, ADMIN, OPERATOR, MEMBER,
-VIEWER. They deliberately say nothing about who handles which document.
+VIEWER, UPLOADER. They deliberately say nothing about who handles which document.
+
+Four separate questions, in `src/server/session.ts`, each a positive list so a role
+added later starts with nothing:
+
+| | who | what it opens |
+|---|---|---|
+| `canConfigure` | OWNER, ADMIN | Settings: companies, types, vendors, autopay, members |
+| `canTriage` | + OPERATOR | upload, AI read, classify, import |
+| `canUpload` | + UPLOADER | the upload screen |
+| `canWork` | everyone except UPLOADER | queues, bills, the log, documents |
+
+This was two questions until the scanner needed an account. `isAdmin` answered both "can
+this person triage?" and "can this person change configuration?", so the role you give
+somebody to upload and classify also opened the autopay rules — the rules that decide
+which bills are safe to archive without a human ever seeing them. Splitting them also
+closed a smaller hole: four Settings screens were readable by any signed-in member,
+because only the write actions had been guarded.
+
+UPLOADER is the narrowest role and exists for one person: whoever scans the post. One
+screen, no log, no queue, and no document once it is uploaded — `/api/files` and the CSV
+export answer 404 for them, not just the pages. Everything else redirects there, so a
+stray link or an old bookmark lands somewhere that works.
 
 There is no permanent "payer" and no permanent "confirmer". In practice whoever pays or
 confirms varies document by document — the same colleague may confirm one item and pay

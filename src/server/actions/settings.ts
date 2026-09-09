@@ -5,7 +5,7 @@ import { z } from 'zod'
 import type { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/server/db/client'
 import { normalizeEmail } from '@/auth'
-import { requireAdmin, requireSession } from '@/server/session'
+import { requireAdmin } from '@/server/session'
 import { hashPassword, validatePassword } from '@/server/password'
 
 /**
@@ -289,6 +289,53 @@ export async function setMemberActive(membershipId: string, isActive: boolean) {
   }
 
   await prisma.membership.update({ where: { id: membershipId }, data: { isActive } })
+  revalidatePath('/settings/members')
+}
+
+/**
+ * Changes what a member may do.
+ *
+ * Added because the roles were only ever settable when the account was created, and the
+ * one role people actually need to change is the narrow one: somebody is given upload
+ * access on their first day and needs more later, or — the case this was written for —
+ * an account already exists with more access than the job needs.
+ *
+ * Three refusals, each of which is a way to lock the group out or to escalate quietly:
+ * nobody changes their own role, the last owner cannot be demoted, and only an owner
+ * can create another owner.
+ */
+export async function setMemberRole(membershipId: string, role: string) {
+  const session = await requireAdmin()
+
+  const parsed = z
+    .enum(['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'VIEWER', 'UPLOADER'])
+    .safeParse(role)
+  if (!parsed.success) throw new Error('Unknown role.')
+
+  const membership = await prisma.membership.findFirst({
+    where: { id: membershipId, companyGroupId: session.companyGroupId },
+    select: { id: true, role: true, userId: true },
+  })
+  if (!membership) throw new Error('Member not found')
+  if (membership.role === parsed.data) return
+
+  if (membership.userId === session.userId) {
+    throw new Error('You cannot change your own role — ask another owner or admin.')
+  }
+  if (parsed.data === 'OWNER' && session.role !== 'OWNER') {
+    throw new Error('Only an owner can make someone else an owner.')
+  }
+  if (membership.role === 'OWNER') {
+    const owners = await prisma.membership.count({
+      where: { companyGroupId: session.companyGroupId, role: 'OWNER', isActive: true },
+    })
+    if (owners <= 1) throw new Error('Cannot demote the last owner.')
+  }
+
+  await prisma.membership.update({
+    where: { id: membership.id },
+    data: { role: parsed.data },
+  })
   revalidatePath('/settings/members')
 }
 

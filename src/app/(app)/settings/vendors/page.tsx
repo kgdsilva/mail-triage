@@ -1,12 +1,12 @@
 import { saveVendor } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
-import { requireSession } from '@/server/session'
+import { requireAdmin } from '@/server/session'
 import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
 
 export default async function VendorsPage() {
-  const session = await requireSession()
+  const session = await requireAdmin()
   const vendors = await prisma.vendor.findMany({
     where: { companyGroupId: session.companyGroupId },
     orderBy: [{ knownSpam: 'desc' }, { name: 'asc' }],

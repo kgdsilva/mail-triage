@@ -1,7 +1,14 @@
 import Link from 'next/link'
 import { signOut } from '@/auth'
 import { countUnreviewed } from '@/server/documents'
-import { canSeeWholeLog, isAdmin, requireSession } from '@/server/session'
+import {
+  canConfigure,
+  canSeeWholeLog,
+  canTriage,
+  canUpload,
+  canWork,
+  requireSession,
+} from '@/server/session'
 import { listWorkspaces } from '@/server/workspace'
 import { NavMenu, type NavGroup } from '@/components/nav-menu'
 import { WorkspaceSwitcher } from '@/components/workspace-switcher'
@@ -15,11 +22,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const [workspaces, pending] = await Promise.all([
     listWorkspaces(session.userId),
     // Only meaningful for people who actually triage; skip the query otherwise.
-    isAdmin(session.role) ? countUnreviewed(session.companyGroupId) : Promise.resolve(0),
+    canTriage(session.role) ? countUnreviewed(session.companyGroupId) : Promise.resolve(0),
   ])
 
-  const triages = isAdmin(session.role)
+  const triages = canTriage(session.role)
   const wholeLog = canSeeWholeLog(session.role)
+  const works = canWork(session.role)
+  const uploads = canUpload(session.role)
+  const configures = canConfigure(session.role)
 
   /*
    * Two named menus and two plain links, rather than seven bare words in a row.
@@ -33,48 +43,53 @@ export default async function AppLayout({ children }: { children: React.ReactNod
    * item renders as a plain link instead of a dropdown with one choice.
    */
   const groups: NavGroup[] = [
-    {
-      label: 'My queue',
-      items: [
-        {
-          href: '/',
-          label: 'My queue',
-          blurb: 'The documents routed to you, soonest due first.',
-          icon: 'queue' as const,
-        },
-      ],
-    },
-    {
-      label: 'Money',
-      items: [
-        {
-          href: '/bills',
-          label: 'Bills to pay',
-          blurb: 'Everything open with money to send out, grouped by how soon it is due.',
-          icon: 'bills' as const,
-        },
-        {
-          href: '/paid',
-          label: 'Bills paid',
-          blurb: 'The history of what went out, each with its receipt attached.',
-          icon: 'paid' as const,
-        },
-        ...(wholeLog
-          ? [
+    ...(works
+      ? [
+          {
+            label: 'My queue',
+            items: [
               {
-                href: '/checks',
-                label: 'Checks received',
-                blurb: 'Money coming in from title companies and closing agents, for reconciling.',
-                icon: 'checks' as const,
+                href: '/',
+                label: 'My queue',
+                blurb: 'The documents routed to you, soonest due first.',
+                icon: 'queue' as const,
               },
-            ]
-          : []),
-      ],
-    },
+            ],
+          },
+          {
+            label: 'Money',
+            items: [
+              {
+                href: '/bills',
+                label: 'Bills to pay',
+                blurb: 'Everything open with money to send out, grouped by how soon it is due.',
+                icon: 'bills' as const,
+              },
+              {
+                href: '/paid',
+                label: 'Bills paid',
+                blurb: 'The history of what went out, each with its receipt attached.',
+                icon: 'paid' as const,
+              },
+              ...(wholeLog
+                ? [
+                    {
+                      href: '/checks',
+                      label: 'Checks received',
+                      blurb:
+                        'Money coming in from title companies and closing agents, for reconciling.',
+                      icon: 'checks' as const,
+                    },
+                  ]
+                : []),
+            ],
+          },
+        ]
+      : []),
     {
       label: 'Mail',
       items: [
-        ...(triages
+        ...(uploads
           ? [
               {
                 href: '/upload',
@@ -82,6 +97,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 blurb: 'Drop the day\u2019s scans in. Nothing is read or decided until you ask.',
                 icon: 'upload' as const,
               },
+            ]
+          : []),
+        ...(triages
+          ? [
               {
                 href: '/review',
                 label: 'Review',
@@ -97,17 +116,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               },
             ]
           : []),
-        {
-          href: '/log',
-          label: wholeLog ? 'Master log' : 'My documents',
-          blurb: wholeLog
-            ? 'Every document that ever arrived, by company and type. Nothing is deleted.'
-            : 'Every document routed to you, open or resolved.',
-          icon: 'log' as const,
-        },
+        ...(works
+          ? [
+              {
+                href: '/log',
+                label: wholeLog ? 'Master log' : 'My documents',
+                blurb: wholeLog
+                  ? 'Every document that ever arrived, by company and type. Nothing is deleted.'
+                  : 'Every document routed to you, open or resolved.',
+                icon: 'log' as const,
+              },
+            ]
+          : []),
       ],
     },
-    ...(isAdmin(session.role)
+    ...(configures
       ? [
           {
             label: 'Settings',

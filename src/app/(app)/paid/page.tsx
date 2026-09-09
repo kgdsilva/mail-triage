@@ -1,7 +1,7 @@
 import { Plus, Receipt } from 'lucide-react'
 import { prisma } from '@/server/db/client'
 import { listPayments, paymentTotals } from '@/server/payments'
-import { canSeeWholeLog, requireSession } from '@/server/session'
+import { canSeeWholeLog, requireWorker } from '@/server/session'
 import { CompanyPicker } from '@/components/company-picker'
 import { PaymentsList, type PaidRow } from '@/components/payments-list'
 import { ManualPayment } from '@/components/manual-payment'
@@ -21,7 +21,7 @@ export default async function PaidPage({
 }: {
   searchParams: Promise<{ entity?: string }>
 }) {
-  const session = await requireSession()
+  const session = await requireWorker()
   const { entity } = await searchParams
   const wholeLog = canSeeWholeLog(session.role)
 

@@ -1,0 +1,11 @@
+-- A role for the person who scans the post, and nothing else.
+--
+-- Until now the narrowest role that could upload was OPERATOR, which also reaches
+-- Settings — so giving the scanner what she needs would also have given her the
+-- autopay rules, which are what decide that a bill is safe to archive unseen.
+--
+-- Postgres cannot add an enum value inside a transaction on every version, and Prisma
+-- wraps a migration in one, so this is the documented two-step: the value is added
+-- separately from anything that uses it. Nothing here reads it, so a single statement
+-- is enough.
+ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'UPLOADER';

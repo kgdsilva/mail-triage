@@ -1,13 +1,13 @@
 import { endAutopayRule, saveAutopayRule } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
-import { requireSession } from '@/server/session'
+import { requireAdmin } from '@/server/session'
 import { formatDate } from '@/components/badges'
 import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AutopayPage() {
-  const session = await requireSession()
+  const session = await requireAdmin()
 
   const [rules, vendors, entities] = await Promise.all([
     prisma.autopayRule.findMany({

@@ -3,13 +3,13 @@ import { ChevronRight } from 'lucide-react'
 import { EntityBadge } from '@/components/badges'
 import { saveEntity } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
-import { requireSession } from '@/server/session'
+import { requireAdmin } from '@/server/session'
 import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
 
 export default async function EntitiesPage() {
-  const session = await requireSession()
+  const session = await requireAdmin()
   const entities = await prisma.entity.findMany({
     where: { companyGroupId: session.companyGroupId },
     orderBy: { sortOrder: 'asc' },

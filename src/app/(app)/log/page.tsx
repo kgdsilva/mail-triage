@@ -7,7 +7,7 @@ import { parseFilters } from '@/lib/filters'
 import { prisma } from '@/server/db/client'
 import { countByEntity, countByType, listDocuments } from '@/server/documents'
 import { deleteDocument, restoreDocument } from '@/server/actions/documents'
-import { canSeeWholeLog, requireSession } from '@/server/session'
+import { canSeeWholeLog, requireWorker } from '@/server/session'
 import { PeekRow } from '@/components/pdf-peek'
 import { BackLink } from '@/components/back'
 import { BTN } from '@/lib/theme'
@@ -25,7 +25,7 @@ export default async function LogPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const session = await requireSession()
+  const session = await requireWorker()
   const sp = new URLSearchParams()
   for (const [k, v] of Object.entries(await searchParams)) {
     if (typeof v === 'string') sp.set(k, v)

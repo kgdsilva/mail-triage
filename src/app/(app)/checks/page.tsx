@@ -1,7 +1,7 @@
 import { Banknote } from 'lucide-react'
 import { prisma } from '@/server/db/client'
 import { listChecks } from '@/server/documents'
-import { canSeeWholeLog, requireSession } from '@/server/session'
+import { canSeeWholeLog, requireWorker } from '@/server/session'
 import { EntityBadge, formatDate, formatMoney } from '@/components/badges'
 import { CompanyPicker } from '@/components/company-picker'
 import { PeekRow } from '@/components/pdf-peek'
@@ -23,7 +23,7 @@ export default async function ChecksPage({
 }: {
   searchParams: Promise<{ entity?: string }>
 }) {
-  const session = await requireSession()
+  const session = await requireWorker()
   const { entity } = await searchParams
 
   // A member sees their own documents elsewhere; checks are a whole-log view.

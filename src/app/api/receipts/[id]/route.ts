@@ -1,5 +1,5 @@
 import { prisma } from '@/server/db/client'
-import { canSeeWholeLog, requireSession } from '@/server/session'
+import { canSeeWholeLog, canWork, requireSession } from '@/server/session'
 import { getObject } from '@/server/storage'
 
 /**
@@ -11,6 +11,8 @@ import { getObject } from '@/server/storage'
  */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await requireSession()
+  // The scanner uploads and never reads back: no document, no receipt, no export.
+  if (!canWork(session.role)) return new Response('Not found', { status: 404 })
   const { id } = await ctx.params
 
   const payment = await prisma.payment.findFirst({

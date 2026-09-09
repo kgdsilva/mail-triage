@@ -1,6 +1,6 @@
 import { listAllForExport } from '@/server/documents'
 import { parseFilters } from '@/lib/filters'
-import { canSeeWholeLog, requireSession } from '@/server/session'
+import { canSeeWholeLog, canWork, requireSession } from '@/server/session'
 
 const COLUMNS = [
   'Reviewed',
@@ -33,6 +33,8 @@ function isoDate(d: Date | null) {
 
 export async function GET(req: Request) {
   const session = await requireSession()
+  // The scanner uploads and never reads back: no document, no receipt, no export.
+  if (!canWork(session.role)) return new Response('Not found', { status: 404 })
   const filters = parseFilters(new URL(req.url).searchParams)
   // Same restriction as the log screen — otherwise the export is a way around it.
   if (!canSeeWholeLog(session.role)) filters.restrictToUserId = session.userId

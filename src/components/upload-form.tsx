@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { UploadCloud } from 'lucide-react'
 import { useRef, useState } from 'react'
@@ -11,7 +12,7 @@ import {
   type UploadResult,
 } from '@/server/actions/documents'
 
-export function UploadForm() {
+export function UploadForm({ canClassify }: { canClassify: boolean }) {
   const router = useRouter()
   const formRef = useRef<HTMLFormElement>(null)
   const [files, setFiles] = useState<File[]>([])
@@ -172,11 +173,20 @@ export function UploadForm() {
 
       {result && (
         <div className="rounded-lg bg-ok-100 px-3 py-2 text-sm text-emerald-900">
+          {/*
+            The scanner has no classify screen, so telling her to go there would be a
+            link to a redirect. "Somebody will pick these up" is the true version of
+            what happens next, and it is also the whole of her job description.
+          */}
           <p>
             {result.created} document{result.created === 1 ? '' : 's'} added.{' '}
-            <a href="/classify" className="underline">
-              Start classifying
-            </a>
+            {canClassify ? (
+              <Link href="/classify" className="underline">
+                Start classifying
+              </Link>
+            ) : (
+              <span>Nothing else to do — these are now in the queue to be reviewed.</span>
+            )}
           </p>
           {result.skipped.length > 0 && (
             <ul className="mt-1 text-xs">
