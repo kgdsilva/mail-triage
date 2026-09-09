@@ -127,9 +127,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 })
 
+/**
+ * Records the sign-in, and forgets the password an admin was holding for them.
+ *
+ * Either method clears it. The readable copy exists only so a credential can be handed
+ * over; once the person is in, they have it, and keeping it legible in the database buys
+ * nothing anybody needs.
+ */
 async function touchLastLogin(userId: string) {
   await prisma.user
-    .update({ where: { id: userId }, data: { lastLoginAt: new Date() } })
+    .update({
+      where: { id: userId },
+      data: { lastLoginAt: new Date(), pendingPassword: null, pendingPasswordSetAt: null },
+    })
     // A missing row here is not worth failing a sign-in over.
     .catch(() => {})
 }

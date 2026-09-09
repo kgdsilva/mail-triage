@@ -44,7 +44,15 @@ export default async function MembersPage() {
     orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }],
     include: {
       user: {
-        select: { id: true, name: true, email: true, lastLoginAt: true, passwordHash: true },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          lastLoginAt: true,
+          passwordHash: true,
+          pendingPassword: true,
+          pendingPasswordSetAt: true,
+        },
       },
     },
   })
@@ -101,11 +109,13 @@ export default async function MembersPage() {
                       <span className="text-[15px] font-bold text-navy-900">
                         {m.user.name ?? m.user.email}
                       </span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${ROLE_TONE[m.role] ?? 'bg-line-soft text-muted'}`}
-                      >
-                        {m.role.toLowerCase()}
-                      </span>
+                      <MemberRole
+                        membershipId={m.id}
+                        role={m.role}
+                        roles={ROLES.map((r) => ({ role: r.role, help: r.help }))}
+                        self={m.userId === session.userId}
+                        tone={ROLE_TONE}
+                      />
                       {!m.isActive && (
                         <span className="rounded-full bg-danger-100 px-2 py-0.5 text-[11px] font-bold text-danger-700">
                           revoked
@@ -144,19 +154,16 @@ export default async function MembersPage() {
                 </div>
 
                 <div className="mt-3 border-t border-line-soft pt-3">
-                  <MemberRole
-                    membershipId={m.id}
-                    role={m.role}
-                    roles={ROLES.map((r) => ({ role: r.role, help: r.help }))}
-                    self={m.userId === session.userId}
-                  />
-                </div>
-
-                <div className="mt-3 border-t border-line-soft pt-3">
                   <MemberPassword
                     membershipId={m.id}
                     email={m.user.email}
                     hasPassword={Boolean(m.user.passwordHash)}
+                    pending={m.user.pendingPassword}
+                    pendingSince={
+                      m.user.pendingPasswordSetAt
+                        ? m.user.pendingPasswordSetAt.toLocaleDateString('en-US')
+                        : null
+                    }
                   />
                 </div>
               </div>

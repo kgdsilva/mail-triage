@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { setMemberRole } from '@/server/actions/settings'
-import { BTN } from '@/lib/theme'
 
 /**
  * Changing what somebody may do, on their own row.
@@ -17,11 +17,14 @@ export function MemberRole({
   role,
   roles,
   self,
+  tone,
 }: {
   membershipId: string
   role: string
   roles: { role: string; help: string }[]
   self: boolean
+  /** Colour by weight, so the list still reads by how much someone can do. */
+  tone: Record<string, string>
 }) {
   const [value, setValue] = useState(role)
   const [busy, setBusy] = useState(false)
@@ -42,33 +45,53 @@ export function MemberRole({
     }
   }
 
+  const badge = `rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${
+    tone[value] ?? 'bg-line-soft text-muted'
+  }`
+
+  /*
+   * Your own role is a badge and not a control. Nothing stops an owner locking
+   * themselves out of Settings faster than a one-click dropdown on their own row, and
+   * the server refuses it anyway — so the refusal is shown as an absence rather than as
+   * an error after the fact.
+   */
   if (self) {
     return (
-      <p className="text-[12px] text-subtle">
-        This is you — another owner or admin changes your role.
-      </p>
+      <span className={badge} title="Another owner or admin changes your role">
+        {value.toLowerCase()}
+      </span>
     )
   }
 
+  /*
+   * The badge *is* the control. It was a coloured badge next to a dropdown showing the
+   * same word twice, which reads as a label beside an unrelated setting; one thing that
+   * looks like the role and changes the role is less to understand. It saves on change
+   * rather than behind a Save button, because a role sitting changed-but-unsaved is
+   * worse than either state.
+   */
   return (
-    <div>
-      <label className="flex items-center gap-2">
-        <span className="text-[12px] font-semibold text-muted">Role</span>
-        <select
-          value={value}
-          disabled={busy}
-          onChange={(e) => void change(e.target.value)}
-          className={`${BTN.quiet} pr-1 lowercase`}
-        >
-          {roles.map((r) => (
-            <option key={r.role} value={r.role}>
-              {r.role.toLowerCase()}
-            </option>
-          ))}
-        </select>
-        {busy && <span className="text-[12px] text-subtle">saving…</span>}
-      </label>
-      {error && <p className="mt-1 text-[12px] text-danger-700">{error}</p>}
-    </div>
+    <span className="relative inline-flex items-center gap-1">
+      <select
+        value={value}
+        disabled={busy}
+        onChange={(e) => void change(e.target.value)}
+        aria-label="Role"
+        className={`${badge} appearance-none pr-5 lowercase outline-none focus:ring-2 focus:ring-navy-500`}
+      >
+        {roles.map((r) => (
+          <option key={r.role} value={r.role} className="normal-case">
+            {r.role.toLowerCase()}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-1.5 size-3 opacity-60" aria-hidden />
+      {busy && <span className="ml-1 text-[11px] text-subtle">saving…</span>}
+      {error && (
+        <span className="ml-1 text-[11px] font-semibold text-danger-700" role="alert">
+          {error}
+        </span>
+      )}
+    </span>
   )
 }

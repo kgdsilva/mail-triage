@@ -13,26 +13,36 @@ import { BTN } from '@/lib/theme'
  * dismissed — because the whole reason an admin sets one is to tell somebody what it
  * is, and there is no reset email to fall back on.
  *
- * What it cannot do is show a password set last month. Those are stored as a scrypt
- * hash, which is one-way by construction: the database holds enough to check a password
- * and not enough to reproduce one, and that is what stops a copy of the database being
- * a list of everyone's credentials. So the way back from "nobody remembers it" is a new
+ * A password that has been set and not yet used stays readable on the row afterwards —
+ * `pending` below — because that is the one that actually goes missing: set on Monday,
+ * the person calls on Thursday having never logged in, and nobody wrote it down.
+ *
+ * It stops being readable the moment they sign in. What cannot be shown is the password
+ * of somebody who has been using it for a month: that exists only as a scrypt hash,
+ * which is one-way by construction — the database holds enough to check a password and
+ * not enough to reproduce one, which is what stops a copy of the database being a list
+ * of everyone's working credentials. The way back from "nobody remembers it" is a new
  * one, which Generate makes a two-second job.
  */
 export function MemberPassword({
   membershipId,
   email,
   hasPassword,
+  pending,
+  pendingSince,
 }: {
   membershipId: string
   email: string
   hasPassword: boolean
+  /** A password set by an admin that this person has never signed in with. */
+  pending: string | null
+  pendingSince: string | null
 }) {
   const [open, setOpen] = useState(false)
   const [value, setValue] = useState('')
   const [saved, setSaved] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [pending, startTransition] = useTransition()
+  const [saving, startTransition] = useTransition()
 
   function save(password: string) {
     setError(null)
@@ -78,6 +88,31 @@ export function MemberPassword({
     )
   }
 
+  if (!open && pending) {
+    return (
+      <div className="rounded-lg border border-gold-500 bg-gold-100/60 p-3">
+        <div className="flex items-start gap-2">
+          <KeyRound className="mt-0.5 size-4 flex-none text-gold-800" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-[12.5px] font-bold text-gold-800">
+              Not signed in yet — this is their password
+            </p>
+            <p className="mt-0.5 text-[12px] text-muted">
+              Set {pendingSince}. Hand it to {email}. It disappears from here the first
+              time they sign in.
+            </p>
+            <p className="mt-2 select-all rounded border border-gold-500 bg-surface px-2 py-1.5 font-mono text-[14px] font-semibold tracking-tight text-ink">
+              {pending}
+            </p>
+          </div>
+          <button type="button" onClick={() => setOpen(true)} className={BTN.quiet}>
+            Change
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (!open) {
     return (
       <div className="flex flex-wrap items-center gap-2">
@@ -108,11 +143,11 @@ export function MemberPassword({
         <button
           type="button"
           onClick={() => save(value)}
-          disabled={pending || value.trim().length === 0}
+          disabled={saving || value.trim().length === 0}
           className={BTN.done}
         >
           <Check className="size-3.5" aria-hidden />
-          {pending ? 'Saving…' : 'Save password'}
+          {saving ? 'Saving…' : 'Save password'}
         </button>
         <button
           type="button"
@@ -129,7 +164,7 @@ export function MemberPassword({
           <button
             type="button"
             onClick={() => save('')}
-            disabled={pending}
+            disabled={saving}
             className="ml-auto text-[12px] font-medium text-muted underline transition-colors hover:text-danger-700"
             title="Leaves Google as the only way in — it does not remove access."
           >

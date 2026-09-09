@@ -577,11 +577,18 @@ Two things follow from that, and they shape the screen:
 - **It stays on screen after saving** until dismissed, because that is the only moment it
   can be read.
 
-**It cannot be read back later, and that is not a display setting.** `passwordHash` is
-scrypt — the database holds enough to check a password and not enough to reproduce one,
-which is what stops a copy of the database being a list of everyone's credentials. This
-project has already rotated a leaked database URL once. The way back from "nobody
-remembers it" is a new password, which Generate makes a two-second job, not a lookup.
+**A password that was set and never used stays readable on the member's row.** That is
+the one that actually goes missing: set on Monday, the person rings on Thursday having
+never signed in, and nobody wrote it down. It is stored alongside the hash in
+`pendingPassword` and cleared the moment that account signs in by either method, so what
+the database holds in readable form is only ever a credential nobody has used yet.
+
+**A password already in use cannot be read back, and that is not a display setting.**
+`passwordHash` is scrypt — the database holds enough to check a password and not enough
+to reproduce one, which is what stops a copy of the database being a list of everyone's
+working credentials. This project has already rotated a leaked database URL once, so
+that is a real exposure and not a theoretical one. The way back from "nobody remembers
+it" is a new password, which Generate makes a two-second job, not a lookup.
 
 ## Roles, and what they are not
 

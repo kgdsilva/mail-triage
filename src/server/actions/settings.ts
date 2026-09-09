@@ -176,7 +176,7 @@ export async function saveDocumentType(formData: FormData) {
 const memberSchema = z.object({
   email: z.string().trim().email(),
   name: z.string().trim().optional(),
-  role: z.enum(['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'VIEWER']),
+  role: z.enum(['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'VIEWER', 'UPLOADER']),
   /// Blank means Google-only: the person signs in with Google and never has a password.
   password: z.string().optional(),
 })
@@ -206,15 +206,21 @@ export async function addMember(formData: FormData) {
     passwordHash = await hashPassword(password)
   }
 
+  // The readable copy travels with the hash — see setMemberPassword below for why it
+  // exists and when it goes away. A password typed here has by definition not reached
+  // the person yet.
+  const pending = password ? { pendingPassword: password, pendingPasswordSetAt: new Date() } : {}
+
   // Users are global across company groups, so reuse an existing record rather than
   // creating a second one for the same person.
+
   const user = await prisma.user.upsert({
     where: { email },
-    create: { email, name: data.name || null, passwordHash },
+    create: { email, name: data.name || null, passwordHash, ...pending },
     update: {
       ...(data.name ? { name: data.name } : {}),
       // Only overwrite an existing password when a new one was actually typed.
-      ...(passwordHash ? { passwordHash } : {}),
+      ...(passwordHash ? { passwordHash, ...pending } : {}),
     },
   })
 
@@ -249,7 +255,7 @@ export async function setMemberPassword(membershipId: string, formData: FormData
     // in for that person, which is the state every Google-only member is already in.
     await prisma.user.update({
       where: { id: membership.userId },
-      data: { passwordHash: null },
+      data: { passwordHash: null, pendingPassword: null, pendingPasswordSetAt: null },
     })
     revalidatePath('/settings/members')
     return
@@ -258,9 +264,23 @@ export async function setMemberPassword(membershipId: string, formData: FormData
   const problem = validatePassword(password)
   if (problem) throw new Error(problem)
 
+  /*
+   * Stored twice: the hash, which is what sign-in checks, and the password itself,
+   * which is what somebody still has to be told.
+   *
+   * The readable copy exists because there is no reset email and no self-service
+   * change in this app — a password only ever travels from one person to another, and
+   * the one that goes missing is always the one that was set and not yet delivered.
+   * It is cleared the moment that account signs in, so what sits here is only ever a
+   * credential nobody has used yet.
+   */
   await prisma.user.update({
     where: { id: membership.userId },
-    data: { passwordHash: await hashPassword(password) },
+    data: {
+      passwordHash: await hashPassword(password),
+      pendingPassword: password,
+      pendingPasswordSetAt: new Date(),
+    },
   })
 
   revalidatePath('/settings/members')

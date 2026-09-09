@@ -65,6 +65,21 @@ model User {
   /// user may have both. Never selected into anything that reaches the client.
   passwordHash String? @map("password_hash")
 
+  /// A password an admin has set that this person has never signed in with.
+  ///
+  /// Readable, which `passwordHash` deliberately is not — so this is the narrowest
+  /// version of "let the owner see it" that can exist. There is no reset email and no
+  /// self-service change here: every password is handed over by a person, and the row
+  /// that gets lost is always one that was set and not yet delivered.
+  ///
+  /// Cleared the moment that account signs in, by either method, because from then on
+  /// the credential has been received and keeping it readable buys nothing. The
+  /// database therefore only ever holds credentials that have never been used, rather
+  /// than being a list of everyone's working passwords — which matters here in
+  /// particular: this project has already had a database URL leak once.
+  pendingPassword      String?   @map("pending_password")
+  pendingPasswordSetAt DateTime? @map("pending_password_set_at")
+
   createdAt   DateTime  @default(now()) @map("created_at")
   lastLoginAt DateTime? @map("last_login_at")
 
