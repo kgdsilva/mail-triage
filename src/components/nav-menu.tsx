@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   Banknote,
   ChevronDown,
+  DatabaseBackup,
   Inbox,
   ListChecks,
   Receipt,
@@ -23,6 +24,7 @@ const ICONS: Record<string, LucideIcon> = {
   review: ListChecks,
   upload: Upload,
   log: Table2,
+  import: DatabaseBackup,
   settings: Settings,
 }
 

@@ -24,6 +24,7 @@ const DOCUMENT_TYPES = [
   { code: 'TAX_PR_NOTICE', label: 'Tax / PR Notice', defaultAction: 'ACTION', sortOrder: 40 },
   { code: 'CHECK', label: 'Check (incoming)', defaultAction: 'ARCHIVE', sortOrder: 50 },
   { code: 'INSURANCE', label: 'Insurance', defaultAction: 'ASK', sortOrder: 60 },
+  { code: 'PAYROLL', label: 'Payroll (W2/1099)', defaultAction: 'ASK', sortOrder: 65 },
   { code: 'STATEMENT', label: 'Statement', defaultAction: 'ARCHIVE', sortOrder: 70 },
   { code: 'SPAM', label: 'Spam / Solicitation', defaultAction: 'ARCHIVE', sortOrder: 80 },
   { code: 'OTHER', label: 'Other', defaultAction: 'ASK', sortOrder: 90 },
@@ -62,10 +63,26 @@ type SeedGroup = {
   entities: SeedEntity[]
 }
 
-/** Default folder tree created under each entity, mirroring the current Box layout. */
+/**
+ * Default folder tree created under each entity, mirroring the current Box layout.
+ *
+ * These are the names the folders really have, read back off five months of filed
+ * documents rather than invented here — see FOLDER_BY_TYPE in src/server/filing.ts,
+ * which has to agree with them or new mail lands beside the history instead of in it.
+ */
 const FOLDER_TREE: Record<string, string[]> = {
-  Finances: ['Tax IRS', 'Tax State', 'Bills', 'Bank Statements', 'Checks Received'],
-  Insurance: [],
+  Finances: [
+    'Bills & Expenses',
+    'Copies of Checks',
+    'Statements',
+    'Tax IRS',
+    'Tax PR',
+    'Insurance',
+    'Notices',
+    'Accounting Reports',
+    'Other',
+  ],
+  'Human Resources': ['Payroll', 'Benefits'],
   Legal: [],
   Correspondence: ['Spam'],
 }

@@ -25,6 +25,41 @@ classification · 5 pattern detection.
 `notifiedAt` column exist and nothing writes to them, so a document routed to someone is
 only discovered by opening the app.
 
+## Importing the history
+
+`Mail → Import the history` is the Phase 1.5 screen: the months that were processed by
+hand, brought in from the master spreadsheet, then matched up with their PDFs.
+
+Two steps, deliberately separate. The spreadsheet is the record of what happened and can
+be imported, checked and imported again; the PDFs are hundreds of megabytes that arrive
+over several sittings. Coupling them would mean neither could be done alone.
+
+**The spreadsheet.** Export as CSV (UTF-8), one header row, review dates as `YYYY-MM-DD`.
+Dropping it in produces a preview and writes nothing: how many documents would be
+created, which months, and every correction and unresolved row it found. Re-importing the
+same file updates the rows it already created rather than duplicating them, so a
+corrected export can simply be dropped in again. Attached PDFs are never touched by a
+re-import.
+
+A row whose company code matches no entity is **held, not dropped** — it cannot become a
+document, and inventing the company would attach real mail to something that does not
+exist here. It stays in the report until the cause is fixed.
+
+**The PDFs.** Unzip the Box download first and drag whole folders in; the browser walks
+the subfolders. Each file is matched to its row by the final filename with the extension
+stripped. A file matching no row is stored and given an unclassified row of its own, so
+it lands on Review asking to be identified — ambiguity resolves to action, never to a
+silent archive, and an unrecognised PDF is the likeliest candidate for a document that
+quietly never existed here.
+
+**What is left.** Two numbers at the bottom of the screen, counted from the data rather
+than remembered from the run: rows still waiting for a PDF, and files with no row. The
+import is finished when both are zero.
+
+Documents from a historical batch are excluded from the AI reader, since they were
+decided months ago and asking the model to read them again would spend several hundred
+calls to re-derive what the spreadsheet already says.
+
 ## Workspaces
 
 A workspace is a `CompanyGroup` — the tenant boundary the schema has had from the start.
@@ -137,6 +172,8 @@ npm run db:repair                                        # re-create anything lo
   highlighted and always default to action.
 - `/log` — the master log. Filters live in the URL, so any view is a shareable link and
   the CSV export reuses the same query string.
+- `/import` — the historical spreadsheet and the PDFs that belong to it, with the
+  reconciliation that says what is still unaccounted for.
 - `/settings` — entities, document types, vendors, autopay rules.
 
 ## Stack

@@ -89,6 +89,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 icon: 'review' as const,
                 badge: pending || undefined,
               },
+              {
+                href: '/import',
+                label: 'Import the history',
+                blurb: 'Bring in the months that were processed by hand, and their PDFs.',
+                icon: 'import' as const,
+              },
             ]
           : []),
         {

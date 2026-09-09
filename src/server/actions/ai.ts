@@ -34,11 +34,20 @@ export async function isAiAvailable() {
   return aiConfigured()
 }
 
-/** Documents the reader still owes an answer on, including failures worth retrying. */
+/**
+ * Documents the reader still owes an answer on, including failures worth retrying.
+ *
+ * Restricted to documents nobody has decided yet. Reading a classified document would
+ * spend a model call to re-derive an answer that is already on the row — which at the
+ * scale of the historical import means several hundred calls to be told what the
+ * spreadsheet already said. A reclassification is a human changing their mind, not a
+ * reason to ask the model again.
+ */
 function unreadWhere(companyGroupId: string) {
   return {
     companyGroupId,
     deletedAt: null,
+    disposition: 'UNREVIEWED',
     aiSuggestion: { equals: Prisma.DbNull },
     storageKey: { not: null },
     aiReadAttempts: { lt: MAX_READ_ATTEMPTS },

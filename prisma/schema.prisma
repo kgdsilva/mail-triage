@@ -440,6 +440,16 @@ model Batch {
   createdAt DateTime  @default(now()) @map("created_at")
   closedAt  DateTime? @map("closed_at")
 
+  /// What could not be resolved when this batch was imported, kept on the batch itself.
+  ///
+  /// Only set for HISTORICAL_IMPORT. A spreadsheet row whose company code names no
+  /// entity cannot become a Document — there is nowhere to put it — but silently
+  /// dropping it is exactly how a document disappears. It is recorded here instead,
+  /// with the folder names that had to be repaired and the people who could not be
+  /// matched to a user, so the import screen can still show it weeks later.
+  /// Shape: { blocked: [...], foldersCreated: [...], repairs: [...], unknownPeople: [...] }
+  importReport Json? @map("import_report")
+
   documents Document[]
 
   @@index([companyGroupId, createdAt])
@@ -536,6 +546,13 @@ model Document {
   storageFolderId String?        @map("storage_folder_id")
   storageFolder   StorageFolder? @relation(fields: [storageFolderId], references: [id], onDelete: SetNull)
   filedAt         DateTime?      @map("filed_at")
+
+  /// Where this document used to live, for rows imported from the historical log.
+  ///
+  /// A real column rather than a line in the notes: during the changeover it is the way
+  /// back to the copy people already know, and it has to be clickable. Null for
+  /// everything that arrived through the platform, which has no Box original.
+  legacyBoxUrl String? @map("legacy_box_url")
 
   // --- narrative ----------------------------------------------------------
   /// Plain-language "what this is", written for whoever it routes to.
