@@ -76,6 +76,24 @@ const TRIAGE_ROLES = ['OWNER', 'ADMIN', 'OPERATOR'] as const
 const UPLOAD_ROLES = ['OWNER', 'ADMIN', 'OPERATOR', 'UPLOADER'] as const
 
 /**
+ * Acting on a document that is already on the board: finishing it, handing it on,
+ * paying it, or saying it needed no action after all.
+ *
+ * VIEWER is excluded and everybody else is in, including MEMBER. That is deliberate and
+ * it is the point of a shared board: an item only one person can touch is an item that
+ * stops moving the week they are away, and nobody finds out.
+ *
+ * It is narrower than it looks. This is only the open action items — documents somebody
+ * has already decided need a person. Deciding what an *unreviewed* document is stays
+ * with triage, on the Review screen.
+ */
+const DECIDE_ROLES = ['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER'] as const
+
+export function canDecide(role: string) {
+  return (DECIDE_ROLES as readonly string[]).includes(role)
+}
+
+/**
  * Doing the work: queues, bills, the log, documents. Everybody except the scanner.
  *
  * Named positively rather than as "not UPLOADER" so that the next narrow role added
@@ -120,6 +138,13 @@ export function canSeeWholeLog(role: string) {
 export async function requireTriage(): Promise<Session> {
   const session = await requireSession()
   if (!canTriage(session.role)) redirect('/')
+  return session
+}
+
+/** Acting on an item that is already on the board. */
+export async function requireDecider(): Promise<Session> {
+  const session = await requireSession()
+  if (!canDecide(session.role)) redirect('/')
   return session
 }
 

@@ -46,12 +46,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     ...(works
       ? [
           {
-            label: 'My queue',
+            label: 'Needs a decision',
             items: [
               {
                 href: '/',
-                label: 'My queue',
-                blurb: 'The documents routed to you, soonest due first.',
+                label: 'Needs a decision',
+                blurb:
+                  'The shared board: everything waiting on a person, by company. Yours first.',
                 icon: 'queue' as const,
               },
             ],

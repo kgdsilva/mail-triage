@@ -405,6 +405,9 @@ export async function quickDecide(
       data: {
         ...target,
         ...(documentTypeId ? { documentTypeId } : {}),
+        // An archived document never enters a queue, so it does not keep an assignee
+        // either — one left behind would sit in somebody's name asking nothing of them.
+        ...(target.disposition === 'ARCHIVE' ? { assignedToUserId: null } : {}),
         reviewedByUserId: actorUserId,
         reviewedAt: new Date(),
       },

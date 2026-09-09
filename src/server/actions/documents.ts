@@ -12,7 +12,7 @@ import {
   type QuickDecision,
 } from '@/server/documents'
 import { parseIncomingFilename } from '@/server/filename-parse'
-import { canSeeWholeLog, requireSession, requireTriage } from '@/server/session'
+import { canSeeWholeLog, requireDecider, requireSession, requireTriage } from '@/server/session'
 import {
   buildKey,
   deleteObject,
@@ -253,7 +253,7 @@ export async function setStatus(documentId: string, status: 'WAITING' | 'IN_PROG
  * person's dashboard honest — it only ever shows what is theirs right now.
  */
 export async function handOffDocument(documentId: string, formData: FormData) {
-  const session = await requireSession()
+  const session = await requireDecider()
 
   const toUserId = String(formData.get('toUserId') ?? '').trim()
   const actionKind = String(formData.get('actionKind') ?? '').trim()
@@ -269,9 +269,6 @@ export async function handOffDocument(documentId: string, formData: FormData) {
       id: documentId,
       companyGroupId: session.companyGroupId,
       deletedAt: null,
-      // You can only hand on a document that is currently yours, unless you are one of
-      // the roles that oversees the whole log.
-      ...(canSeeWholeLog(session.role) ? {} : { assignedToUserId: session.userId }),
     },
     select: { assignedToUserId: true, actionKind: true, disposition: true },
   })
@@ -314,19 +311,23 @@ export async function handOffDocument(documentId: string, formData: FormData) {
 }
 
 /**
- * Marks an item finished from the dashboard, without opening the classify screen.
+ * Marks an item finished from the board, without opening the classify screen.
  * Resolving is the common case; anything more (changing the amount, refiling) belongs
  * on the document itself.
+ *
+ * Any open action item, not only your own. That is what makes the board shared: work
+ * that only one person can finish is work that stops the week they are away, and the
+ * event trail records who actually did it either way.
  */
 export async function resolveDocument(documentId: string) {
-  const session = await requireSession()
+  const session = await requireDecider()
 
   const before = await prisma.document.findFirst({
     where: {
       id: documentId,
       companyGroupId: session.companyGroupId,
       deletedAt: null,
-      ...(canSeeWholeLog(session.role) ? {} : { assignedToUserId: session.userId }),
+      disposition: 'ACTION',
     },
     select: { status: true },
   })
@@ -341,6 +342,76 @@ export async function resolveDocument(documentId: string) {
         action: 'status_changed',
         fromValue: { status: before.status },
         toValue: { status: 'DONE' },
+      },
+      tx,
+    )
+  })
+
+  revalidatePath('/', 'layout')
+}
+
+/**
+ * "This needed no action after all" — from the board, on an item already routed.
+ *
+ * The two answers a person reaches for when they look at something in their queue and
+ * find nothing to do: it is a solicitation, or it is real but only needs filing. Both
+ * archive it with the reason recorded, which is what makes "why wasn't I shown this?"
+ * answerable later.
+ *
+ * Restricted to items already decided as actions. An unreviewed document is triage's
+ * question, and it is answered on Review with the PDF open — not from a queue card.
+ */
+export async function undoAction(documentId: string, decision: 'ARCHIVE' | 'SPAM') {
+  const session = await requireDecider()
+
+  const target = await prisma.document.findFirst({
+    where: {
+      id: documentId,
+      companyGroupId: session.companyGroupId,
+      deletedAt: null,
+      disposition: 'ACTION',
+    },
+    select: { id: true },
+  })
+  if (!target) throw new Error('Document not found')
+
+  await quickDecide(session.companyGroupId, documentId, session.userId, decision)
+  revalidatePath('/', 'layout')
+}
+
+/**
+ * Taking an unowned item.
+ *
+ * A document marked for action but routed to nobody is the one thing a shared board
+ * must not leave ambiguous: everyone can see it, so everyone can assume somebody else
+ * has it. Claiming puts a name on it without a hand-off dialogue.
+ */
+export async function claimDocument(documentId: string) {
+  const session = await requireDecider()
+
+  const before = await prisma.document.findFirst({
+    where: {
+      id: documentId,
+      companyGroupId: session.companyGroupId,
+      deletedAt: null,
+      disposition: 'ACTION',
+    },
+    select: { assignedToUserId: true, actionKind: true },
+  })
+  if (!before) throw new Error('Document not found')
+
+  await prisma.$transaction(async (tx) => {
+    await tx.document.update({
+      where: { id: documentId },
+      data: { assignedToUserId: session.userId, status: 'IN_PROGRESS' },
+    })
+    await recordEvent(
+      {
+        documentId,
+        actorUserId: session.userId,
+        action: 'routed',
+        fromValue: { assignedToUserId: before.assignedToUserId },
+        toValue: { assignedToUserId: session.userId, via: 'claimed' },
       },
       tx,
     )

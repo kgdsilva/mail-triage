@@ -590,6 +590,41 @@ working credentials. This project has already rotated a leaked database URL once
 that is a real exposure and not a theoretical one. The way back from "nobody remembers
 it" is a new password, which Generate makes a two-second job, not a lookup.
 
+## The board
+
+`/` is the board: every open action item, from every company, in one shared list. It
+replaced a per-person queue, and the reason is the point — a queue only its owner can
+see is a queue where work stops invisibly. The week somebody is away, seven bills sit in
+their name and no other screen says so.
+
+So the list is shared and whose an item is became a tag on the card rather than the limit
+of what you may look at. It still opens on your own items, because that is what you came
+to do; the tab beside it says how many belong to everybody else, which is the sentence a
+private queue could not say. A third tab counts the ones routed to nobody — on a shared
+board that is the item everyone assumes somebody else has.
+
+Grouped by company, because that is the first question anyone asks of a piece of mail and
+it is how the people reading it think.
+
+Four answers fit on a card, and until this existed there were two:
+
+- **Mark paid** — records the payment and its receipt, and closes the bill in one act.
+  Green on a bill because on a bill that is the answer. `Done, no payment` sits beside it
+  quietly for a bill settled outside the platform.
+- **Hand off** — reassigns and rewrites what is being asked, so confirm → pay is one
+  document moving rather than two open assignments.
+- **Just filing** / **Spam** — it needed nothing after all. This was the gap: the only
+  place to say "this is spam" was the triage screen, so the person a document was routed
+  *to* could not say it. Both archive with the reason recorded.
+- **I'll take it** — puts your name on an unowned item without a hand-off dialogue.
+
+`canDecide` is who may press them: everyone except VIEWER and the scanner, MEMBER
+included. Any open action item, not only your own — deliberately, since work only one
+person can finish is work that stops when they are away, and `DocumentEvent` records who
+actually did it. It is narrower than it sounds: this is only items somebody has already
+decided need a person. Deciding what an *unreviewed* document is stays on Review, with
+the PDF open.
+
 ## Roles, and what they are not
 
 Access roles say what a person may **see and change**: OWNER, ADMIN, OPERATOR, MEMBER,
