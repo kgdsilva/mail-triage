@@ -734,13 +734,22 @@ export async function matchRowForFile(
       finalFilename: { not: null },
       batch: { source: 'HISTORICAL_IMPORT' },
     },
-    select: { id: true, finalFilename: true, storageKey: true },
+    select: { id: true, finalFilename: true, originalFilename: true, storageKey: true },
   })
 
+  // The renamed name first, since that is what the filed copy is called. Then the name
+  // the scan arrived under, so a PDF that never got renamed still finds its row instead
+  // of arriving as an unknown document — several folders were never put through the
+  // renaming convention at all.
   const hits = candidates.filter((c) => matchKey(c.finalFilename!) === key)
-  if (hits.length !== 1) return { kind: 'none' }
-  if (hits[0].storageKey) return { kind: 'already', finalFilename: hits[0].finalFilename! }
-  return { kind: 'row', documentId: hits[0].id }
+  const byOriginal =
+    hits.length === 0 ? candidates.filter((c) => matchKey(c.originalFilename) === key) : hits
+
+  if (byOriginal.length !== 1) return { kind: 'none' }
+  if (byOriginal[0].storageKey) {
+    return { kind: 'already', finalFilename: byOriginal[0].finalFilename! }
+  }
+  return { kind: 'row', documentId: byOriginal[0].id }
 }
 
 export type AttachResult =
