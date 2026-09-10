@@ -16,10 +16,21 @@ export function LogFilters({
   types,
   total,
   level,
+  separateLabel,
 }: {
   entities: Option[]
   types: Option[]
   total: number
+  /**
+   * What to call the tab holding the companies kept in their own view, or null when no
+   * company is set that way.
+   *
+   * It used to be the hardcoded string "Ops Perfection". That is one workspace's answer
+   * printed into the app: the personal workspace has no such company, so the tab was a
+   * promise of a view that could never contain anything, and if the company were ever
+   * renamed the tab would still say the old name.
+   */
+  separateLabel: string | null
   /**
    * Which drill-down level is on screen. Entity and type are the navigation now, so
    * their chips are gone; decision and status only make sense once a list exists to
@@ -86,22 +97,25 @@ export function LogFilters({
         </form>
 
         {/* Segregated entities sit in their own tab. A display split, never a permission —
-            "All" is always available to everyone. */}
-        <div className="flex overflow-hidden rounded-lg border border-line bg-surface text-[13px]">
-          {(['main', 'segregated', 'all'] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => apply((next) => next.set('view', v))}
-              className={`px-3 py-2 font-semibold transition-colors ${
-                view === v
-                  ? 'bg-navy-700 text-white'
-                  : 'text-muted hover:bg-navy-50 hover:text-navy-700 active:bg-navy-100'
-              }`}
-            >
-              {v === 'main' ? 'Main' : v === 'segregated' ? 'Ops Perfection' : 'All'}
-            </button>
-          ))}
-        </div>
+            "All" is always available to everyone. With no such company there is nothing
+            to split, so the two tabs that remain would both mean "everything". */}
+        {separateLabel && (
+          <div className="flex overflow-hidden rounded-lg border border-line bg-surface text-[13px]">
+            {(['main', 'segregated', 'all'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => apply((next) => next.set('view', v))}
+                className={`px-3 py-2 font-semibold transition-colors ${
+                  view === v
+                    ? 'bg-navy-700 text-white'
+                    : 'text-muted hover:bg-navy-50 hover:text-navy-700 active:bg-navy-100'
+                }`}
+              >
+                {v === 'main' ? 'Main' : v === 'segregated' ? separateLabel : 'All'}
+              </button>
+            ))}
+          </div>
+        )}
 
         <a
           href={`/api/export?${sp.toString()}`}

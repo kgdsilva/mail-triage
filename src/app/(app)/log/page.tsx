@@ -63,7 +63,14 @@ export default async function LogPage({
     prisma.entity.findMany({
       where: { companyGroupId: session.companyGroupId },
       orderBy: { sortOrder: 'asc' },
-      select: { id: true, code: true, legalName: true, sortOrder: true },
+      select: {
+        id: true,
+        code: true,
+        legalName: true,
+        displayName: true,
+        sortOrder: true,
+        isSegregated: true,
+      },
     }),
     prisma.documentType.findMany({
       where: { companyGroupId: session.companyGroupId },
@@ -71,6 +78,19 @@ export default async function LogPage({
       select: { id: true, label: true, code: true },
     }),
   ])
+
+  /*
+   * The companies kept in their own view name the tab that holds them, rather than the
+   * app printing one workspace's answer. None of them means no tab: a split with nothing
+   * on one side is two tabs that both say "everything".
+   */
+  const separate = entities.filter((e) => e.isSegregated)
+  const separateLabel =
+    separate.length === 0
+      ? null
+      : separate.length === 1
+        ? tabName(separate[0])
+        : 'Separate'
 
   const crumbEntity = entities.find((e) => e.id === entitySel)
   const crumbType = types.find((t) => t.id === typeSel)
@@ -121,6 +141,7 @@ export default async function LogPage({
         types={types.map((t) => ({ id: t.id, label: t.label }))}
         total={listing?.total ?? byEntity?.total ?? byType?.total ?? 0}
         level={level}
+        separateLabel={separateLabel}
       />
 
       {/*
@@ -214,8 +235,22 @@ export default async function LogPage({
             </Link>
           )}
 
+          {/*
+            "Nothing in the log yet" is wrong the moment one view is empty and the log
+            is not — which is exactly what a separate-company tab looks like before its
+            first document is filed. Saying which view is empty is the difference
+            between "the import did not work" and "nothing here yet".
+          */}
           {byEntity.entities.length === 0 && byEntity.unassigned === 0 && (
-            <EmptyState label="Nothing in the log yet" />
+            <EmptyState
+              label={
+                filters.view === 'segregated'
+                  ? `Nothing filed under ${separateLabel ?? 'this company'} yet. Everything else is under Main.`
+                  : filters.view === 'main' && separateLabel
+                    ? `Nothing here. ${separateLabel} keeps its documents in its own tab.`
+                    : 'Nothing in the log yet'
+              }
+            />
           )}
         </div>
       )}
@@ -438,6 +473,14 @@ export default async function LogPage({
       )}
     </div>
   )
+}
+
+/**
+ * A company's name at tab length. The legal suffix is noise in a two-word tab, and
+ * "CoLAB Ops Perfection LLC" pushes the other tabs off a narrow screen.
+ */
+function tabName(entity: { displayName: string | null; legalName: string }) {
+  return (entity.displayName ?? entity.legalName).replace(/,?\s+(LLC|Inc\.?|L\.L\.C\.)$/i, '')
 }
 
 function EmptyState({ label }: { label: string }) {
