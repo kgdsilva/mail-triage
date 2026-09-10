@@ -187,9 +187,27 @@ export function ReviewTable({
                         </td>
 
                         <td className="w-72 px-3 py-2.5 align-top">
+                          {/*
+                            Two ways to end up here. The reader can ask whose document
+                            this is, in which case naming the company replaces the three
+                            buttons — pay, archive and spam are answers to a different
+                            question and offering them is what made people guess.
+
+                            Or there is simply no company on the row, read or not: the
+                            filename parser declines to choose between two companies
+                            whose names share a word, and until now such a document
+                            arrived with no way to place it by hand either. There the
+                            picker sits *above* the buttons rather than replacing them,
+                            because a solicitation can be marked spam without anyone
+                            having to work out which company it was aimed at.
+                          */}
                           {row.ai?.needs === 'entity' ? (
                             <EntityResolver row={row} entities={entities} disabled={busy} />
                           ) : (
+                          <div className="flex flex-col items-end gap-1.5">
+                          {!row.entityId && (
+                            <EntityResolver row={row} entities={entities} disabled={busy} compact />
+                          )}
                           <div className="flex flex-nowrap items-center justify-end gap-1.5">
                             <QuickButton
                               label="Needs paying"
@@ -224,6 +242,7 @@ export function ReviewTable({
                               disabled={busy}
                               tone="danger"
                             />
+                          </div>
                           </div>
                           )}
 
@@ -466,17 +485,23 @@ function EntityResolver({
   row,
   entities,
   disabled,
+  compact,
 }: {
   row: ReviewRow
   entities: { id: string; code: string; legalName: string }[]
   disabled: boolean
+  /** Beside the quick buttons rather than in place of them, so it has to be one line. */
+  compact?: boolean
 }) {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
   return (
-    <div className="flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
-      <span className="text-[11px] text-subtle">Whose is this?</span>
+    <div
+      className={compact ? 'w-full' : 'flex flex-col items-end gap-1'}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {!compact && <span className="text-[11px] text-subtle">Whose is this?</span>}
       <select
         defaultValue=""
         disabled={disabled || pending}
@@ -489,10 +514,14 @@ function EntityResolver({
             if (!res.ok) setError(res.error ?? 'Could not save that.')
           })
         }}
-        className="w-full rounded-lg border border-gold-500 bg-surface px-2 py-1.5 text-[12px] text-navy-900 outline-none focus:border-navy-500 disabled:opacity-50"
+        className={`w-full rounded-lg bg-surface px-2 text-navy-900 outline-none focus:border-navy-500 disabled:opacity-50 ${
+          compact
+            ? 'border border-line py-1 text-[11.5px]'
+            : 'border border-gold-500 py-1.5 text-[12px]'
+        }`}
         aria-label="Which company this document belongs to"
       >
-        <option value="">Choose a company…</option>
+        <option value="">{compact ? 'Set the company…' : 'Choose a company…'}</option>
         {entities.map((e) => (
           <option key={e.id} value={e.id}>
             {e.code} · {e.legalName}

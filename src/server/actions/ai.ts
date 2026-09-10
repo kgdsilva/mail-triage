@@ -194,6 +194,10 @@ export async function retryUnreadable(): Promise<{ reset: number }> {
  * decision with the gap closed, so the row comes back with a real proposal instead of
  * needing a second guess.
  *
+ * Also reached from any row with no company at all, read or not: the filename parser
+ * declines to guess between two companies whose names share a word, and a document it
+ * could not place used to arrive with no way to place it by hand either.
+ *
  * "Not company mail" is its own answer: personal post lands in a business scan pile
  * often enough that recording it as such is worth more than filing it under OTHER.
  */
@@ -210,7 +214,7 @@ export async function resolveEntity(
       deletedAt: null,
       disposition: 'UNREVIEWED',
     },
-    select: { id: true, entityId: true },
+    select: { id: true, entityId: true, aiSuggestion: true },
   })
   if (!doc) return { ok: false, error: 'Document not found, or already decided' }
 
@@ -263,10 +267,19 @@ export async function resolveEntity(
     )
   })
 
-  // Read it again now the gap is closed: the filing rules can reach the autopay list,
-  // and what was a question can come back as a proposal — or file itself, if the group
-  // has that turned on.
-  await analyzeDocument(session.companyGroupId, doc.id, { force: true })
+  /*
+   * Read it again now the gap is closed: the filing rules can reach the autopay list,
+   * and what was a question can come back as a proposal — or file itself, if the group
+   * has that turned on.
+   *
+   * Only when it had already been read. Naming the company on a document nobody has
+   * asked the model about yet is a person labelling a filename, often several in a row,
+   * and each one would sit for seconds spending a model call the sweep is about to make
+   * anyway — with the company now already filled in.
+   */
+  if (doc.aiSuggestion !== null) {
+    await analyzeDocument(session.companyGroupId, doc.id, { force: true })
+  }
 
   revalidatePath('/', 'layout')
   return { ok: true }

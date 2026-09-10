@@ -197,6 +197,14 @@ enum AliasSource {
   ADDRESS
   EIN
   ACCOUNT_NUMBER
+  /// The prefix the scanner types at the front of a filename — "MUNAR_9-8-26_…".
+  ///
+  /// Its own source because it is matched differently: a filename prefix is compared
+  /// whole, and wins outright, while a NAME alias is also searched for inside a longer
+  /// string. "MUNAR" appears inside "Marsh & Munar Team" as well as "Munar Mortgage",
+  /// so as a substring it identifies nothing; as a prefix somebody actually types, it
+  /// identifies exactly one company.
+  FILENAME
 }
 
 /// Helps a human (and later the AI) match "Colab Lending LLC" or an EIN on a scan to CP.

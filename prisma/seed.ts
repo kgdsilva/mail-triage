@@ -54,7 +54,14 @@ type SeedEntity = {
   legalName: string
   sortOrder: number
   isSegregated: boolean
+  /** Names printed on a document. Matched inside longer text, so only ever a hint. */
   aliases?: string[]
+  /**
+   * The word typed at the front of a scan's filename. Matched whole and it wins
+   * outright — "Munar" appears inside "Marsh & Munar Team" too, so as a fragment it
+   * identifies nothing, while as a prefix somebody types it identifies one company.
+   */
+  filenamePrefixes?: string[]
 }
 
 type SeedGroup = {
@@ -98,6 +105,8 @@ const GROUPS: SeedGroup[] = [
         sortOrder: 10,
         isSegregated: false,
         aliases: ['CoLAB Processing', 'Co/LAB Processing LLC'],
+        // The prefix whoever scans the post types at the front of the filename.
+        filenamePrefixes: ['Processing', 'Processsing'],
       },
       {
         code: 'CCS',
@@ -105,20 +114,30 @@ const GROUPS: SeedGroup[] = [
         sortOrder: 20,
         isSegregated: false,
         aliases: ['CoLAB Concierge Service', 'CoLAB Concierge Services'],
+        filenamePrefixes: ['Concierge', 'Concerierge'],
       },
       {
         code: 'MM',
         legalName: 'Munar Mortgage LLC',
         sortOrder: 30,
         isSegregated: false,
-        aliases: ['Munar Mortgage', 'Munar Mortgage LLC', 'Keystone Alliance Mortgage'],
+        aliases: [
+          'Munar Mortgage',
+          'Munar Mortgage LLC',
+          'Keystone Alliance Mortgage',
+          'Co/LAB Lending',
+          'Co/LAB Lending LLC',
+          'CoLAB Lending',
+        ],
+        filenamePrefixes: ['Munar', 'ColabLending'],
       },
       {
         code: 'MMT',
         legalName: 'Marsh & Munar Team LLC',
         sortOrder: 40,
         isSegregated: false,
-        aliases: ['Marsh & Munar Team', 'Marsh & Munar Team LLC'],
+        aliases: ['Marsh & Munar Team', 'Marsh & Munar Team LLC', 'CoLAB Franchise'],
+        filenamePrefixes: ['Marsh', 'ColabFranchise'],
       },
       {
         code: 'OP',
@@ -126,6 +145,7 @@ const GROUPS: SeedGroup[] = [
         sortOrder: 50,
         isSegregated: true,
         aliases: ['CO/LAB OPS PERFECTION, LLC', 'CoLAB Ops Perfection'],
+        filenamePrefixes: ['OP', 'OPr', 'OpsPrfProcessing', 'OptsPerfection'],
       },
     ],
   },
@@ -226,6 +246,14 @@ async function main() {
         await prisma.entityAlias.upsert({
           where: { entityId_aliasText: { entityId: entity.id, aliasText: alias } },
           create: { entityId: entity.id, aliasText: alias, source: 'NAME' },
+          update: {},
+        })
+      }
+
+      for (const prefix of e.filenamePrefixes ?? []) {
+        await prisma.entityAlias.upsert({
+          where: { entityId_aliasText: { entityId: entity.id, aliasText: prefix } },
+          create: { entityId: entity.id, aliasText: prefix, source: 'FILENAME' },
           update: {},
         })
       }

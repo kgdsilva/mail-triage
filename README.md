@@ -625,6 +625,34 @@ actually did it. It is narrower than it sounds: this is only items somebody has 
 decided need a person. Deciding what an *unreviewed* document is stays on Review, with
 the PDF open.
 
+## Matching a scan to a company
+
+Two kinds of alias, matched differently, and the difference is the whole point.
+
+A **NAME** alias is what is printed on the document — "Co/LAB Lending", "Keystone
+Alliance Mortgage". It is searched for *inside* longer text, so it can only ever be a
+hint: a name that appears in two companies' names identifies neither.
+
+A **FILENAME** alias is the word whoever scans the post types at the front of the file —
+`MUNAR_9-8-26_…`. It is compared whole and it wins outright.
+
+That second tier exists because of one word. "MUNAR" is the prefix on every Munar
+Mortgage scan and it also sits inside "Marsh & Munar Team", so as a substring it matched
+two companies, the parser correctly declined to choose between them, and a whole batch of
+obviously-Munar files arrived as "Entity not identified". Compared whole it names exactly
+one. Two companies claiming the same prefix is still refused rather than guessed — that
+would be a configuration mistake, and picking one would hide it.
+
+The prefixes are not invented; they were read off 352 historical scans, typos included,
+because a typo is not a reason for a document to arrive unidentified.
+
+When nothing matches, the Review row carries a company picker of its own. It used to
+appear only when the AI had read the document and said it could not tell — so a document
+that had not been read yet offered pay, archive and spam, three answers to a question
+nobody could answer. Naming the company there re-reads the document only if it had
+already been read; on an unread one it just fills the field, since the sweep is about to
+read it anyway with the company now known.
+
 ## Roles, and what they are not
 
 Access roles say what a person may **see and change**: OWNER, ADMIN, OPERATOR, MEMBER,

@@ -53,18 +53,42 @@ export async function parseIncomingFilename(
     include: { aliases: true },
   })
 
+  const fold = (text: string) => text.toUpperCase().replace(/[^A-Z0-9]/g, '')
+
   // Exact code match first — the convention we are moving people toward.
   let matched = entities.find((e) => e.code.toUpperCase() === normalized) ?? null
 
+  /*
+   * Then an alias the token matches *whole*.
+   *
+   * This tier exists because of one word. "MUNAR" is what the scanner types in front of
+   * every Munar Mortgage scan, and it also appears inside "Marsh & Munar Team" — so as a
+   * substring it matched two companies, the search below declined to guess between them,
+   * and a batch of obviously-Munar files arrived as "Entity not identified".
+   *
+   * Compared whole, it names exactly one company. Which is the difference between the
+   * two tiers: a FILENAME alias is a prefix a person types and it wins outright; a NAME
+   * alias is also searched for inside longer text, where it can only ever be a hint.
+   *
+   * Still refuses to guess when two companies claim the same prefix — that would be a
+   * configuration mistake, and picking one would hide it.
+   */
+  if (!matched && normalized) {
+    const exact = entities.filter((e) =>
+      e.aliases.some((a) => fold(a.aliasText) === normalized),
+    )
+    if (exact.length === 1) matched = exact[0]
+  }
+
   // Then legal name or alias containing the token. Only accepted when exactly one
-  // entity matches: "MUNAR" hits both Marsh & Munar and Marsh & Munar Team, and
-  // guessing between them would be worse than leaving the field empty.
+  // entity matches: without the tier above, "MUNAR" hits both Munar Mortgage and
+  // Marsh & Munar Team, and guessing between them would be worse than leaving the
+  // field empty.
   if (!matched && normalized.length >= 3) {
     const candidates = entities.filter((e) => {
-      const haystack = [e.legalName, e.displayName ?? '', ...e.aliases.map((a) => a.aliasText)]
-        .join(' ')
-        .toUpperCase()
-        .replace(/[^A-Z0-9 ]/g, '')
+      const haystack = fold(
+        [e.legalName, e.displayName ?? '', ...e.aliases.map((a) => a.aliasText)].join(' '),
+      )
       return haystack.includes(normalized)
     })
     if (candidates.length === 1) matched = candidates[0]
