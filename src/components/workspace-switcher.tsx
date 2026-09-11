@@ -1,8 +1,9 @@
 'use client'
 
-import { useTransition } from 'react'
+import { useCallback, useState, useTransition } from 'react'
 import { Building2, Check, ChevronDown, User } from 'lucide-react'
 import { switchWorkspace } from '@/server/actions/workspace'
+import { useDismiss } from '@/components/use-dismiss'
 
 export type SwitcherWorkspace = { id: string; name: string; slug: string }
 
@@ -24,6 +25,9 @@ export function WorkspaceSwitcher({
   activeId: string
 }) {
   const [pending, startTransition] = useTransition()
+  const [open, setOpen] = useState(false)
+  const close = useCallback(() => setOpen(false), [])
+  const box = useDismiss<HTMLDivElement>(open, close)
   const active = workspaces.find((w) => w.id === activeId)
 
   if (workspaces.length <= 1) {
@@ -35,18 +39,27 @@ export function WorkspaceSwitcher({
   }
 
   return (
-    <div className="relative">
-      <details className="group">
-        <summary className="flex list-none items-center gap-1.5 rounded-lg px-2 py-1 text-[12.5px] font-semibold text-white/90 transition-colors hover:bg-navy-700 [&::-webkit-details-marker]:hidden">
-          <Icon slug={active?.slug} />
-          <span className="max-w-[13rem] truncate">{active?.name}</span>
-          <ChevronDown
-            className="size-3.5 flex-none opacity-70 transition-transform group-open:rotate-180"
-            aria-hidden
-          />
-        </summary>
+    <div ref={box} className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12.5px] font-semibold text-white/90 transition-colors hover:bg-navy-700"
+      >
+        <Icon slug={active?.slug} />
+        <span className="max-w-[13rem] truncate">{active?.name}</span>
+        <ChevronDown
+          className={`size-3.5 flex-none opacity-70 transition-transform ${open ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
+      </button>
 
-        <div className="absolute left-0 top-full z-20 mt-1 w-72 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-[0_8px_24px_rgba(18,40,74,0.18)]">
+      {open && (
+        <div
+          role="menu"
+          className="absolute left-0 top-full z-20 mt-1 w-72 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-[0_8px_24px_rgba(18,40,74,0.18)]"
+        >
           <p className="px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-[0.08em] text-subtle">
             Workspace
           </p>
@@ -57,7 +70,12 @@ export function WorkspaceSwitcher({
                 key={w.id}
                 type="button"
                 disabled={pending || current}
-                onClick={() => startTransition(() => switchWorkspace(w.id))}
+                onClick={() => {
+                  // Closed before the switch, not after: switching reloads everything,
+                  // and a panel still up during that reads as the click not landing.
+                  setOpen(false)
+                  startTransition(() => switchWorkspace(w.id))
+                }}
                 className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors ${
                   current
                     ? 'font-bold text-navy-900'
@@ -82,7 +100,7 @@ export function WorkspaceSwitcher({
             crosses between them.
           </p>
         </div>
-      </details>
+      )}
     </div>
   )
 }

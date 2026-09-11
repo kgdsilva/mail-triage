@@ -99,6 +99,16 @@ the Mail group. Items are filtered by role before the groups are built, so a MEM
 gets an empty menu — and a group holding one item renders as a plain link rather than a
 dropdown with a single choice.
 
+The menus were native `<details>` elements, which close only by pressing the same summary
+a second time — so pressing away left one hanging, pressing another gave you two, and
+choosing a destination left the menu covering the page it had just sent you to. They are
+controlled now, through `useDismiss` in `src/components/use-dismiss.ts`: press anywhere
+else or press Escape to close, opening one closes any other (the workspace switcher
+included — "a popover is open" is a fact about the page, not about one component), and
+navigation closes the menu it came from, including on back and forward. Hovering switches
+menus only while one is already open: sliding across an engaged bar should follow you,
+and hovering a quiet one should not throw a panel over what you are reading.
+
 ## This group's confirmed data is a migration, not a script
 
 `20260909003000_colab_confirmed_data` carries MM's corrected legal name, the eleven
