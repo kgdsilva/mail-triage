@@ -7,15 +7,16 @@
     "build": "prisma generate && node scripts/migrate-on-deploy.mjs && next build",
     "start": "next start",
     "lint": "eslint",
-    "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy",
-    "db:seed": "tsx prisma/seed.ts",
+    "db:migrate": "tsx scripts/db-target.ts --action=\"run prisma migrate dev\" && prisma migrate dev",
+    "db:deploy": "tsx scripts/db-target.ts --action=\"run prisma migrate deploy\" && prisma migrate deploy",
+    "db:seed": "tsx scripts/db-target.ts --action=\"run the main seed\" && tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
     "typecheck": "tsc --noEmit",
     "db:repair": "psql \"$DATABASE_URL\" -f prisma/sql/repair-indexes.sql",
-    "demo:seed": "tsx prisma/demo-seed.ts",
-    "demo:purge": "tsx prisma/demo-purge.ts"
+    "demo:seed": "tsx scripts/db-target.ts --action=\"seed 12 demo bills\" && tsx prisma/demo-seed.ts",
+    "demo:purge": "tsx scripts/db-target.ts --action=\"delete all demo data\" && tsx prisma/demo-purge.ts",
+    "db:target": "tsx scripts/db-target.ts --action=\"(check only)\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

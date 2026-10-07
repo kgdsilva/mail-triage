@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { requireSafeTarget } from '../scripts/db-target'
 import { prisma } from '../src/server/db/client'
 
 /**
@@ -35,6 +36,10 @@ const DEMO_VENDORS = [
 ]
 
 async function main() {
+  // Called here as well as from the npm script: running this file directly with tsx
+  // must not be a way around the check.
+  requireSafeTarget('delete all demo data')
+
   const docs = await prisma.document.findMany({ where: { isDemo: true }, select: { id: true } })
   const ids = docs.map((d) => d.id)
 

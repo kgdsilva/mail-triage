@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { requireSafeTarget } from '../scripts/db-target'
 import { randomBytes } from 'node:crypto'
 import { prisma } from '../src/server/db/client'
 import { hashPassword } from '../src/server/password'
@@ -95,6 +96,10 @@ function dayFromNow(days: number) {
 }
 
 async function main() {
+  // Called here as well as from the npm script: running this file directly with tsx
+  // must not be a way around the check.
+  requireSafeTarget('seed 12 demo bills')
+
   const group = await prisma.companyGroup.findFirst({ where: { slug: 'colab' } })
   if (!group) throw new Error('No "colab" company group — run the normal seed first.')
 

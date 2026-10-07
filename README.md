@@ -774,6 +774,27 @@ optional: `src/generated` is gitignored, so without it Vercel compiles against a
 that does not exist. Migrate deploy runs there so a deployment never lands on a schema
 its code does not expect.
 
+**Which database am I about to touch?** `npm run db:target` answers it without
+connecting to anything: it prints the host and database name, password masked, **and
+which env file each value came from** — once for the scripts and once for the app,
+because those two resolve differently. Every schema-changing or destructive script runs
+it first: `db:migrate`, `db:deploy`, `db:seed`, `demo:seed`, `demo:purge`. Each refuses
+and explains itself when the target is production (named by `PRODUCTION_DB_HOST`), when
+it is a remote host and nothing says which one production is, when `DATABASE_URL` and
+`DIRECT_URL` are different databases, or when the app and the scripts would disagree.
+`ALLOW_PRODUCTION_DB=1` is the deliberate override. The guard also runs inside the seed
+and purge scripts, so invoking them with `tsx` directly is not a way around it.
+
+**Connection strings go in `.env`, never only in `.env.local`.** Next.js reads
+`.env.local` at a higher precedence than `.env` (its documented order: `process.env`,
+`.env.$(NODE_ENV).local`, `.env.local`, `.env.$(NODE_ENV)`, `.env`), while
+`prisma.config.ts` and every script here use `import 'dotenv/config'`, which reads
+`.env` and nothing else. So a string in `.env.local` points the app at one database and
+leaves every migration and seed on another — the app runs, the migration reports
+success, and the two drift until something breaks for a reason that makes no sense. That
+is the single most expensive mistake available in this repository, which is why a script
+refuses rather than warns.
+
 **Two connection strings, and getting them backwards is a real bug.** `DATABASE_URL` is
 Neon's *pooled* string (host contains `-pooler`) and is what the running app uses — a
 serverless runtime opens many short-lived connections and will exhaust a direct

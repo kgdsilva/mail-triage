@@ -23,6 +23,9 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         <NavLink href="/settings/members">
           Members
         </NavLink>
+        <NavLink href="/settings/workflow">
+          Workflow
+        </NavLink>
       </nav>
       {children}
     </div>

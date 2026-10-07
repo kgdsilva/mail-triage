@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { requireSafeTarget } from '../scripts/db-target'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '../src/generated/prisma/client'
 
@@ -186,6 +187,10 @@ const GROUPS: SeedGroup[] = [
 ]
 
 async function main() {
+  // Called here as well as from the npm script: running this file directly with tsx
+  // must not be a way around the check.
+  requireSafeTarget('run the main seed')
+
   // The first way in. Authentication is allowlist-based, so a freshly created database
   // locks everyone out: no member exists, so nobody can sign in, so nobody can add a
   // member. This owner is what breaks that circle — see src/auth.ts.

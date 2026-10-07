@@ -388,6 +388,43 @@ export async function setMemberRole(membershipId: string, role: string) {
 }
 
 /**
+ * Who a refused bill goes back to — by role, never by name.
+ *
+ * Stored in CompanyGroup.settings beside the filename template and the auto-apply flag,
+ * which is where this group's choices already live.
+ *
+ * A role rather than a person because the alternative was tried and broke within a week:
+ * refusals were addressed to the group's owner, the owner went away, and the bills
+ * waited in the name of somebody who was not reading them. A role is held by whoever is
+ * currently doing the job.
+ */
+export async function setReturnedBillsRole(role: string) {
+  const session = await requireAdmin()
+
+  const parsed = z.enum(['ADMIN', 'OPERATOR', 'OWNER']).safeParse(role)
+  if (!parsed.success) throw new Error('Choose one of the roles that works the mail.')
+
+  const group = await prisma.companyGroup.findUniqueOrThrow({
+    where: { id: session.companyGroupId },
+    select: { settings: true },
+  })
+
+  await prisma.companyGroup.update({
+    where: { id: session.companyGroupId },
+    // Merged, not replaced: settings holds the filename template and the auto-apply
+    // flag too, and writing a fresh object here would silently drop them.
+    data: {
+      settings: {
+        ...((group.settings as Record<string, unknown> | null) ?? {}),
+        returnedBillsRole: parsed.data,
+      } as Prisma.InputJsonValue,
+    },
+  })
+
+  revalidatePath('/', 'layout')
+}
+
+/**
  * Which companies a member may see.
  *
  * This is the approver assignment screen's one write. Stored on the membership rather
