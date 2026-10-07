@@ -784,6 +784,20 @@ Required environment variables in Vercel: `DATABASE_URL`, `DIRECT_URL`, `AUTH_SE
 `AUTH_URL`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `BOOTSTRAP_OWNER_EMAIL`,
 `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`.
 
+**A preview deployment will not migrate anything unless you have given it its own
+database.** Vercel applies an environment variable to every environment unless it is
+scoped to one, so a preview build inherits production's `DATABASE_URL` by default — and
+the build command migrates. Pushing a branch would then migrate production, and an added
+enum value cannot be removed afterwards. `scripts/migrate-on-deploy.mjs` refuses that
+build instead, with the four steps in its message: a Neon branch, `DATABASE_URL` and
+`DIRECT_URL` scoped to Preview, and `ALLOW_PREVIEW_MIGRATIONS=1`. Production is
+unaffected and migrates exactly as before.
+
+Two more things differ on a preview. `AUTH_URL` has to match the preview's own hostname
+or Google sign-in fails with `redirect_uri_mismatch` — email and password sign-in works
+regardless, which is enough for a demo. And R2's CORS policy lists allowed origins, so
+uploads over 4.5 MB fail from a preview hostname until it is added.
+
 **R2 needs a CORS rule.** Files above 4.5 MB never travel through a server action —
 Vercel rejects the request body at the platform edge on every plan — so the browser PUTs
 them straight to R2 with a signed URL. That is a cross-origin request, and without a
