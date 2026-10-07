@@ -23,6 +23,8 @@ export async function getSuggestion(input: {
   entityId: string | null
   documentTypeId: string | null
   vendorId: string | null
+  /** Optional so the classify form can adopt it without every caller changing at once. */
+  categoryId?: string | null
   documentDate: string | null
   amount: string | null
   extension: string
@@ -40,7 +42,7 @@ export async function getSuggestion(input: {
     onDate: validDate ?? undefined,
   })
 
-  const [group, entity, type] = await Promise.all([
+  const [group, entity, type, vendor, category] = await Promise.all([
     prisma.companyGroup.findUnique({
       where: { id: session.companyGroupId },
       select: { settings: true },
@@ -54,6 +56,12 @@ export async function getSuggestion(input: {
           select: { label: true, code: true },
         })
       : null,
+    input.vendorId
+      ? prisma.vendor.findUnique({ where: { id: input.vendorId }, select: { name: true } })
+      : null,
+    input.categoryId
+      ? prisma.category.findUnique({ where: { id: input.categoryId }, select: { name: true } })
+      : null,
   ])
 
   const rawAmount = input.amount ? Number(input.amount.replace(/[$,]/g, '')) : null
@@ -63,6 +71,8 @@ export async function getSuggestion(input: {
       entityCode: entity?.code ?? null,
       documentDate: validDate,
       typeLabel: type?.label ?? null,
+      vendorName: vendor?.name ?? null,
+      categoryName: category?.name ?? null,
       amount: rawAmount != null && Number.isFinite(rawAmount) ? rawAmount : null,
       extension: input.extension,
     },
@@ -84,6 +94,24 @@ export async function findOrCreateVendor(name: string) {
     where: { companyGroupId: session.companyGroupId, name: { equals: trimmed, mode: 'insensitive' } },
   })
   if (existing) return { id: existing.id, name: existing.name, knownSpam: existing.knownSpam }
+
+  /*
+   * An alias resolves to the record it belongs to, before anything new is made.
+   *
+   * Typing "JUMPCLOUD INC" into the vendor box has to land on JumpCloud rather than
+   * create a second supplier beside it — the alias list exists so the spellings a
+   * vendor's own paperwork uses all converge, and this is the moment that matters,
+   * because creation is irreversible in practice.
+   */
+  const folded = trimmed.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const candidates = await prisma.vendor.findMany({
+    where: { companyGroupId: session.companyGroupId },
+    select: { id: true, name: true, knownSpam: true, aliases: true },
+  })
+  const aliased = candidates.find((v) =>
+    v.aliases.some((a) => a.toUpperCase().replace(/[^A-Z0-9]/g, '') === folded),
+  )
+  if (aliased) return { id: aliased.id, name: aliased.name, knownSpam: aliased.knownSpam }
 
   const created = await prisma.vendor.create({
     data: { companyGroupId: session.companyGroupId, name: trimmed },

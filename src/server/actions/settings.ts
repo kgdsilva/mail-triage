@@ -67,22 +67,50 @@ const vendorSchema = z.object({
   name: z.string().trim().min(1),
   knownSpam: z.coerce.boolean().default(false),
   notes: z.string().trim().optional(),
+  /**
+   * The other spellings this vendor's own paperwork uses, one per line.
+   *
+   * Without somewhere to type these the alias matching is a feature only the database
+   * can use. "Jump Cloud", "JUMPCLOUD INC" and "JumpCloud, Inc." all arrive on real
+   * invoices, and every one of them has to resolve to the single record that carries
+   * the autopay rule — otherwise the archive grows three suppliers who are one company.
+   */
+  aliases: z.string().optional(),
 })
+
+/** Split on newlines or commas, trimmed, de-duplicated, blanks dropped. */
+function parseAliases(raw: string | undefined) {
+  if (!raw) return []
+  const seen = new Set<string>()
+  for (const part of raw.split(/[\n,]/)) {
+    const t = part.trim()
+    if (t) seen.add(t)
+  }
+  return [...seen]
+}
 
 export async function saveVendor(formData: FormData) {
   const session = await requireAdmin()
   const raw = Object.fromEntries(formData)
   const data = vendorSchema.parse({ ...raw, knownSpam: raw.knownSpam === 'on' })
 
+  const aliases = parseAliases(data.aliases)
+
   if (data.id) {
     const { count } = await prisma.vendor.updateMany({
       where: { id: data.id, companyGroupId: session.companyGroupId },
-      data: { name: data.name, knownSpam: data.knownSpam, notes: data.notes },
+      data: { name: data.name, knownSpam: data.knownSpam, notes: data.notes, aliases },
     })
     if (count === 0) throw new Error('Vendor not found')
   } else {
     await prisma.vendor.create({
-      data: { ...data, id: undefined, companyGroupId: session.companyGroupId },
+      data: {
+        name: data.name,
+        knownSpam: data.knownSpam,
+        notes: data.notes,
+        aliases,
+        companyGroupId: session.companyGroupId,
+      },
     })
   }
 

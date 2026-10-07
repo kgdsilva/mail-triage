@@ -60,7 +60,23 @@ export type AiSuggestion = {
   readAt: string
 }
 
-/** A vendor the model named, matched to an existing record or created. */
+/**
+ * The vendor the model named, matched to a record this office already keeps.
+ *
+ * Three tiers, narrowing. The canonical name, then an alias — which is the whole point
+ * of the alias list: a vendor's PDFs arrive as "Jump Cloud", "JUMPCLOUD INC" and
+ * "JumpCloud, Inc." and all three have to become the one record, or the archive gets
+ * three suppliers and the filenames disagree about who was paid. Then a trigram near
+ * match, for a spelling nobody has written down yet ("Berkheimer" vs "Berkheimer Tax
+ * Innovations"); reusing the record is what keeps its autopay rule working.
+ *
+ * And then it stops. It used to create a vendor from whatever the model read, which is
+ * how a typo on one scan becomes a permanent supplier — and vendors carry the autopay
+ * rules that decide a bill can be archived unseen, so an invented one is not a cosmetic
+ * problem. An unrecognised name comes back as text instead, which leaves the document
+ * for a person to confirm on Review: the name is still proposed, it is just not yet a
+ * record.
+ */
 async function resolveVendor(companyGroupId: string, name: string | null) {
   const trimmed = name?.trim()
   if (!trimmed) return null
@@ -71,9 +87,26 @@ async function resolveVendor(companyGroupId: string, name: string | null) {
   })
   if (existing) return existing
 
-  // Same biller, different spelling on the page — "Berkheimer" vs "Berkheimer Tax
-  // Innovations". The trigram index makes this cheap, and reusing the record is what
-  // keeps autopay rules attached to it working.
+  const aliased = await prisma.vendor.findFirst({
+    where: { companyGroupId, aliases: { has: trimmed } },
+    select: { id: true, name: true },
+  })
+  if (aliased) return aliased
+
+  // Case and punctuation differ far more often than the words do, so the alias match is
+  // tried again on a folded form before giving up on the list.
+  const folded = trimmed.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  if (folded) {
+    const candidates = await prisma.vendor.findMany({
+      where: { companyGroupId },
+      select: { id: true, name: true, aliases: true },
+    })
+    const hit = candidates.find((v) =>
+      v.aliases.some((a) => a.toUpperCase().replace(/[^A-Z0-9]/g, '') === folded),
+    )
+    if (hit) return { id: hit.id, name: hit.name }
+  }
+
   const near = await prisma.$queryRaw<{ id: string; name: string }[]>`
     SELECT id, name FROM "vendor"
     WHERE company_group_id = ${companyGroupId}
@@ -83,10 +116,7 @@ async function resolveVendor(companyGroupId: string, name: string | null) {
   `
   if (near[0]) return near[0]
 
-  return prisma.vendor.create({
-    data: { companyGroupId, name: trimmed },
-    select: { id: true, name: true },
-  })
+  return null
 }
 
 function parseDate(value: string | null): Date | null {
@@ -397,7 +427,7 @@ async function applyDecision(
   documentId: string,
   suggestion: AiSuggestion,
 ): Promise<boolean> {
-  const [group, entity, type, doc] = await Promise.all([
+  const [group, entity, type, vendor, doc] = await Promise.all([
     prisma.companyGroup.findUnique({ where: { id: companyGroupId }, select: { settings: true } }),
     suggestion.entityId
       ? prisma.entity.findUnique({ where: { id: suggestion.entityId }, select: { code: true } })
@@ -407,6 +437,11 @@ async function applyDecision(
           where: { id: suggestion.documentTypeId },
           select: { label: true, code: true },
         })
+      : null,
+    // The vendor goes into the name now, so the automatic path has to resolve it too —
+    // otherwise an auto-filed document gets a different name from a hand-filed one.
+    suggestion.vendorId
+      ? prisma.vendor.findUnique({ where: { id: suggestion.vendorId }, select: { name: true } })
       : null,
     prisma.document.findUnique({
       where: { id: documentId },
@@ -442,6 +477,8 @@ async function applyDecision(
       entityCode: entity?.code ?? null,
       documentDate,
       typeLabel: type?.label ?? null,
+      vendorName: vendor?.name ?? null,
+      categoryName: null,
       amount,
       extension: doc.originalFilename.split('.').pop() ?? 'pdf',
     },
