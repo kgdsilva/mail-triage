@@ -36,6 +36,8 @@ export type CardDoc = {
   typeLabel: string | null
   /** Who owns it right now, or null when it is routed to nobody. */
   assigneeName: string | null
+  /** Set when an approver refused it or asked a question, with what they said. */
+  approval: { status: 'DENIED' | 'NEEDS_REVIEW'; note: string | null; by: string | null } | null
   mine: boolean
   /** A historical row can exist before its PDF is attached; an iframe would 404. */
   hasFile: boolean
@@ -134,6 +136,22 @@ export function DocumentCard({
               <span className="text-[12.5px] font-medium text-subtle">{doc.typeLabel}</span>
             )}
           </div>
+
+          {/*
+            What the approver said, above the summary and impossible to miss.
+            A bill comes back here precisely because somebody wrote a sentence about it,
+            and a card that showed the filename but not the sentence would send the
+            reader hunting for the reason the item is in front of them.
+          */}
+          {doc.approval && (
+            <p className="mt-1.5 rounded-lg bg-gold-100/70 px-2.5 py-1.5 text-[12.5px] text-gold-800">
+              <span className="font-bold">
+                {doc.approval.status === 'DENIED' ? 'Denied' : 'Sent back for review'}
+                {doc.approval.by ? ` by ${doc.approval.by}` : ''}
+              </span>
+              {doc.approval.note ? ` — ${doc.approval.note}` : ''}
+            </p>
+          )}
 
           {doc.summaryNote && (
             <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{doc.summaryNote}</p>

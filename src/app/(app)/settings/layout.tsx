@@ -11,6 +11,9 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         <NavLink href="/settings/types">
           Document types
         </NavLink>
+        <NavLink href="/settings/categories">
+          Categories
+        </NavLink>
         <NavLink href="/settings/vendors">
           Vendors
         </NavLink>

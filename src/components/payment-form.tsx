@@ -8,6 +8,9 @@ import { BTN, INPUT, entityColor } from '@/lib/theme'
 
 export type PaymentEntity = { id: string; code: string; legalName: string; sortOrder: number }
 
+/** The four ways money leaves here. Free text made the same method uncountable. */
+const METHODS = ['Check', 'ACH', 'Credit card', 'Other'] as const
+
 /**
  * Recording a payment — the same form whether it settles a bill on screen or enters one
  * that was paid outside the platform.
@@ -43,6 +46,7 @@ export function PaymentForm({
   const [amount, setAmount] = useState(bill?.amount?.replace(/,/g, '') ?? '')
   const [paidOn, setPaidOn] = useState(today)
   const [method, setMethod] = useState('')
+  const [reference, setReference] = useState('')
   const [note, setNote] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -71,6 +75,7 @@ export function PaymentForm({
             amount,
             paidOn,
             method,
+            reference,
             note,
             receipt: prepared,
           },
@@ -161,12 +166,38 @@ export function PaymentForm({
           />
         </label>
 
+        {/*
+          A fixed list rather than a free-text box. The four ways money actually leaves
+          here are a small set, and typing them meant "Check", "check", "Check #" and
+          "ck" all described the same thing and none of them could be counted. The
+          cheque number moves to its own field for the same reason: a reference buried in
+          a sentence cannot be reconciled against a statement.
+
+          The column stays text, so the payments recorded before this list existed still
+          read correctly instead of becoming an invalid value.
+        */}
         <label className="block">
           <Label>How it was paid</Label>
-          <input
+          <select
             value={method}
             onChange={(e) => setMethod(e.target.value)}
-            placeholder="Check 1043, ACH, card…"
+            className={`mt-1 ${INPUT}`}
+          >
+            <option value="">Choose…</option>
+            {METHODS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <Label>Check or reference no.</Label>
+          <input
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            placeholder={method === 'Check' ? '1043' : 'Optional'}
             className={`mt-1 ${INPUT}`}
           />
         </label>

@@ -360,6 +360,79 @@ export async function setMemberRole(membershipId: string, role: string) {
 }
 
 /**
+ * Which companies a member may see.
+ *
+ * This is the approver assignment screen's one write. Stored on the membership rather
+ * than in a table of its own because it is the same question for every narrow role —
+ * "whose documents are yours" — and `Membership.entityScope` was declared for it from
+ * the start and never wired up.
+ *
+ * An empty list means every company, which is right for an accountant (minus the
+ * segregated one, which no non-administrator ever sees) and wrong for an approver — so
+ * the screen says so rather than letting an empty box look like a configured one.
+ */
+export async function setMemberEntityScope(membershipId: string, entityIds: string[]) {
+  const session = await requireAdmin()
+
+  const membership = await prisma.membership.findFirst({
+    where: { id: membershipId, companyGroupId: session.companyGroupId },
+    select: { id: true, role: true, entityScope: true },
+  })
+  if (!membership) throw new Error('Member not found')
+
+  // Only ids that are real companies in this group, so a stale checkbox cannot park an
+  // id that silently matches nothing later.
+  const valid = await prisma.entity.findMany({
+    where: { companyGroupId: session.companyGroupId, id: { in: entityIds } },
+    select: { id: true },
+  })
+
+  await prisma.membership.update({
+    where: { id: membership.id },
+    data: { entityScope: valid.map((e) => e.id) },
+  })
+
+  revalidatePath('/', 'layout')
+}
+
+const categorySchema = z.object({
+  id: z.string().optional(),
+  name: z.string().trim().min(1).max(60),
+  sortOrder: z.coerce.number().int().default(0),
+})
+
+/** What the money was for. Editable, because every business splits spend differently. */
+export async function saveCategory(formData: FormData) {
+  const session = await requireAdmin()
+  const data = categorySchema.parse(Object.fromEntries(formData))
+
+  if (data.id) {
+    const { count } = await prisma.category.updateMany({
+      where: { id: data.id, companyGroupId: session.companyGroupId },
+      data: { name: data.name, sortOrder: data.sortOrder },
+    })
+    if (count === 0) throw new Error('Category not found')
+  } else {
+    await prisma.category.create({
+      data: { name: data.name, sortOrder: data.sortOrder, companyGroupId: session.companyGroupId },
+    })
+  }
+
+  revalidatePath('/settings/categories')
+}
+
+/** Deactivated, never deleted: documents already filed against one must keep resolving. */
+export async function toggleCategoryActive(id: string, isActive: boolean) {
+  const session = await requireAdmin()
+  const { count } = await prisma.category.updateMany({
+    where: { id, companyGroupId: session.companyGroupId },
+    data: { isActive },
+  })
+  if (count === 0) throw new Error('Category not found')
+  revalidatePath('/settings/categories')
+}
+
+/**
  * The details that let a scan be matched to the right entity.
  *
  * Aliases are the ones that matter. A document never says "MMT" — it says "Marsh &

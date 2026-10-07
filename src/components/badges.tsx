@@ -101,10 +101,12 @@ export function formatMoney(amount: { toString(): string } | null) {
 export function formatDate(date: Date | null) {
   if (!date) return ''
   // UTC: these are calendar dates in a `date` column, not instants.
+  // Four-digit year: the archive now spans more than one, and an accountant reconciling
+  // against a statement should not have to work out which 26 is meant.
   return new Intl.DateTimeFormat('en-US', {
     month: '2-digit',
     day: '2-digit',
-    year: '2-digit',
+    year: 'numeric',
     timeZone: 'UTC',
   }).format(date)
 }

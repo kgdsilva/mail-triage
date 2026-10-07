@@ -4,6 +4,7 @@ import { prisma } from '@/server/db/client'
 import { requireAdmin } from '@/server/session'
 import { AddMemberForm } from '@/components/add-member-form'
 import { MemberPassword } from '@/components/member-password'
+import { MemberEntities } from '@/components/member-entities'
 import { MemberRole } from '@/components/member-role'
 import { BTN } from '@/lib/theme'
 
@@ -20,6 +21,8 @@ const ROLES = [
   { role: 'MEMBER', help: 'Works the documents routed to them' },
   { role: 'VIEWER', help: 'Read-only across the whole log' },
   { role: 'UPLOADER', help: 'Puts scans in. One screen, and nothing else' },
+  { role: 'APPROVER', help: 'Approves bills for their companies, and nothing else' },
+  { role: 'ACCOUNTANT', help: 'Pays what has been approved; cannot approve' },
 ] as const
 
 const ROLE_HELP: Record<string, string> = Object.fromEntries(
@@ -34,10 +37,18 @@ const ROLE_TONE: Record<string, string> = {
   MEMBER: 'bg-sky-100 text-sky-700',
   VIEWER: 'bg-line-soft text-muted',
   UPLOADER: 'bg-moss-100 text-moss-700',
+  APPROVER: 'bg-teal-100 text-teal-700',
+  ACCOUNTANT: 'bg-clay-100 text-clay-700',
 }
 
 export default async function MembersPage() {
   const session = await requireAdmin()
+
+  const entities = await prisma.entity.findMany({
+    where: { companyGroupId: session.companyGroupId, isActive: true },
+    orderBy: { sortOrder: 'asc' },
+    select: { id: true, code: true, legalName: true, isSegregated: true },
+  })
 
   const members = await prisma.membership.findMany({
     where: { companyGroupId: session.companyGroupId },
@@ -151,6 +162,15 @@ export default async function MembersPage() {
                       )}
                     </button>
                   </form>
+                </div>
+
+                <div className="mt-3 border-t border-line-soft pt-3">
+                  <MemberEntities
+                    membershipId={m.id}
+                    role={m.role}
+                    entities={entities}
+                    selected={m.entityScope}
+                  />
                 </div>
 
                 <div className="mt-3 border-t border-line-soft pt-3">

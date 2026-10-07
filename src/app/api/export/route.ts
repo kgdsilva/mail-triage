@@ -1,6 +1,7 @@
 import { listAllForExport } from '@/server/documents'
 import { parseFilters } from '@/lib/filters'
-import { canSeeWholeLog, canWork, requireSession } from '@/server/session'
+import { canSearchArchive, canSeeWholeLog, canWork, requireSession } from '@/server/session'
+import { visibleEntityIds } from '@/server/scope'
 
 const COLUMNS = [
   'Reviewed',
@@ -34,10 +35,17 @@ function isoDate(d: Date | null) {
 export async function GET(req: Request) {
   const session = await requireSession()
   // The scanner uploads and never reads back: no document, no receipt, no export.
-  if (!canWork(session.role)) return new Response('Not found', { status: 404 })
+  if (!canWork(session.role) && !canSearchArchive(session.role)) {
+    return new Response('Not found', { status: 404 })
+  }
+
   const filters = parseFilters(new URL(req.url).searchParams)
-  // Same restriction as the log screen — otherwise the export is a way around it.
-  if (!canSeeWholeLog(session.role)) filters.restrictToUserId = session.userId
+
+  // Exactly the restriction the log screen applies — an export that skipped it would be
+  // the way around it, and a CSV is the easiest thing in the app to walk out with.
+  const scope = await visibleEntityIds(session)
+  if (scope !== null) filters.restrictToEntityIds = scope
+  else if (!canSeeWholeLog(session.role)) filters.restrictToUserId = session.userId
 
   const rows = await listAllForExport(session.companyGroupId, filters)
 

@@ -1,9 +1,13 @@
 import Link from 'next/link'
 import { signOut } from '@/auth'
 import { countUnreviewed } from '@/server/documents'
+import { billCounts } from '@/server/approvals'
 import {
+  canApprove,
   canConfigure,
+  canSearchArchive,
   canSeeWholeLog,
+  canSettle,
   canTriage,
   canUpload,
   canWork,
@@ -19,10 +23,14 @@ export const dynamic = 'force-dynamic'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession()
-  const [workspaces, pending] = await Promise.all([
+  const [workspaces, pending, pendingApprovals] = await Promise.all([
     listWorkspaces(session.userId),
     // Only meaningful for people who actually triage; skip the query otherwise.
     canTriage(session.role) ? countUnreviewed(session.companyGroupId) : Promise.resolve(0),
+    // A badge an approver can see is the whole reason they open the app.
+    canApprove(session.role)
+      ? billCounts(session).then((c) => c.pending)
+      : Promise.resolve(0),
   ])
 
   const triages = canTriage(session.role)
@@ -30,6 +38,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const works = canWork(session.role)
   const uploads = canUpload(session.role)
   const configures = canConfigure(session.role)
+  const approves = canApprove(session.role)
+  const settles = canSettle(session.role)
+  // The scoped outside roles get the archive without the rest of the app around it.
+  const archiveOnly = !works && canSearchArchive(session.role)
 
   /*
    * Two named menus and two plain links, rather than seven bare words in a row.
@@ -43,6 +55,59 @@ export default async function AppLayout({ children }: { children: React.ReactNod
    * item renders as a plain link instead of a dropdown with one choice.
    */
   const groups: NavGroup[] = [
+    /*
+     * The approval pair comes first for the people whose whole job it is.
+     *
+     * An approver has one screen and an accountant has one screen, so for them the bar
+     * is that screen plus the archive — the rest of the app is not hidden to be tidy,
+     * it is genuinely not theirs.
+     */
+    ...(approves
+      ? [
+          {
+            label: 'Bills to approve',
+            items: [
+              {
+                href: '/approvals',
+                label: 'Bills to approve',
+                blurb: 'Invoices waiting on you. Open one, then approve or send it back.',
+                icon: 'approvals' as const,
+                badge: pendingApprovals || undefined,
+              },
+            ],
+          },
+        ]
+      : []),
+    ...(settles && !works
+      ? [
+          {
+            label: 'Accounting',
+            items: [
+              {
+                href: '/accounting',
+                label: 'Accounting',
+                blurb: 'Approved bills ready to pay, what is still waiting, and the history.',
+                icon: 'accounting' as const,
+              },
+            ],
+          },
+        ]
+      : []),
+    ...(archiveOnly
+      ? [
+          {
+            label: 'Archive',
+            items: [
+              {
+                href: '/log',
+                label: 'Archive',
+                blurb: 'Search every invoice you have access to, and download it.',
+                icon: 'log' as const,
+              },
+            ],
+          },
+        ]
+      : []),
     ...(works
       ? [
           {
@@ -71,6 +136,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 label: 'Bills paid',
                 blurb: 'The history of what went out, each with its receipt attached.',
                 icon: 'paid' as const,
+              },
+              {
+                href: '/accounting',
+                label: 'Accounting',
+                blurb: 'What is cleared to pay, what is waiting on an approver, what is paid.',
+                icon: 'accounting' as const,
+              },
+              {
+                href: '/approvals',
+                label: 'Bills to approve',
+                blurb: 'The approvers\u2019 screen. Yours too, as an administrator.',
+                icon: 'approvals' as const,
+                badge: pendingApprovals || undefined,
               },
               ...(wholeLog
                 ? [

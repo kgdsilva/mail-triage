@@ -40,6 +40,7 @@ model CompanyGroup {
   memberships   Membership[]
   entities      Entity[]
   documentTypes DocumentType[]
+  categories    Category[]
   folders       StorageFolder[]
   vendors       Vendor[]
   autopayRules  AutopayRule[]
@@ -89,6 +90,7 @@ model User {
   uploadedBatches   Batch[]           @relation("BatchUploader")
   assignedDocuments Document[]        @relation("DocumentAssignee")
   recordedPayments  Payment[]         @relation("PaymentRecorder")
+  approvalDecisions Document[]        @relation("ApprovalDecider")
   reviewedDocuments Document[]        @relation("DocumentReviewer")
   confirmedAutopay  AutopayRule[]
   routedTo          RoutingRule[]
@@ -112,6 +114,20 @@ enum Role {
   /// Standard operational member. Works the documents routed to them; does not browse
   /// the group-wide log or change configuration.
   MEMBER
+  /// Approves the bills of the entities assigned to them, and nothing else.
+  ///
+  /// Scoped by `Membership.entityScope`: an approver sees the companies named there and
+  /// no others. One screen — the bills waiting on them — plus the archive for their own
+  /// companies. Cannot edit a document, cannot reach configuration, and never sees a
+  /// segregated entity.
+  APPROVER
+  /// Pays what has been approved. An outside contractor, not a member of the business.
+  ///
+  /// Every company except the segregated ones, read-only on the documents themselves:
+  /// can record that a bill was paid and search the archive, and cannot approve. The
+  /// separation is the point — the person who approves spending is never the person who
+  /// settles it.
+  ACCOUNTANT
   /// Puts scans in and nothing else.
   ///
   /// The narrowest role in the system, and the reason it exists: the person who
@@ -143,7 +159,12 @@ model Membership {
 
   role Role
 
-  /// null = every entity in the group. Non-null restricts this member to specific entities.
+  /// Entity ids this member may see. **Empty means every entity in the group** — a
+  /// Prisma scalar list cannot be null, which the previous comment here assumed.
+  ///
+  /// This is what makes an approver's world small: Eric's scope names CCS, MMT and CP,
+  /// so every query he can reach is narrowed to those three. Applied last, after any
+  /// filter a query string could carry, so it is a boundary rather than a default.
   entityScope String[] @map("entity_scope")
 
   isActive  Boolean  @default(true) @map("is_active")
@@ -252,6 +273,31 @@ model DocumentType {
 
   @@unique([companyGroupId, code])
   @@map("document_type")
+}
+
+/// What the money was for: Technology, Legal, Insurance, Marketing, Office/Rent,
+/// Utilities, Other.
+///
+/// A separate axis from DocumentType, which says what the *paper* is. "Bill" and
+/// "Technology" answer different questions about the same document, and the existing
+/// types are wired into the filing rules and the review defaults — overloading them
+/// would have made a JumpCloud invoice file itself as a kind of mail.
+///
+/// Owned by the company group and editable, like every other list here.
+model Category {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  name String
+
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  documents Document[]
+
+  @@unique([companyGroupId, name])
+  @@map("category")
 }
 
 /// Virtual folder tree, e.g. "CP > Finances > Tax IRS". Ours, not Box's.
@@ -395,9 +441,16 @@ model Payment {
   /// The day the money left, which is not the day it was recorded here.
   paidOn DateTime @map("paid_on") @db.Date
 
-  /// "Check 1043", "ACH", "Amex" — how it was paid, in the words the team uses.
+  /// How it was paid. The form offers Check, ACH, Credit card and Other; the column
+  /// stays free text so the payments recorded before that list existed still read
+  /// correctly rather than becoming an invalid enum value.
   method String?
-  note   String?
+
+  /// Cheque number or transaction reference, kept apart from the method so it can be
+  /// searched and reconciled on its own.
+  reference String?
+
+  note String?
 
   /// The proof itself, stored the same way document scans are. Kept on this row rather
   /// than as another Document so it never enters the triage queue.
@@ -489,6 +542,25 @@ model Batch {
   @@map("batch")
 }
 
+/// Where a payable bill is in the approval chain.
+///
+/// Separate from `status` and `disposition` for the same reason those are separate from
+/// each other: "somebody must approve this" and "this is finished" are different facts,
+/// and a bill that is approved but unpaid is neither open-and-undecided nor done.
+///
+/// Null on anything that is not a payable bill — a cheque received, an archived
+/// statement, a notice to confirm. Only a PAY action carries one.
+enum ApprovalStatus {
+  /// Waiting on its approver. Set by the decision path, never by hand.
+  PENDING
+  /// Cleared to pay. This is what puts it on the accountant's screen.
+  APPROVED
+  /// Refused, with a note saying why. Goes back for a human decision.
+  DENIED
+  /// Not refused, but not approvable as it stands — a note asking a question.
+  NEEDS_REVIEW
+}
+
 enum Disposition {
   UNREVIEWED
   ARCHIVE
@@ -557,6 +629,31 @@ model Document {
 
   amount   Decimal? @db.Decimal(14, 2)
   currency String   @default("USD")
+
+  // --- approval -----------------------------------------------------------
+  /// Null until the document becomes a payable bill; see ApprovalStatus.
+  approvalStatus ApprovalStatus? @map("approval_status")
+
+  /// Why it was denied, or what the approver wants answered. Required by the action for
+  /// DENIED and NEEDS_REVIEW — an unexplained refusal is the thing an audit cannot use.
+  approvalNote String? @map("approval_note")
+
+  approvalDecidedByUserId String?   @map("approval_decided_by_user_id")
+  approvalDecidedBy       User?     @relation("ApprovalDecider", fields: [approvalDecidedByUserId], references: [id], onDelete: SetNull)
+  approvalDecidedAt       DateTime? @map("approval_decided_at")
+
+  /// The vendor's own invoice number, as printed. Searchable, because it is what a
+  /// vendor quotes on the phone and what the accountant reconciles against.
+  invoiceNumber String? @map("invoice_number")
+
+  /// What the money was for, as opposed to what the paper was. See the Category model.
+  categoryId String?   @map("category_id")
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  /// Demo rows for the accountant walkthrough. Excluded from every real query, and
+  /// removable in one command. A flag rather than a separate database so the demo
+  /// exercises the same code the real work runs on.
+  isDemo Boolean @default(false) @map("is_demo")
 
   // --- decision -----------------------------------------------------------
   disposition       Disposition        @default(UNREVIEWED)

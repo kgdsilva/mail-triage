@@ -19,6 +19,20 @@ export type LogFilters = {
    * anything the caller puts in the query string.
    */
   restrictToUserId?: string
+  /** Vendor and spend category, for finding every invoice from one supplier. */
+  vendorIds?: string[]
+  categoryIds?: string[]
+  /** Inclusive money range, in dollars. Either end may be omitted. */
+  amountMin?: number
+  amountMax?: number
+  /**
+   * A hard boundary, not a filter: the entities this person may see at all.
+   *
+   * Applied last and intersected with whatever `entityIds` the query string asked for,
+   * so a scoped role cannot widen its own view by editing the URL. Undefined means no
+   * restriction, which is the administrators.
+   */
+  restrictToEntityIds?: string[]
   /** Shows the removed rows instead of hiding them, so a removal can be undone. */
   showDeleted?: boolean
   /**
@@ -53,6 +67,9 @@ async function searchIds(companyGroupId: string, q: string): Promise<string[]> {
         OR v.name ILIKE ${like}
         OR d.original_filename ILIKE ${like}
         OR d.final_filename ILIKE ${like}
+        -- The number a vendor quotes on the phone. Matched as a substring because
+        -- people type "4471" for "INV-004471", and exact-match would find nothing.
+        OR d.invoice_number ILIKE ${like}
       )
     LIMIT 5000
   `
@@ -77,6 +94,16 @@ export async function buildWhere(
 
   if (filters.typeIsNull) where.documentTypeId = null
   else if (filters.documentTypeIds?.length) where.documentTypeId = { in: filters.documentTypeIds }
+  if (filters.vendorIds?.length) where.vendorId = { in: filters.vendorIds }
+  if (filters.categoryIds?.length) where.categoryId = { in: filters.categoryIds }
+
+  if (filters.amountMin !== undefined || filters.amountMax !== undefined) {
+    where.amount = {
+      ...(filters.amountMin !== undefined ? { gte: filters.amountMin } : {}),
+      ...(filters.amountMax !== undefined ? { lte: filters.amountMax } : {}),
+    }
+  }
+
   if (filters.statuses?.length) where.status = { in: filters.statuses }
   if (filters.dispositions?.length) where.disposition = { in: filters.dispositions }
 
@@ -94,6 +121,22 @@ export async function buildWhere(
 
   // Applied last: a restricted viewer never sees beyond their own assignments.
   if (filters.restrictToUserId) where.assignedToUserId = filters.restrictToUserId
+
+  /*
+   * And last of all, the entity boundary.
+   *
+   * Intersected with whatever the query string asked for rather than replacing it, so a
+   * scoped role that selects a company it cannot see gets nothing instead of everything.
+   * This has to come after `entityIsNull` too: a document with no entity belongs to no
+   * company, so it is nobody's but an administrator's.
+   */
+  if (filters.restrictToEntityIds) {
+    const asked = filters.entityIds?.length ? filters.entityIds : null
+    const allowed = asked
+      ? filters.restrictToEntityIds.filter((id) => asked.includes(id))
+      : filters.restrictToEntityIds
+    where.entityId = { in: allowed }
+  }
 
   return where
 }
@@ -273,6 +316,23 @@ function assertDecisionCoherent(input: {
 }
 
 /**
+ * What the approval chain should say after a decision.
+ *
+ * A bill becoming payable is what puts it in front of its approver, so PENDING is set
+ * here — on the one path every decision in the app already goes through — rather than
+ * by each screen remembering to. Deciding "this needs paying" a second time, after a
+ * denial, restarts the approval: the refusal stays in the history, which is where the
+ * reason for it belongs, and nobody has to pay a bill the system still calls denied.
+ *
+ * Anything that is not a payable bill has no approval status at all. A cheque received
+ * and an archived statement are not waiting on anyone, and giving them a status would
+ * put them on a screen whose question does not apply to them.
+ */
+function approvalFor(actionKind: ActionKind | null) {
+  return actionKind === 'PAY' ? ('PENDING' as const) : null
+}
+
+/**
  * Commits a classification and records what changed, in one transaction.
  *
  * The archive-needs-a-reason rule is checked here as well as by the database CHECK
@@ -298,6 +358,12 @@ export async function classifyDocument(
       data: {
         ...input,
         amount: input.amount == null ? null : new Prisma.Decimal(input.amount),
+        approvalStatus: approvalFor(input.actionKind),
+        // A restarted approval starts clean: the previous note described a decision that
+        // has been superseded, and leaving it on the row would read as current.
+        ...(approvalFor(input.actionKind) === null || before.actionKind !== 'PAY'
+          ? { approvalNote: null, approvalDecidedByUserId: null, approvalDecidedAt: null }
+          : {}),
         reviewedByUserId: actorUserId,
         reviewedAt: new Date(),
         filedAt: input.storageFolderId ? new Date() : null,
@@ -404,6 +470,10 @@ export async function quickDecide(
       where: { id: documentId },
       data: {
         ...target,
+        approvalStatus: approvalFor(target.actionKind),
+        ...(approvalFor(target.actionKind) === null
+          ? { approvalNote: null, approvalDecidedByUserId: null, approvalDecidedAt: null }
+          : {}),
         ...(documentTypeId ? { documentTypeId } : {}),
         // An archived document never enters a queue, so it does not keep an assignee
         // either — one left behind would sit in somebody's name asking nothing of them.

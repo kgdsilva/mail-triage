@@ -31,6 +31,7 @@ export const BOARD_INCLUDE = {
   vendor: { select: { name: true } },
   documentType: { select: { label: true, code: true } },
   assignedTo: { select: { id: true, name: true, email: true } },
+  approvalDecidedBy: { select: { name: true, email: true } },
 } as const
 
 function where(filters: BoardFilters, companyGroupId: string) {

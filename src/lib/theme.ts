@@ -125,11 +125,26 @@ export const ACTION_KINDS = {
  * is what keeps red meaning "today, not this week".
  */
 export function urgency(due: string | null): 'overdue' | 'soon' | 'later' | 'none' {
+  return urgencyWithin(due, 7)
+}
+
+/**
+ * The same judgement with the window named.
+ *
+ * A week is right for a queue somebody works through; the approval screen uses three
+ * days, because an approver is being asked "is this urgent for *you* today" and a bill
+ * six days out is not. One function so the colours cannot drift apart, one argument so
+ * the two screens can disagree about the deadline without disagreeing about the palette.
+ */
+export function urgencyWithin(
+  due: string | null,
+  soonDays: number,
+): 'overdue' | 'soon' | 'later' | 'none' {
   if (!due) return 'none'
   const today = new Date().toISOString().slice(0, 10)
   if (due < today) return 'overdue'
-  const week = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10)
-  return due <= week ? 'soon' : 'later'
+  const edge = new Date(Date.now() + soonDays * 864e5).toISOString().slice(0, 10)
+  return due <= edge ? 'soon' : 'later'
 }
 
 export const URGENCY_TONE = {

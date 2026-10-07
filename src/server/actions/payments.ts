@@ -4,7 +4,8 @@ import path from 'node:path'
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/server/db/client'
 import { recordEvent } from '@/server/documents'
-import { requireSession } from '@/server/session'
+import { requireSession, requireSettler } from '@/server/session'
+import { visibleEntityIds } from '@/server/scope'
 import {
   buildKey,
   headObject,
@@ -27,6 +28,8 @@ export type PaymentInput = {
   amount: string
   paidOn: string
   method?: string | null
+  /** Cheque number or transaction reference, kept apart so it can be reconciled. */
+  reference?: string | null
   note?: string | null
   /** Set by the direct-upload path once the bytes are already in storage. */
   receipt?: { key: string; filename: string; contentType: string } | null
@@ -70,10 +73,23 @@ export async function signReceiptUpload(filename: string, contentType: string, s
  * invisible to both of them.
  */
 export async function recordPayment(input: PaymentInput, formData?: FormData) {
-  const session = await requireSession()
+  /*
+   * Recording a payment is the accountant's job and the office's; it is not the
+   * approver's. The one control this workflow has is that the person who clears a bill
+   * for payment is not the person who settles it, and a permission that only the screen
+   * enforced would be no control at all.
+   */
+  const session = await requireSettler()
 
+  // Scoped as well as owned: the accountant is blind to the segregated entity, so a
+  // payment against it cannot be recorded by passing its id either.
+  const scope = await visibleEntityIds(session)
   const entity = await prisma.entity.findFirst({
-    where: { id: input.entityId, companyGroupId: session.companyGroupId },
+    where: {
+      id: input.entityId,
+      companyGroupId: session.companyGroupId,
+      ...(scope === null ? {} : { id: { in: scope } }),
+    },
     select: { id: true, code: true },
   })
   if (!entity) throw new Error('Choose which company paid this')
@@ -89,6 +105,7 @@ export async function recordPayment(input: PaymentInput, formData?: FormData) {
           id: input.documentId,
           companyGroupId: session.companyGroupId,
           deletedAt: null,
+          ...(scope === null ? {} : { entityId: { in: scope } }),
         },
         select: { id: true, status: true, originalFilename: true },
       })
@@ -182,6 +199,7 @@ export async function recordPayment(input: PaymentInput, formData?: FormData) {
         amount: amount.toFixed(2),
         paidOn: new Date(`${input.paidOn}T00:00:00Z`),
         method: input.method?.trim() || null,
+        reference: input.reference?.trim() || null,
         note: input.note?.trim() || null,
         receiptStorageKey: receipt?.key ?? null,
         receiptStorageBucket: receipt?.bucket ?? null,
@@ -209,6 +227,8 @@ export async function recordPayment(input: PaymentInput, formData?: FormData) {
             paymentId: created.id,
             amount: amount.toFixed(2),
             paidOn: input.paidOn,
+            method: input.method?.trim() || null,
+            reference: input.reference?.trim() || null,
             receipt: Boolean(receipt),
           },
         },

@@ -24,8 +24,19 @@ export function parseFilters(sp: URLSearchParams): LogFilters {
   const entityIsNull = entityValues.includes('none')
   const typeIsNull = typeValues.includes('none')
 
+  const money = (key: string) => {
+    const raw = sp.get(key)
+    if (!raw) return undefined
+    const n = Number(raw.replace(/[^0-9.]/g, ''))
+    return Number.isFinite(n) ? n : undefined
+  }
+
   return {
     q: sp.get('q') ?? undefined,
+    vendorIds: list('vendor'),
+    categoryIds: list('category'),
+    amountMin: money('min'),
+    amountMax: money('max'),
     entityIds: entityValues.filter((v) => v !== 'none'),
     documentTypeIds: typeValues.filter((v) => v !== 'none'),
     entityIsNull,

@@ -7,7 +7,9 @@ import { parseFilters } from '@/lib/filters'
 import { prisma } from '@/server/db/client'
 import { countByEntity, countByType, listDocuments } from '@/server/documents'
 import { deleteDocument, restoreDocument } from '@/server/actions/documents'
-import { canSeeWholeLog, requireWorker } from '@/server/session'
+import { redirect } from 'next/navigation'
+import { canSearchArchive, canSeeWholeLog, homeFor, requireSession } from '@/server/session'
+import { visibleEntityIds } from '@/server/scope'
 import { PeekRow } from '@/components/pdf-peek'
 import { BackLink } from '@/components/back'
 import { BTN } from '@/lib/theme'
@@ -25,7 +27,15 @@ export default async function LogPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const session = await requireWorker()
+  /*
+   * The archive is the one screen a scoped outside role shares with the office.
+   *
+   * So it is reached with canSearchArchive rather than canWork, and what it contains is
+   * then cut to that person's entities — the two questions kept apart, because "may you
+   * open this" and "whose documents are on it" have different answers here.
+   */
+  const session = await requireSession()
+  if (!canSearchArchive(session.role)) redirect(homeFor(session.role))
   const sp = new URLSearchParams()
   for (const [k, v] of Object.entries(await searchParams)) {
     if (typeof v === 'string') sp.set(k, v)
@@ -36,7 +46,15 @@ export default async function LogPage({
   // A MEMBER works their own queue rather than browsing the group's mail. Applied
   // after parsing so no query string can widen it.
   const wholeLog = canSeeWholeLog(session.role)
-  if (!wholeLog) filters.restrictToUserId = session.userId
+  const scope = await visibleEntityIds(session)
+
+  if (scope !== null) {
+    // A scoped role sees its companies' documents, all of them — not only what is
+    // routed to it. An approver has to be able to find last March's invoice.
+    filters.restrictToEntityIds = scope
+  } else if (!wholeLog) {
+    filters.restrictToUserId = session.userId
+  }
   const showingDeleted = filters.showDeleted === true
 
   /**
@@ -46,7 +64,20 @@ export default async function LogPage({
    * filename makes no sense confined to one company, and a handful of removed rows is
    * not worth navigating into.
    */
-  const searching = Boolean(filters.q?.trim())
+  /*
+   * A filter that is not part of the hierarchy goes straight to the list.
+   *
+   * Browsing by company then type is the right way in when you do not know what you are
+   * looking for. "Everything from this vendor" and "everything over $2,000" are the
+   * opposite — you already know, and being shown five company cards with counts on them
+   * is an extra click between you and the answer.
+   */
+  const searching =
+    Boolean(filters.q?.trim()) ||
+    Boolean(filters.vendorIds?.length) ||
+    Boolean(filters.categoryIds?.length) ||
+    filters.amountMin !== undefined ||
+    filters.amountMax !== undefined
   const entitySel = filters.entityIsNull ? 'none' : (filters.entityIds?.[0] ?? null)
   const typeSel = filters.typeIsNull ? 'none' : (filters.documentTypeIds?.[0] ?? null)
 
@@ -59,9 +90,20 @@ export default async function LogPage({
     level === 2 ? await countByType(session.companyGroupId, entityIdFor(entitySel), filters) : null
   const listing = level === 3 ? await listDocuments(session.companyGroupId, filters) : null
 
-  const [entities, types] = await Promise.all([
+  const [entities, types, vendors, categories] = await Promise.all([
+    /*
+     * Scoped, like the documents are.
+     *
+     * This list feeds the drill-down's options, the breadcrumbs and the name of the
+     * separate-company tab — so leaving it unscoped told an approver that a company
+     * exists which they can see nothing of, which is the one thing the segregated flag
+     * is for. A name is a small leak and still a leak.
+     */
     prisma.entity.findMany({
-      where: { companyGroupId: session.companyGroupId },
+      where: {
+        companyGroupId: session.companyGroupId,
+        ...(scope === null ? {} : { id: { in: scope } }),
+      },
       orderBy: { sortOrder: 'asc' },
       select: {
         id: true,
@@ -76,6 +118,23 @@ export default async function LogPage({
       where: { companyGroupId: session.companyGroupId },
       orderBy: { sortOrder: 'asc' },
       select: { id: true, label: true, code: true },
+    }),
+    // Only the vendors this person has documents from — the whole supplier list would
+    // say who the other companies deal with.
+    prisma.vendor.findMany({
+      where: {
+        companyGroupId: session.companyGroupId,
+        ...(scope === null
+          ? {}
+          : { documents: { some: { entityId: { in: scope }, deletedAt: null } } }),
+      },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    }),
+    prisma.category.findMany({
+      where: { companyGroupId: session.companyGroupId, isActive: true },
+      orderBy: { sortOrder: 'asc' },
+      select: { id: true, name: true },
     }),
   ])
 
@@ -113,13 +172,20 @@ export default async function LogPage({
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        {/*
+          Three audiences, three true sentences. A scoped approver or accountant sees
+          their companies' whole archive — not "what is routed to you", which is a
+          member's view and would have them looking for an invoice that is right there.
+        */}
         <h1 className="text-[26px] font-extrabold text-navy-900">
-          {wholeLog ? 'Master log' : 'My documents'}
+          {wholeLog ? 'Master log' : scope !== null ? 'Archive' : 'My documents'}
         </h1>
         <p className="text-[13px] text-muted">
           {wholeLog
             ? 'Every document that has passed through the system. Nothing is ever deleted.'
-            : 'Every document routed to you, open or resolved.'}
+            : scope !== null
+              ? 'Every document for the companies you have access to. Search it, open it, download it.'
+              : 'Every document routed to you, open or resolved.'}
         </p>
       </header>
 
@@ -139,6 +205,8 @@ export default async function LogPage({
       <LogFilters
         entities={entities.map((e) => ({ id: e.id, label: e.code }))}
         types={types.map((t) => ({ id: t.id, label: t.label }))}
+        vendors={vendors.map((v) => ({ id: v.id, label: v.name }))}
+        categories={categories.map((c) => ({ id: c.id, label: c.name }))}
         total={listing?.total ?? byEntity?.total ?? byType?.total ?? 0}
         level={level}
         separateLabel={separateLabel}

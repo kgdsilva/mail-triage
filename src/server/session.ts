@@ -17,6 +17,14 @@ export type Session = {
   userId: string
   companyGroupId: string
   role: string
+  /**
+   * Entity ids this member is restricted to; empty means every entity in the group.
+   *
+   * Carried on the session rather than re-read per query, because it has to be applied
+   * by every screen an approver can reach and a boundary that each caller has to
+   * remember to fetch is a boundary that one of them will forget.
+   */
+  entityScope: string[]
   /** The active workspace's name, for the switcher in the header. */
   companyGroupName: string
   userName: string
@@ -40,6 +48,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     userId: membership.userId,
     companyGroupId: membership.companyGroupId,
     role: membership.role,
+    entityScope: membership.entityScope,
     companyGroupName: membership.companyGroup.name,
     userName: membership.user.name ?? membership.user.email,
     userEmail: membership.user.email,
@@ -74,6 +83,56 @@ const TRIAGE_ROLES = ['OWNER', 'ADMIN', 'OPERATOR'] as const
 
 /** Putting scans in. The scanner can do this and nothing else. */
 const UPLOAD_ROLES = ['OWNER', 'ADMIN', 'OPERATOR', 'UPLOADER'] as const
+
+/**
+ * Approving a bill. The approver's whole job, and an admin's by inheritance.
+ *
+ * An APPROVER has nothing else: no board, no triage, no configuration, and only the
+ * companies named in their scope. The narrowness is what was asked for — "a place I can
+ * go to see what needs to be paid" — and it is also what makes the approval mean
+ * something, since somebody who could edit the document could change what they approved.
+ */
+const APPROVE_ROLES = ['OWNER', 'ADMIN', 'APPROVER'] as const
+
+export function canApprove(role: string) {
+  return (APPROVE_ROLES as readonly string[]).includes(role)
+}
+
+/**
+ * Recording that money left: the accountant, and the people who already could.
+ *
+ * ACCOUNTANT is deliberately absent from canApprove. The person who clears a bill for
+ * payment is never the person who settles it, which is the only control in this
+ * workflow an audit actually cares about.
+ */
+const SETTLE_ROLES = ['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'ACCOUNTANT'] as const
+
+export function canSettle(role: string) {
+  return (SETTLE_ROLES as readonly string[]).includes(role)
+}
+
+/**
+ * Reaching the archive at all — which is not the same as seeing all of it.
+ *
+ * The approver and the accountant both need to find an old invoice, so they are here;
+ * what they can then see is cut down to their entities by visibleEntityIds. Those two
+ * questions are separate on purpose: one is "may you open this screen", the other is
+ * "whose documents are on it", and conflating them is how a scoped role ends up seeing
+ * everything the moment somebody adds a page.
+ */
+const ARCHIVE_ROLES = [
+  'OWNER',
+  'ADMIN',
+  'OPERATOR',
+  'VIEWER',
+  'MEMBER',
+  'APPROVER',
+  'ACCOUNTANT',
+] as const
+
+export function canSearchArchive(role: string) {
+  return (ARCHIVE_ROLES as readonly string[]).includes(role)
+}
 
 /**
  * Acting on a document that is already on the board: finishing it, handing it on,
@@ -148,6 +207,20 @@ export async function requireDecider(): Promise<Session> {
   return session
 }
 
+/** The approvals screen. */
+export async function requireApprover(): Promise<Session> {
+  const session = await requireSession()
+  if (!canApprove(session.role)) redirect('/')
+  return session
+}
+
+/** The accountant's screen. */
+export async function requireSettler(): Promise<Session> {
+  const session = await requireSession()
+  if (!canSettle(session.role)) redirect('/')
+  return session
+}
+
 /** Just the upload screen, which is all the scanner needs. */
 export async function requireUpload(): Promise<Session> {
   const session = await requireSession()
@@ -163,8 +236,19 @@ export async function requireUpload(): Promise<Session> {
  */
 export async function requireWorker(): Promise<Session> {
   const session = await requireSession()
-  if (!canWork(session.role)) redirect('/upload')
-  return session
+  if (canWork(session.role)) return session
+
+  // Each narrow role has exactly one home. Sending them to a dead end, or to a screen
+  // that redirects again, is how a person decides the tool is not for them.
+  redirect(homeFor(session.role))
+}
+
+/** Where a role's own work lives, and where every stray link should land. */
+export function homeFor(role: string) {
+  if (role === 'UPLOADER') return '/upload'
+  if (role === 'APPROVER') return '/approvals'
+  if (role === 'ACCOUNTANT') return '/accounting'
+  return '/'
 }
 
 export async function requireAdmin(): Promise<Session> {

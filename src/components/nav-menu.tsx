@@ -6,6 +6,8 @@ import { useCallback, useState } from 'react'
 import {
   Banknote,
   ChevronDown,
+  BadgeCheck,
+  Calculator,
   DatabaseBackup,
   Inbox,
   ListChecks,
@@ -27,6 +29,8 @@ const ICONS: Record<string, LucideIcon> = {
   upload: Upload,
   log: Table2,
   import: DatabaseBackup,
+  approvals: BadgeCheck,
+  accounting: Calculator,
   settings: Settings,
 }
 
@@ -87,7 +91,14 @@ export function NavMenu({ groups }: { groups: NavGroup[] }) {
 
   return (
     <nav ref={bar} className="ml-auto flex items-stretch gap-0.5">
-      {groups.map((group) =>
+      {/*
+        A group whose every item was filtered out by role is dropped here rather than in
+        each caller. An approver has no mail screens at all, and the "Mail" menu was
+        still in the bar for them — opening onto nothing.
+      */}
+      {groups
+        .filter((group) => group.items.length > 0)
+        .map((group) =>
         group.items.length === 1 ? (
           <FlatLink key={group.label} item={group.items[0]} />
         ) : (
@@ -100,8 +111,8 @@ export function NavMenu({ groups }: { groups: NavGroup[] }) {
             onOpen={() => setOpen(group.label)}
             onClose={() => setOpen(null)}
           />
-        ),
-      )}
+          ),
+        )}
     </nav>
   )
 }

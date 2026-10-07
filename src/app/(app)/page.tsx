@@ -225,6 +225,9 @@ function serialize(
     vendor: { name: string } | null
     documentType: { label: string; code: string } | null
     assignedTo: { id: string; name: string | null; email: string } | null
+    approvalStatus: string | null
+    approvalNote: string | null
+    approvalDecidedBy: { name: string | null; email: string } | null
   },
   viewerId: string,
 ): CardDoc {
@@ -249,6 +252,14 @@ function serialize(
     typeLabel: doc.documentType?.label ?? null,
     vendorName: doc.vendor?.name ?? null,
     assigneeName: doc.assignedTo ? (doc.assignedTo.name ?? doc.assignedTo.email) : null,
+    approval:
+      doc.approvalStatus === 'DENIED' || doc.approvalStatus === 'NEEDS_REVIEW'
+        ? {
+            status: doc.approvalStatus,
+            note: doc.approvalNote,
+            by: doc.approvalDecidedBy?.name ?? doc.approvalDecidedBy?.email ?? null,
+          }
+        : null,
     mine: doc.assignedTo?.id === viewerId,
     hasFile: Boolean(doc.storageKey),
   }

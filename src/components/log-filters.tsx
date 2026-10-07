@@ -14,12 +14,16 @@ type Option = { id: string; label: string }
 export function LogFilters({
   entities,
   types,
+  vendors,
+  categories,
   total,
   level,
   separateLabel,
 }: {
   entities: Option[]
   types: Option[]
+  vendors: Option[]
+  categories: Option[]
   total: number
   /**
    * What to call the tab holding the companies kept in their own view, or null when no
@@ -128,6 +132,55 @@ export function LogFilters({
       <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-xs shadow-[0_1px_2px_rgba(18,40,74,0.05)]">
         {level === 3 && (
         <>
+        {/*
+          Vendor, category and a money range — the three questions the archive could not
+          answer. "Everything we have ever paid JumpCloud" and "every invoice over a
+          thousand dollars" were both unanswerable, and they are what somebody actually
+          comes here to ask.
+        */}
+        {categories.length > 0 && (
+          <FilterGroup
+            label="Category"
+            options={categories}
+            selected={selected('category')}
+            onToggle={(v) => toggle('category', v)}
+          />
+        )}
+
+        {vendors.length > 0 && (
+          <label className="flex flex-wrap items-center gap-2">
+            <span className="w-20 shrink-0 font-semibold uppercase tracking-wide text-subtle">
+              Vendor
+            </span>
+            <select
+              value={[...selected('vendor')][0] ?? ''}
+              onChange={(e) =>
+                apply((next) => {
+                  next.delete('vendor')
+                  if (e.target.value) next.set('vendor', e.target.value)
+                })
+              }
+              className="rounded-lg border border-line bg-surface px-2 py-1 text-[12px] outline-none focus:border-navy-500"
+            >
+              <option value="">Any vendor</option>
+              {vendors.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-20 shrink-0 font-semibold uppercase tracking-wide text-subtle">
+            Amount
+          </span>
+          <MoneyBox label="min" value={sp.get('min') ?? ''} onApply={apply} />
+          <span className="text-subtle">to</span>
+          <MoneyBox label="max" value={sp.get('max') ?? ''} onApply={apply} />
+        </div>
+
         <FilterGroup
           label="Decision"
           options={[
@@ -218,5 +271,49 @@ function FilterGroup({
         </button>
       ))}
     </div>
+  )
+}
+
+/**
+ * One end of the money range.
+ *
+ * Committed on blur or Enter rather than on every keystroke: typing "1500" would
+ * otherwise run four searches, three of them for amounts nobody asked about.
+ */
+function MoneyBox({
+  label,
+  value,
+  onApply,
+}: {
+  label: string
+  value: string
+  onApply: (mutate: (next: URLSearchParams) => void) => void
+}) {
+  const [draft, setDraft] = useState(value)
+
+  function commit() {
+    if (draft === value) return
+    onApply((next) => {
+      if (draft.trim()) next.set(label, draft.trim())
+      else next.delete(label)
+    })
+  }
+
+  return (
+    <span className="inline-flex items-center rounded-lg border border-line bg-surface px-2 py-1">
+      <span className="text-subtle">$</span>
+      <input
+        value={draft}
+        inputMode="decimal"
+        placeholder={label === 'min' ? '0' : 'any'}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit()
+        }}
+        className="tabular w-16 bg-transparent px-1 text-[12px] outline-none"
+        aria-label={`${label === 'min' ? 'Minimum' : 'Maximum'} amount`}
+      />
+    </span>
   )
 }
