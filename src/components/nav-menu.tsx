@@ -90,7 +90,16 @@ export function NavMenu({ groups }: { groups: NavGroup[] }) {
   }
 
   return (
-    <nav ref={bar} className="ml-auto flex items-stretch gap-0.5">
+    /*
+      Scrolls inside itself on a narrow screen instead of pushing the page.
+      An approver works from a phone, and a bar wider than the viewport does not
+      just clip — it makes the whole page slide sideways under the thumb while
+      you are trying to read a row.
+    */
+    <nav
+      ref={bar}
+      className="ml-auto flex min-w-0 items-stretch gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
       {/*
         A group whose every item was filtered out by role is dropped here rather than in
         each caller. An approver has no mail screens at all, and the "Mail" menu was
@@ -168,7 +177,7 @@ function Menu({
   const badge = group.items.reduce((sum, i) => sum + (i.badge ?? 0), 0)
 
   return (
-    <div className="relative flex">
+    <div className="relative flex flex-none">
       <button
         type="button"
         aria-expanded={open}
@@ -182,7 +191,7 @@ function Menu({
         onPointerEnter={(e) => {
           if (anyOpen && !open && e.pointerType === 'mouse') onOpen()
         }}
-        className={`-mb-px flex items-center gap-1.5 border-b-2 px-3 py-3.5 text-[13.5px] transition-colors ${
+        className={`-mb-px flex flex-none items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3.5 text-[13.5px] transition-colors ${
           open ? 'bg-navy-700 ' : ''
         }${
           active

@@ -240,8 +240,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         the whole screen reading as one continuous sheet of pale grey.
       */}
       <header className="bg-navy-900">
-        <div className="mx-auto flex max-w-[1600px] items-center gap-7 px-6">
-          <Link href="/" className="flex items-center gap-2.5 py-3.5">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-7 overflow-hidden px-6">
+          <Link href="/" className="flex flex-none items-center gap-2.5 py-3.5">
             <span className="h-5 w-2 rounded-sm bg-gold-500" aria-hidden />
             <span className="text-[15px] font-extrabold tracking-tight text-white">
               Mail Triage
