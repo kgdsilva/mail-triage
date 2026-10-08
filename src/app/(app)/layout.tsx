@@ -143,13 +143,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 blurb: 'What is cleared to pay, what is waiting on an approver, what is paid.',
                 icon: 'accounting' as const,
               },
-              {
-                href: '/approvals',
-                label: 'Bills to approve',
-                blurb: 'The approvers\u2019 screen. Yours too, as an administrator.',
-                icon: 'approvals' as const,
-                badge: pendingApprovals || undefined,
-              },
+              /*
+                Bills to approve is deliberately not here. It has its own place in the
+                bar for everyone who can open it — the page requires an approver — so
+                listing it under Money put the same screen in two places for an admin
+                and offered a locked door to an operator.
+              */
               ...(wholeLog
                 ? [
                     {
