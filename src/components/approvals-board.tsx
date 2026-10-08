@@ -515,8 +515,15 @@ function Row({
          */
         className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3"
       >
-        {/* Vendor leads; what you check after deciding to look sits under it. */}
-        <span className="flex min-w-0 flex-1 items-start gap-2.5">
+        {/*
+          Vendor leads; what you check after deciding to look sits under it.
+          Capped, not just flexible. `flex-1` alone absorbed every spare pixel in the
+          row — 531px of cell for a 200px name — which is what put a hand's width of
+          nothing between the vendor and its own badges. Capping it keeps the group
+          together, and since every cell caps at the same number the amounts still line
+          up down the column.
+        */}
+        <span className="flex min-w-0 flex-1 items-start gap-2.5 sm:max-w-[420px]">
           {canDecide && (
             <input
               type="checkbox"

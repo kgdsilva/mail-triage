@@ -1,5 +1,7 @@
 import 'dotenv/config'
 import { requireSafeTarget } from '../scripts/db-target'
+import { readdir, rm, stat } from 'node:fs/promises'
+import path from 'node:path'
 import { prisma } from '../src/server/db/client'
 
 /**
@@ -17,12 +19,45 @@ import { prisma } from '../src/server/db/client'
  * able to withdraw its own history; it is in this file, in the repository, rather than
  * being a capability anybody has by accident.
  *
- * **It never touches object storage.** The demo creates documents with no file attached,
- * so there is nothing of its own in R2 — and a purge that went looking would be a purge
- * that could delete a real invoice. The one safe amount of bucket access here is none.
+ * **It deletes files only under `.storage/demo/`.** That prefix is the demo's own and
+ * nothing else writes there: every other document's key is `<companyGroupId>/<uuid>`,
+ * and real production files live in R2, which this never opens. A purge that walked a
+ * whole bucket looking for things to remove is a purge that can delete a real invoice,
+ * so it walks one directory and names what it removed.
  */
 
 const DEMO_DOMAIN = '@demo.invalid'
+
+/** The only directory this is allowed to delete from. */
+const DEMO_STORAGE = path.join(process.cwd(), '.storage', 'demo')
+
+/**
+ * Removes the demo's own invoice files and reports each one.
+ *
+ * Scoped to a single directory by construction rather than by a filter somebody could
+ * widen later, and it reports names and sizes because "deleted 3 files" from a script
+ * that can reach a document store is not a sentence anybody should have to trust.
+ */
+async function purgeDemoFiles() {
+  let entries: string[]
+  try {
+    entries = await readdir(DEMO_STORAGE)
+  } catch {
+    return { removed: [] as string[], missing: true }
+  }
+
+  const removed: string[] = []
+  for (const name of entries) {
+    const file = path.join(DEMO_STORAGE, name)
+    const info = await stat(file)
+    if (!info.isFile()) continue
+    await rm(file)
+    removed.push(`${name} (${info.size} bytes)`)
+  }
+
+  await rm(DEMO_STORAGE, { recursive: true, force: true })
+  return { removed, missing: false }
+}
 
 const DEMO_VENDORS = [
   'Umbrella Cloudworks',
@@ -138,7 +173,17 @@ async function main() {
   })
 
   console.log('Demo removed:', removed)
-  console.log('Object storage: untouched — the demo attaches no files, so it owns none.')
+
+  const files = await purgeDemoFiles()
+  if (files.missing) {
+    console.log(`Files: nothing at .storage/demo/ — nothing to remove.`)
+  } else if (files.removed.length === 0) {
+    console.log(`Files: .storage/demo/ was empty; the directory is gone.`)
+  } else {
+    console.log(`Files removed from .storage/demo/ (${files.removed.length}):`)
+    for (const f of files.removed) console.log(`  ${f}`)
+  }
+  console.log('Nothing outside .storage/demo/ was touched, and R2 was never opened.')
 
   if (entangled.length > 0) {
     console.log('')

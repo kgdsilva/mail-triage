@@ -16,7 +16,8 @@
     "db:repair": "psql \"$DATABASE_URL\" -f prisma/sql/repair-indexes.sql",
     "demo:seed": "tsx scripts/db-target.ts --action=\"seed 12 demo bills\" && tsx prisma/demo-seed.ts",
     "demo:purge": "tsx scripts/db-target.ts --action=\"delete all demo data\" && tsx prisma/demo-purge.ts",
-    "db:target": "tsx scripts/db-target.ts --action=\"(check only)\""
+    "db:target": "tsx scripts/db-target.ts --action=\"(check only)\"",
+    "demo:pdfs": "tsx scripts/db-target.ts --action=\"attach demo invoice PDFs\" && tsx prisma/demo-pdfs.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

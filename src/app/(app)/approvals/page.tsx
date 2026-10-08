@@ -84,7 +84,7 @@ export default async function ApprovalsPage({
         : counts.denied + counts.needsReview
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4">
+    <div className="mx-auto max-w-[1100px] space-y-4">
       <header>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-[26px] font-bold tracking-tight text-navy-900">Bills to approve</h1>
