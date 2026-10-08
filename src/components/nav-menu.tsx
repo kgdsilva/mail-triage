@@ -91,15 +91,18 @@ export function NavMenu({ groups }: { groups: NavGroup[] }) {
 
   return (
     /*
-      Scrolls inside itself on a narrow screen instead of pushing the page.
-      An approver works from a phone, and a bar wider than the viewport does not
-      just clip — it makes the whole page slide sideways under the thumb while
-      you are trying to read a row.
+      Wraps onto a second line on a narrow screen instead of pushing the page sideways.
+      An approver works from a phone, and a bar wider than the viewport does not just
+      clip — it makes the whole page slide under the thumb while you are reading a row.
+      So the bar has to not overflow. It must also not *scroll*, which is how this was
+      solved first and was a worse bug than the one it fixed: `overflow-x: auto` makes
+      the computed `overflow-y` auto as well, so the nav became a clipping box in both
+      axes and every dropdown — positioned `top-full`, below the bar — was cut away
+      entirely. The menus still opened. Nothing appeared, on every page, which reads as
+      a dead button rather than a layout fault. Wrapping costs a second row on a phone
+      and clips nothing.
     */
-    <nav
-      ref={bar}
-      className="ml-auto flex min-w-0 items-stretch gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-    >
+    <nav ref={bar} className="ml-auto flex min-w-0 flex-wrap items-stretch justify-end gap-0.5">
       {/*
         A group whose every item was filtered out by role is dropped here rather than in
         each caller. An approver has no mail screens at all, and the "Mail" menu was

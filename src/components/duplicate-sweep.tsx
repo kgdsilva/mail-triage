@@ -12,7 +12,7 @@ export function DuplicateSweep({ removable, heldBack }: { removable: number; hel
   if (removable === 0 && heldBack === 0) return null
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-gold-300 bg-gold-50 px-4 py-3">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-gold-500 bg-gold-50 px-4 py-3">
       <p className="min-w-0 flex-1 text-[13px] text-navy-900">
         {removable > 0 && (
           <span className="font-semibold">

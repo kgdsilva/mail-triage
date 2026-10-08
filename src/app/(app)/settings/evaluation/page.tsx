@@ -115,7 +115,7 @@ export default async function EvaluationPage({
       </div>
 
       {!aiConfigured() ? (
-        <p className="rounded-xl border border-danger-300 bg-danger-100 px-4 py-3 text-[13px] text-danger-700">
+        <p className="rounded-xl border border-danger-500 bg-danger-100 px-4 py-3 text-[13px] text-danger-700">
           <span className="font-semibold">ANTHROPIC_API_KEY is not set here.</span> Nothing can be
           read until it is.
         </p>

@@ -145,7 +145,7 @@ export function EvalRunner({
   return (
     <div className="space-y-3 rounded-xl border border-line bg-surface p-4">
       {resumable && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gold-300 bg-gold-50 px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gold-500 bg-gold-50 px-3 py-2.5">
           <span className="min-w-0 flex-1 text-[13px] text-navy-900">
             <span className="font-semibold">{resumable.label}</span> stopped at{' '}
             {resumable.done} of {resumable.total}.

@@ -107,7 +107,7 @@ export default async function ReviewPage({
 
       {/* Said once, after the sweep, and gone on the next navigation. */}
       {justRemoved > 0 && (
-        <p className="rounded-xl border border-ok-300 bg-ok-100 px-4 py-2.5 text-[13px] text-emerald-900">
+        <p className="rounded-xl border border-ok-700 bg-ok-100 px-4 py-2.5 text-[13px] text-emerald-900">
           Removed {justRemoved} duplicate{justRemoved === 1 ? '' : 's'}.{' '}
           <Link href="/log?deleted=1" className="underline">
             See them, or put any back
