@@ -240,7 +240,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         the whole screen reading as one continuous sheet of pale grey.
       */}
       <header className="bg-navy-900">
-        <div className="mx-auto flex max-w-[1600px] items-center gap-7 overflow-hidden px-6">
+        {/*
+          No overflow here, ever. A dropdown in the bar is positioned below it, so any
+          clipping box on this wrapper cuts the panel off — measured at 12% of it left
+          visible, a 48px sliver that reads as a dead button. The bar cannot overflow
+          horizontally anyway: the nav wraps instead of growing wider.
+        */}
+        <div className="mx-auto flex max-w-[1600px] items-center gap-7 px-6">
           <Link href="/" className="flex flex-none items-center gap-2.5 py-3.5">
             <span className="h-5 w-2 rounded-sm bg-gold-500" aria-hidden />
             <span className="text-[15px] font-extrabold tracking-tight text-white">
@@ -276,6 +282,43 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </header>
 
       <main className="mx-auto max-w-[1600px] px-6 py-8">{children}</main>
+
+      {/*
+        Which build is actually serving this page.
+        A deploy either landed or it did not, and arguing about it from the symptoms
+        costs more than the line it takes to say so. Admins only — it is a debugging
+        aid, not product — and it links to the commit, so "is my fix live" is one
+        glance instead of a conversation.
+      */}
+      {configures && <BuildStamp />}
     </div>
+  )
+}
+
+const REPO = 'https://github.com/kgdsilva/mail-triage'
+
+function BuildStamp() {
+  // Vercel sets this at build time. Empty anywhere else, which is itself the answer.
+  const sha = process.env.VERCEL_GIT_COMMIT_SHA ?? ''
+  const short = sha.slice(0, 7)
+  const branch = process.env.VERCEL_GIT_COMMIT_REF ?? ''
+  const env = process.env.VERCEL_ENV ?? 'local'
+
+  return (
+    <footer className="mx-auto max-w-[1600px] px-6 pb-6 text-[11px] text-subtle">
+      {short ? (
+        <a
+          href={`${REPO}/commit/${sha}`}
+          target="_blank"
+          rel="noreferrer"
+          className="font-mono hover:underline"
+          title="The commit this deployment was built from"
+        >
+          {env} · {branch || 'unknown branch'} · {short}
+        </a>
+      ) : (
+        <span className="font-mono">local build — no deployment commit</span>
+      )}
+    </footer>
   )
 }
