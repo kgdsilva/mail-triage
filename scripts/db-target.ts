@@ -130,12 +130,27 @@ export function classify(host: string): Kind {
     return 'local'
   }
 
-  const named = [process.env.PRODUCTION_DB_HOST, ...(process.env.PRODUCTION_DB_HOSTS ?? '').split(',')]
+  return productionHosts().includes(bare) ? 'production' : 'remote'
+}
+
+/**
+ * The hosts that are production, read the same way the connection strings are.
+ *
+ * Through the file chain, not from `process.env` alone — which is what this did at
+ * first, and it meant setting PRODUCTION_DB_HOST in `.env` had no effect whatsoever.
+ * The failure was in the safe direction, since an unrecognised host is treated as
+ * production and refused either way, but it also made the production branch of this
+ * logic unreachable outside a test that passed the variable inline. A guard that cannot
+ * read its own configuration is a guard that is only pretending to check.
+ */
+export function productionHosts(): string[] {
+  const single = resolve('PRODUCTION_DB_HOST', 'cli').value
+  const many = resolve('PRODUCTION_DB_HOSTS', 'cli').value
+
+  return [single, ...(many ?? '').split(',')]
     .map((h) => h?.trim())
     .filter((h): h is string => Boolean(h))
     .map((h) => normalizeHost(h).replace(/:\d+$/, ''))
-
-  return named.includes(bare) ? 'production' : 'remote'
 }
 
 /** How the flag can be given. The env var survives npm's argument handling; both work. */
@@ -225,6 +240,16 @@ export function checkTarget(action: string): Verdict {
 
   const kind = classify(directTarget?.host ?? cliTarget!.host)
 
+  const known = productionHosts()
+  console.log(
+    known.length > 0
+      ? `  Production is ${known.join(', ')} — this host is ${
+          kind === 'production' ? 'THAT ONE' : 'not it'
+        }.`
+      : '  No production host is configured, so every remote host counts as production.',
+  )
+  console.log('')
+
   if (kind === 'local') {
     console.log('  Local database. Going ahead.')
     console.log('')
@@ -251,7 +276,7 @@ export function checkTarget(action: string): Verdict {
   // Remote and not recognised. Treated as production until told otherwise, because the
   // failure modes are not symmetrical: refusing a Neon branch costs one flag, and
   // seeding or purging production costs a day.
-  const named = process.env.PRODUCTION_DB_HOST || process.env.PRODUCTION_DB_HOSTS
+  const named = productionHosts().length > 0
   return {
     ok: false,
     kind,
