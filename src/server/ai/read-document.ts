@@ -34,9 +34,27 @@ export function aiConfigured() {
   return Boolean(process.env.ANTHROPIC_API_KEY?.trim())
 }
 
+/**
+ * Why a read failed, which decides whether trying again could ever help.
+ *
+ * `environment` is the platform: no key, a rejected key, a rate limit, an outage. It
+ * says nothing about the document and it will fail identically for every other one, so
+ * it must never be held against the document — counting it as a failed attempt retires
+ * a whole backlog over a bad afternoon, and then the key comes back and the mail sits
+ * there behind a stale message until somebody finds a button. That is not a theory; it
+ * is what an expired key did here.
+ *
+ * `document` is this file: nothing stored, too large, bytes that will not load. Trying
+ * again will fail the same way until the file changes.
+ *
+ * `content` is the page itself: the model declined it, or answered with nothing usable.
+ * Worth a couple more goes, which is what the attempt counter is for.
+ */
+export type ReadFailureCause = 'environment' | 'document' | 'content'
+
 export type ReadResult =
   | { ok: true; extraction: Extraction; usage: { input: number; output: number } }
-  | { ok: false; error: string }
+  | { ok: false; error: string; cause: ReadFailureCause }
 
 /**
  * The group's own vocabulary, handed to the model so it matches against the real
@@ -105,20 +123,20 @@ export async function readDocument(
   companyGroupId: string,
   documentId: string,
 ): Promise<ReadResult> {
-  if (!aiConfigured()) return { ok: false, error: 'ANTHROPIC_API_KEY is not set' }
+  if (!aiConfigured()) return { ok: false, error: 'ANTHROPIC_API_KEY is not set', cause: 'environment' }
 
   const doc = await prisma.document.findFirst({
     where: { id: documentId, companyGroupId, deletedAt: null },
     select: { storageKey: true, storageBucket: true, mimeType: true, byteSize: true, originalFilename: true },
   })
-  if (!doc?.storageKey) return { ok: false, error: 'No file attached to this record' }
-  if ((doc.byteSize ?? 0) > MAX_READABLE_BYTES) return { ok: false, error: 'File too large to read' }
+  if (!doc?.storageKey) return { ok: false, error: 'No file attached to this record', cause: 'document' }
+  if ((doc.byteSize ?? 0) > MAX_READABLE_BYTES) return { ok: false, error: 'File too large to read', cause: 'document' }
 
   let bytes: Buffer
   try {
     bytes = await getObject(doc.storageKey, doc.storageBucket)
   } catch {
-    return { ok: false, error: 'Could not read the stored file' }
+    return { ok: false, error: 'Could not read the stored file', cause: 'document' }
   }
 
   const { entityLines, typeLines } = await groupContext(companyGroupId)
@@ -176,11 +194,11 @@ export async function readDocument(
     })
 
     if (response.stop_reason === 'refusal') {
-      return { ok: false, error: 'The model declined to read this document' }
+      return { ok: false, error: 'The model declined to read this document', cause: 'content' }
     }
 
     const text = response.content.find((b) => b.type === 'text')
-    if (!text || text.type !== 'text') return { ok: false, error: 'No readable response' }
+    if (!text || text.type !== 'text') return { ok: false, error: 'No readable response', cause: 'content' }
 
     return {
       ok: true,
@@ -192,11 +210,21 @@ export async function readDocument(
     }
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) {
-      return { ok: false, error: 'ANTHROPIC_API_KEY was rejected' }
+      return { ok: false, error: 'ANTHROPIC_API_KEY was rejected', cause: 'environment' }
     }
     if (err instanceof Anthropic.RateLimitError) {
-      return { ok: false, error: 'Rate limited — try again shortly' }
+      return { ok: false, error: 'Rate limited — try again shortly', cause: 'environment' }
     }
-    return { ok: false, error: err instanceof Error ? err.message : 'Reading failed' }
+    /*
+     * Anything else thrown by the client is the call, not the page: a connection reset,
+     * a 500, an overloaded model. Treated as environment, so an outage never retires a
+     * document — the cost of being wrong here is one extra attempt later, against the
+     * cost of a silently retired backlog.
+     */
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Reading failed',
+      cause: 'environment',
+    }
   }
 }

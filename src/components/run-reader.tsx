@@ -99,6 +99,18 @@ export function RunReader({
         setFailed(failedHere)
         setRemaining(res.remaining)
 
+        /*
+         * The platform failed, not the documents. Stop at once rather than asking for
+         * another slice that will fail identically, and say that nothing was counted
+         * against anything — the fear otherwise is that a bad key just cost you the
+         * backlog, which is exactly what used to happen.
+         */
+        if (res.halted) {
+          setError(
+            `${res.lastError ?? 'Reading stopped.'} Nothing was held against these documents — press Read again once it is fixed.`,
+          )
+          break
+        }
         if (res.lastError && res.processed === 0) {
           setError(res.lastError)
           break

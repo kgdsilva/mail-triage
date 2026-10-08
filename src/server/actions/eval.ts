@@ -144,8 +144,16 @@ export async function runEvalSlice(runId: string, size = 4): Promise<SliceResult
     const read = await readDocument(session.companyGroupId, doc.id)
 
     if (!read.ok) {
-      failed += 1
       lastError = read.error
+      /*
+       * A platform failure is not a result. Writing it would fill the run with 347 rows
+       * saying the key was rejected, and the report would then read as though every
+       * document were unreadable — a measurement of the outage, scored against the
+       * mail. Stop instead; the slice can be asked for again once it is fixed, and
+       * resuming picks up exactly here because a slice is "no result yet".
+       */
+      if (read.cause === 'environment') break
+      failed += 1
       await prisma.aiEvalResult.create({
         data: { runId: run.id, documentId: doc.id, ...truth, readError: read.error },
       })

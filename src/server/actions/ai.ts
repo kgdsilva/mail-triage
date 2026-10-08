@@ -79,12 +79,15 @@ export async function analyzeUnread(
   failed: number
   remaining: number
   lastError?: string
+  /** True when the platform failed, so asking for another slice is pointless. */
+  halted?: boolean
 }> {
   const session = await requireTriage()
   if (!aiConfigured()) {
     return {
       processed: 0, applied: 0, escalated: 0, failed: 0, remaining: 0,
       lastError: 'ANTHROPIC_API_KEY is not set',
+      halted: true,
     }
   }
 
@@ -102,6 +105,12 @@ export async function analyzeUnread(
   let escalated = 0
   let failed = 0
   let lastError: string | undefined
+  /*
+   * Set when the platform is what failed — no key, a rejected key, a rate limit, an
+   * outage. The run stops at the first one instead of walking the rest of the backlog
+   * collecting the identical error, and the caller is told to stop asking for more.
+   */
+  let halted = false
 
   for (const doc of batch) {
     const result = await analyzeDocument(session.companyGroupId, doc.id)
@@ -115,14 +124,32 @@ export async function analyzeUnread(
         where: { id: doc.id },
         data: { aiReadError: null },
       })
-    } else {
-      failed += 1
-      lastError = result.error
+      continue
+    }
+
+    lastError = result.error
+
+    if (result.cause === 'environment') {
+      /*
+       * Recorded so the screen can say why, but *not* counted: this says nothing about
+       * the document and would fail the same way on every other one. Counting it is how
+       * an expired key retired a whole backlog here — three clicks over three days and
+       * every document was out of the queue, behind a message that stayed true-looking
+       * long after the key was replaced.
+       */
       await prisma.document.update({
         where: { id: doc.id },
-        data: { aiReadAttempts: { increment: 1 }, aiReadError: result.error ?? 'Read failed' },
+        data: { aiReadError: result.error ?? 'Read failed' },
       })
+      halted = true
+      break
     }
+
+    failed += 1
+    await prisma.document.update({
+      where: { id: doc.id },
+      data: { aiReadAttempts: { increment: 1 }, aiReadError: result.error ?? 'Read failed' },
+    })
   }
 
   const remaining = await prisma.document.count({ where: unreadWhere(session.companyGroupId) })
@@ -132,7 +159,7 @@ export async function analyzeUnread(
     revalidatePath('/', 'layout')
   }
 
-  return { processed, applied, escalated, failed, remaining, lastError }
+  return { processed, applied, escalated, failed, remaining, lastError, halted }
 }
 
 /**

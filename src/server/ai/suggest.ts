@@ -4,7 +4,11 @@ import { suggestDisposition, type FilterVerdict } from '@/server/action-filter'
 import { recordEvent } from '@/server/documents'
 import { suggestFilename } from '@/server/filename'
 import { suggestFolder } from '@/server/filing'
-import { readDocument, aiConfigured } from '@/server/ai/read-document'
+import {
+  readDocument,
+  aiConfigured,
+  type ReadFailureCause,
+} from '@/server/ai/read-document'
 import type { Extraction } from '@/server/ai/schema'
 
 /**
@@ -135,20 +139,29 @@ export async function analyzeDocument(
   companyGroupId: string,
   documentId: string,
   opts: { force?: boolean } = {},
-): Promise<{ ok: boolean; suggestion?: AiSuggestion; error?: string; applied?: boolean }> {
-  if (!aiConfigured()) return { ok: false, error: 'AI reading is not configured' }
+): Promise<{
+  ok: boolean
+  suggestion?: AiSuggestion
+  error?: string
+  /** Present on a failure. Decides whether this counts against the document. */
+  cause?: ReadFailureCause
+  applied?: boolean
+}> {
+  if (!aiConfigured()) {
+    return { ok: false, error: 'AI reading is not configured', cause: 'environment' }
+  }
 
   const existing = await prisma.document.findFirst({
     where: { id: documentId, companyGroupId, deletedAt: null },
     select: { aiSuggestion: true, disposition: true, entityId: true, reviewedAt: true },
   })
-  if (!existing) return { ok: false, error: 'Document not found' }
+  if (!existing) return { ok: false, error: 'Document not found', cause: 'document' }
   if (existing.aiSuggestion && !opts.force) {
     return { ok: true, suggestion: existing.aiSuggestion as unknown as AiSuggestion }
   }
 
   const read = await readDocument(companyGroupId, documentId)
-  if (!read.ok) return { ok: false, error: read.error }
+  if (!read.ok) return { ok: false, error: read.error, cause: read.cause }
 
   const x = read.extraction
   const suggestion = await buildSuggestion(companyGroupId, x)
