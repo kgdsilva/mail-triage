@@ -20,12 +20,19 @@ export const dynamic = 'force-dynamic'
  * separation this workflow exists to keep.
  */
 
-const TABS = ['ready', 'waiting', 'paid'] as const
+const TABS = ['ready', 'waiting', 'denied', 'paid'] as const
 type Tab = (typeof TABS)[number]
 
+/*
+ * "Denied" sits next to "Ready to pay" on purpose: the two together are the whole
+ * question this screen answers — what to pay, and what not to. A refused bill used to
+ * appear in none of these tabs at all. It simply left "Waiting on approval" and was
+ * gone, so from here a refusal and a bill nobody had decided yet looked identical.
+ */
 const LABELS: Record<Tab, string> = {
   ready: 'Ready to pay',
   waiting: 'Waiting on approval',
+  denied: 'Denied',
   paid: 'Paid',
 }
 
@@ -47,13 +54,19 @@ export default async function AccountingPage({
   const chosen = narrowEntityChoice(entity, scope)
 
   const statuses: ApprovalStatus[] =
-    active === 'waiting' ? ['PENDING', 'NEEDS_REVIEW'] : ['APPROVED']
+    active === 'waiting'
+      ? ['PENDING', 'NEEDS_REVIEW']
+      : active === 'denied'
+        ? ['DENIED']
+        : ['APPROVED']
 
   const [bills, counts, entities] = await Promise.all([
     listBills(session, {
       statuses,
       entityId: chosen,
-      settled: active === 'paid' ? true : false,
+      // A refusal is shown whether or not money ever moved: if a denied bill somehow
+      // carries a payment, that is the one case somebody most needs to see.
+      ...(active === 'denied' ? {} : { settled: active === 'paid' }),
     }),
     billCounts(session, chosen),
     visibleEntities(session),
@@ -62,6 +75,7 @@ export default async function AccountingPage({
   const count: Record<Tab, number> = {
     ready: counts.approvedUnpaid,
     waiting: counts.pending + counts.needsReview,
+    denied: counts.denied,
     paid: counts.paid,
   }
 
@@ -94,6 +108,14 @@ export default async function AccountingPage({
           reference: d.payments[0].reference,
         }
       : null,
+    refusal:
+      d.approvalStatus === 'DENIED'
+        ? {
+            by: d.approvalDecidedBy?.name ?? d.approvalDecidedBy?.email ?? null,
+            at: d.approvalDecidedAt?.toISOString() ?? null,
+            note: d.approvalNote,
+          }
+        : null,
   }))
 
   /* The waiting tab reuses the approver's own table with its actions switched off, so
@@ -124,8 +146,9 @@ export default async function AccountingPage({
       <header>
         <h1 className="text-[26px] font-bold tracking-tight text-navy-900">Accounting</h1>
         <p className="mt-1 text-sm text-muted">
-          Approved bills ready to pay, what is still waiting on an approver, and the
-          history of what went out. Payments are made in QuickBooks; this records them.
+          What is cleared to pay, what an approver refused, what is still waiting on one,
+          and the history of what went out. Payments are made in QuickBooks; this records
+          them.
         </p>
       </header>
 
@@ -213,7 +236,7 @@ export default async function AccountingPage({
       ) : (
         <AccountingTable
           bills={accountingRows}
-          mode={active === 'paid' ? 'paid' : 'ready'}
+          mode={active === 'paid' ? 'paid' : active === 'denied' ? 'denied' : 'ready'}
           entities={entities}
           canSettle={canSettle(session.role)}
         />

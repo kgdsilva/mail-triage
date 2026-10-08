@@ -13,6 +13,7 @@ import {
 import { requireAdmin } from '@/server/session'
 import { EvalRunner } from '@/components/eval-runner'
 import { EvalReportView } from '@/components/eval-report'
+import { KeyShape } from '@/components/key-shape'
 
 export const dynamic = 'force-dynamic'
 
@@ -113,6 +114,8 @@ export default async function EvaluationPage({
           </div>
         </dl>
       </div>
+
+      <KeyShape always />
 
       {!aiConfigured() ? (
         <p className="rounded-xl border border-danger-500 bg-danger-100 px-4 py-3 text-[13px] text-danger-700">

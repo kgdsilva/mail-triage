@@ -309,3 +309,30 @@ export async function pilotDone(companyGroupId: string) {
   })
   return run !== null
 }
+
+/**
+ * The shape of the API key this deployment is actually running with — never its value.
+ *
+ * "The key was rejected" and "I pasted the new key" can both be true at once, and from
+ * the outside there is no way to tell which key a deployment ended up with: a value
+ * scoped to the wrong environment, a stale build, or a newline that came along with the
+ * paste all look identical. Length alone usually settles it, because two keys are
+ * almost never the same length, and whitespace is the single most common way a correct
+ * key is rejected.
+ *
+ * Nothing here can leak the key: a length, whether it starts with the public `sk-ant-`
+ * scheme, and two booleans. No part of the random portion is read or returned.
+ */
+export function apiKeyShape() {
+  const raw = process.env.ANTHROPIC_API_KEY
+  if (raw === undefined) return { present: false as const }
+  return {
+    present: true as const,
+    length: raw.length,
+    scheme: raw.trimStart().startsWith('sk-ant-'),
+    /** A newline or space from a careless paste. The API rejects it like a wrong key. */
+    whitespace: raw !== raw.trim(),
+    /** Quotes belong in a .env file, never in a dashboard field. */
+    quoted: /^["']|["']$/.test(raw.trim()),
+  }
+}

@@ -7,6 +7,7 @@ import { ReviewTable, type ReviewRow } from '@/components/review-table'
 import { RunReader } from '@/components/run-reader'
 import { AutoApplyToggle } from '@/components/auto-apply-toggle'
 import { DuplicateSweep } from '@/components/duplicate-sweep'
+import { KeyShape } from '@/components/key-shape'
 import { duplicateCounts } from '@/server/duplicates'
 import { visibleEntityIds } from '@/server/scope'
 import { aiConfigured } from '@/server/ai/read-document'
@@ -104,6 +105,13 @@ export default async function ReviewPage({
           </div>
         )}
       </header>
+
+      {/*
+        Silent while the key looks right. It speaks only when the shape of the value is
+        itself the explanation — which is the case the reader's own error message cannot
+        distinguish from a revoked key.
+      */}
+      <KeyShape />
 
       {/* Said once, after the sweep, and gone on the next navigation. */}
       {justRemoved > 0 && (

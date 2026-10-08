@@ -1,3 +1,4 @@
+import { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/server/db/client'
 
 /**
@@ -34,12 +35,26 @@ export const BOARD_INCLUDE = {
   approvalDecidedBy: { select: { name: true, email: true } },
 } as const
 
-function where(filters: BoardFilters, companyGroupId: string) {
+function where(filters: BoardFilters, companyGroupId: string): Prisma.DocumentWhereInput {
   return {
     companyGroupId,
     deletedAt: null,
     status: { in: [...OPEN] },
     disposition: 'ACTION' as const,
+    /*
+     * An approved bill is not waiting on a decision any more — it is waiting on money,
+     * which is the accountant's screen. Leaving it here put the same bill on two lists
+     * with nothing saying so, and made the board's count read as work when the work had
+     * already been done.
+     *
+     * A refusal stays: denied and needs-review both come back as a REVIEW action
+     * assigned to a person, and both genuinely need somebody to act.
+     *
+     * Spelled as an OR rather than `not: 'APPROVED'`, because that comparison drops
+     * NULLs in SQL — and every document that is not a bill has no approval status at
+     * all, so it would have emptied the board.
+     */
+    OR: [{ approvalStatus: null }, { approvalStatus: { not: 'APPROVED' } }],
     ...(filters.entityId ? { entityId: filters.entityId } : {}),
     ...(filters.scope === 'mine' ? { assignedToUserId: filters.userId } : {}),
     ...(filters.scope === 'unassigned' ? { assignedToUserId: null } : {}),
@@ -68,11 +83,14 @@ export async function listBoard(companyGroupId: string, filters: BoardFilters) {
  * the sentence the old screen could not say.
  */
 export async function boardCounts(companyGroupId: string, userId: string) {
-  const base = {
+  const base: Prisma.DocumentWhereInput = {
     companyGroupId,
     deletedAt: null,
     status: { in: [...OPEN] },
     disposition: 'ACTION' as const,
+    // The same exclusion as the list, or the tab would promise items the board does
+    // not show — which is how a count stops being believed.
+    OR: [{ approvalStatus: null }, { approvalStatus: { not: 'APPROVED' as const } }],
   }
 
   const [mine, everyone, unassigned] = await Promise.all([

@@ -28,6 +28,8 @@ export type AccountingBill = {
   hasFile: boolean
   /** Set on the Paid tab. */
   payment: { paidOn: string; amount: string; method: string | null; reference: string | null } | null
+  /** Set on the Denied tab: who refused it, when, and the note they had to leave. */
+  refusal: { by: string | null; at: string | null; note: string | null } | null
 }
 
 /**
@@ -45,7 +47,7 @@ export function AccountingTable({
   canSettle,
 }: {
   bills: AccountingBill[]
-  mode: 'ready' | 'paid'
+  mode: 'ready' | 'paid' | 'denied'
   entities: PaymentEntity[]
   canSettle: boolean
 }) {
@@ -53,12 +55,18 @@ export function AccountingTable({
     return (
       <div className="rounded-xl border border-dashed border-line bg-surface/60 px-6 py-14 text-center">
         <h3 className="text-[15px] font-bold text-navy-900">
-          {mode === 'ready' ? 'Nothing is approved and waiting to be paid.' : 'Nothing paid yet.'}
+          {mode === 'ready'
+            ? 'Nothing is approved and waiting to be paid.'
+            : mode === 'denied'
+              ? 'Nothing has been refused.'
+              : 'Nothing paid yet.'}
         </h3>
         <p className="mx-auto mt-1 max-w-sm text-[13px] text-muted">
           {mode === 'ready'
             ? 'A bill appears here the moment its approver clears it.'
-            : 'Bills you mark as paid are kept here with their receipt.'}
+            : mode === 'denied'
+              ? 'A bill an approver refuses appears here, with the reason they gave.'
+              : 'Bills you mark as paid are kept here with their receipt.'}
         </p>
       </div>
     )
@@ -80,7 +88,7 @@ function Row({
   canSettle,
 }: {
   bill: AccountingBill
-  mode: 'ready' | 'paid'
+  mode: 'ready' | 'paid' | 'denied'
   entities: PaymentEntity[]
   canSettle: boolean
 }) {
@@ -162,7 +170,7 @@ function Row({
         Who approved it, on every row. It is the accountant's authority to pay and the
         first thing anyone asks about afterwards, so it is not behind a panel.
       */}
-      {bill.approvedBy && (
+      {bill.approvedBy && mode !== 'denied' && (
         <p className="flex items-center gap-1.5 border-t border-line-soft bg-ok-100/50 px-3 py-1.5 text-[12px] text-ok-700">
           <ShieldCheck className="size-3.5 flex-none" aria-hidden />
           Approved by {bill.approvedBy}
@@ -183,6 +191,22 @@ function Row({
           <History className="size-3.5" aria-hidden />
           History
         </a>
+
+        {/*
+          Why not to pay it, in the approver's own words.
+          A refusal without its reason is just an absence, and an absence is what this
+          tab exists to replace: before it, a denied bill simply vanished from this
+          screen and the person who pays could not tell a refusal from a bill that had
+          never been decided.
+        */}
+        {mode === 'denied' && bill.refusal && (
+          <p className="w-full rounded-lg bg-danger-100 px-3 py-2 text-[12.5px] text-danger-700">
+            <span className="font-bold">Do not pay.</span>{' '}
+            {bill.refusal.by ? `${bill.refusal.by} refused this` : 'Refused'}
+            {bill.refusal.at ? ` on ${formatDate(new Date(bill.refusal.at))}` : ''}
+            {bill.refusal.note ? `: ${bill.refusal.note}` : '.'}
+          </p>
+        )}
 
         {mode === 'ready' && canSettle && (
           <button
