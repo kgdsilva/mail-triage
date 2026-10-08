@@ -3,7 +3,7 @@ import type { ApprovalStatus } from '@/generated/prisma/enums'
 import { billCounts, listBills } from '@/server/approvals'
 import { narrowEntityChoice, visibleEntities, visibleEntityIds } from '@/server/scope'
 import { canApprove, canConfigure, requireApprover } from '@/server/session'
-import { ApprovalsTable, type ApprovalBill } from '@/components/approvals-table'
+import { ApprovalsBoard, ShortcutHint, type BoardBill } from '@/components/approvals-board'
 import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
 
@@ -51,7 +51,7 @@ export default async function ApprovalsPage({
     visibleEntities(session),
   ])
 
-  const rows: ApprovalBill[] = bills.map((d) => ({
+  const rows: BoardBill[] = bills.map((d) => ({
     id: d.id,
     title: d.finalFilename ?? d.originalFilename,
     vendorName: d.vendor?.name ?? null,
@@ -71,21 +71,11 @@ export default async function ApprovalsPage({
     hasFile: Boolean(d.storageKey),
   }))
 
-  const pendingTotal = rows
-    .filter((r) => r.status === 'PENDING')
-    .reduce((sum, r) => sum + r.amountValue, 0)
-
   /*
-   * What is late, as its own number.
-   *
-   * "$9,515 waiting on you" is a workload; "$2,740 of it is overdue" is the reason to
-   * start now. They answer different questions and the second one was not on the screen.
+   * The totals moved into the board, which now groups by the same three buckets it
+   * counts — keeping a second, separate sum up here was how the top of the screen and
+   * the middle of it ended up disagreeing about what "overdue" meant.
    */
-  const today = new Date().toISOString().slice(0, 10)
-  const overdueTotal = rows
-    .filter((r) => r.status === 'PENDING' && r.dueDate && r.dueDate < today)
-    .reduce((sum, r) => sum + r.amountValue, 0)
-
   const tabCount = (key: (typeof TABS)[number]['key']) =>
     key === 'pending'
       ? counts.pending
@@ -96,7 +86,10 @@ export default async function ApprovalsPage({
   return (
     <div className="mx-auto max-w-[1600px] space-y-4">
       <header>
-        <h1 className="text-[26px] font-bold tracking-tight text-navy-900">Bills to approve</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-[26px] font-bold tracking-tight text-navy-900">Bills to approve</h1>
+          <ShortcutHint />
+        </div>
         <p className="mt-1 text-sm text-muted">
           {entities.length === 1
             ? `Everything waiting on you for ${entities[0].legalName}.`
@@ -140,24 +133,14 @@ export default async function ApprovalsPage({
 
         {entities.length > 1 && <CompanyPicker entities={entities} value={chosen} />}
 
-        {active.key === 'pending' && pendingTotal > 0 && (
-          <span className="tabular rounded-full bg-gold-50 px-3 py-1.5 text-[12.5px] font-semibold text-gold-800">
-            {formatMoney({ toString: () => String(pendingTotal) })} waiting on you
-          </span>
-        )}
-        {active.key === 'pending' && overdueTotal > 0 && (
-          <span className="tabular rounded-full bg-danger-100 px-3 py-1.5 text-[12.5px] font-bold text-danger-700">
-            {formatMoney({ toString: () => String(overdueTotal) })} overdue
-          </span>
-        )}
       </div>
 
-      <ApprovalsTable
+      <ApprovalsBoard
         bills={rows}
         canDecide={canApprove(session.role)}
         showCompany={entities.length > 1}
-        // Everything on this tab is pending, so a column saying so is width spent
-        // repeating the tab's own name.
+        // Everything on this tab is pending, so saying so on every row is repeating the
+        // tab's own name fourteen times.
         showStatus={active.key !== 'pending'}
       />
 
