@@ -17,6 +17,8 @@ export type AccountingBill = {
   amountRaw: string | null
   entityId: string | null
   entityCode: string | null
+  /** The legal name, for the tooltip on the code badge. */
+  companyName: string | null
   entityIndex: number
   dueDate: string | null
   receivedDate: string
@@ -113,10 +115,12 @@ function Row({
         </span>
 
         <span className="flex items-center gap-2 md:block">
-          <Tag>Entity</Tag>
+          <Tag>Company</Tag>
           {bill.entityCode && (
             <span
-              className={`rounded-full px-2 py-0.5 font-mono text-[11px] font-bold ${entityColor(
+              // The code fits the column; the name is what people know it by.
+              title={bill.companyName ?? bill.entityCode}
+              className={`inline-block cursor-help rounded-full px-2 py-0.5 font-mono text-[11px] font-bold ${entityColor(
                 bill.entityCode,
                 bill.entityIndex,
               )}`}

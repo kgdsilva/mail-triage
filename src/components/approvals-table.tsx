@@ -1,16 +1,17 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { Ban, Check, CircleHelp, Download, FileText, History } from 'lucide-react'
+import { useEffect, useState, useTransition } from 'react'
+import { Ban, Check, CircleHelp, Download, FileText, History, X } from 'lucide-react'
 import {
   approveBill,
   approveSelected,
   denyBill,
   flagForReview,
 } from '@/server/actions/approvals'
-import { PdfFrame, PeekToggle } from '@/components/pdf-peek'
+import { PdfFrame } from '@/components/pdf-peek'
 import { formatDate, formatMoney } from '@/components/badges'
-import { BTN, URGENCY_TONE, entityColor, urgencyWithin } from '@/lib/theme'
+import { DUE_TONE, describeDue } from '@/lib/due'
+import { BTN, entityColor } from '@/lib/theme'
 
 export type ApprovalBill = {
   id: string
@@ -20,8 +21,9 @@ export type ApprovalBill = {
   /** Already formatted; the raw number travels separately for the selection total. */
   amount: string | null
   amountValue: number
-  entityCode: string | null
-  entityIndex: number
+  companyCode: string | null
+  companyName: string | null
+  companyIndex: number
   dueDate: string | null
   receivedDate: string
   categoryName: string | null
@@ -47,44 +49,99 @@ const STATUS_TONE: Record<ApprovalBill['status'], string> = {
 }
 
 /**
- * The approver's list.
+ * The approver's list: one line per bill, and the invoice one click away.
  *
- * One row per bill, laid out as a grid rather than a table: the same markup has to read
- * as columns on a desk and as a stacked card on a phone, and two sets of markup for one
- * list is two places for them to disagree. Labels appear only where the header row does
- * not — on a narrow screen each value says what it is.
+ * It was a stack of cards, which read well and fitted four bills on a laptop — so the
+ * question "what is waiting on me" needed scrolling to answer, which is the one thing
+ * this screen exists to make instant. Now it is a dense row and the detail moved into a
+ * panel, where the PDF has room to actually be read.
  *
- * Approve is one click and has no dialogue. Deny and Needs review open a note, because a
- * refusal nobody explained is the thing the next person cannot act on, and it is the
- * whole reason the bill is going back.
+ * ---------------------------------------------------------------------------
+ * Why the columns are data and not markup
+ * ---------------------------------------------------------------------------
+ *
+ * The header and the rows used to be two separate grids with two separately maintained
+ * templates, and they drifted: headings sat half a column off their values, and an empty
+ * cell shifted everything after it. One array of column definitions now renders both, so
+ * alignment is structural — a column cannot be in the header and missing from the row.
+ *
+ * The template is applied with `style` rather than a Tailwind class, deliberately:
+ * Tailwind compiles by scanning source text, so a class built from a variable never
+ * exists in the stylesheet. Inline is the honest way to do something genuinely dynamic.
  */
+
+type Column = {
+  key: string
+  header: string
+  /** A grid track: `28px`, `1.4fr`, `minmax(0,1fr)`. */
+  width: string
+  align?: 'right'
+  /** Dropped on narrower screens; the side panel still shows it. */
+  wide?: boolean
+}
+
+/**
+ * The width below which the columns stop being readable.
+ *
+ * Under this the table scrolls sideways inside its own box rather than compressing —
+ * a squeezed grid does not fail gracefully, it overlaps, and two numbers on top of each
+ * other on a screen about money is worse than a scrollbar.
+ */
+const MIN_WIDTH = { narrow: 880, wide: 1200 }
+
+function columnsFor({ canDecide, showStatus }: { canDecide: boolean; showStatus: boolean }) {
+  const cols: Column[] = []
+  if (canDecide) cols.push({ key: 'select', header: '', width: '26px' })
+  cols.push(
+    { key: 'vendor', header: 'Vendor', width: 'minmax(0,1.5fr)' },
+    { key: 'invoice', header: 'Invoice no.', width: 'minmax(0,0.9fr)' },
+    { key: 'amount', header: 'Amount', width: '104px', align: 'right' },
+    { key: 'company', header: 'Company', width: '62px' },
+    { key: 'due', header: 'Due', width: '132px' },
+    { key: 'received', header: 'Received', width: '88px', wide: true },
+    { key: 'category', header: 'Category', width: 'minmax(0,0.8fr)', wide: true },
+  )
+  // Hidden on the tab where every row says the same thing. A column whose every value is
+  // identical is a column that costs width and tells you nothing.
+  if (showStatus) cols.push({ key: 'status', header: 'Status', width: '124px' })
+  cols.push({ key: 'actions', header: '', width: canDecide ? '198px' : '104px' })
+  return cols
+}
+
 export function ApprovalsTable({
   bills,
   canDecide,
-  showEntity,
+  showCompany,
+  showStatus,
 }: {
   bills: ApprovalBill[]
   /** False for an admin looking in, or an accountant: they read this list, not act on it. */
   canDecide: boolean
-  showEntity: boolean
+  showCompany: boolean
+  showStatus: boolean
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirming, setConfirming] = useState(false)
+  const [openId, setOpenId] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
+  const cols = columnsFor({ canDecide, showStatus })
+  const narrow = cols.filter((c) => !c.wide)
   const selectable = bills.filter((b) => b.status === 'PENDING')
   const chosen = selectable.filter((b) => selected.has(b.id))
   const total = chosen.reduce((sum, b) => sum + b.amountValue, 0)
+  const open = bills.find((b) => b.id === openId) ?? null
 
-  function toggle(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
+  /*
+   * A bill that leaves the list — approved, sent back — must not leave a panel behind
+   * describing something that is no longer there.
+   *
+   * Adjusted during render rather than in an effect, like the nav menu's close-on-
+   * navigation: the panel has to be gone in the same paint as the row, and an effect
+   * would show it for a frame over a list that no longer contains it.
+   */
+  if (openId && !bills.some((b) => b.id === openId)) setOpenId(null)
 
   function runBulk() {
     setError(null)
@@ -114,108 +171,454 @@ export function ApprovalsTable({
   }
 
   return (
-    <div className="space-y-2">
-      {canDecide && selectable.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
-          <label className="flex cursor-pointer items-center gap-2 text-[12.5px] font-semibold text-muted">
-            <input
-              type="checkbox"
-              checked={chosen.length === selectable.length && selectable.length > 0}
-              onChange={(e) =>
-                setSelected(e.target.checked ? new Set(selectable.map((b) => b.id)) : new Set())
-              }
-              className="size-4 accent-navy-700"
-            />
-            Select all pending ({selectable.length})
-          </label>
-
-          {chosen.length > 0 && !confirming && (
-            <button type="button" className={`${BTN.done} ml-auto`} onClick={() => setConfirming(true)}>
-              <Check className="size-3.5" aria-hidden />
-              Approve selected ({chosen.length})
-            </button>
-          )}
-
-          {/*
-            The confirmation states the count and the money. Approving in bulk is the one
-            action here that can be wrong at scale, and "Approve 9 bills" without the
-            total is a number nobody can check against what they just read.
-          */}
-          {confirming && (
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <span className="text-[13px] font-semibold text-navy-900">
-                Approve {chosen.length} bill{chosen.length === 1 ? '' : 's'} totalling{' '}
-                <span className="tabular">{formatMoney({ toString: () => String(total) })}</span>?
-              </span>
-              <button type="button" className={BTN.done} disabled={pending} onClick={runBulk}>
-                {pending ? 'Approving…' : 'Yes, approve'}
-              </button>
-              <button type="button" className={BTN.quiet} onClick={() => setConfirming(false)}>
-                Cancel
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
+    <>
       {error && (
-        <p className="rounded-lg bg-danger-100 px-3 py-2 text-[13px] text-danger-700">{error}</p>
+        <p className="mb-2 rounded-lg bg-danger-100 px-3 py-2 text-[13px] text-danger-700">
+          {error}
+        </p>
       )}
 
-      {/* The header exists only where there is room for columns. */}
-      <div
-        className={`hidden gap-3 px-3 pb-1 text-[11px] font-bold uppercase tracking-wide text-subtle md:grid ${
-          canDecide ? 'md:grid-cols-[auto_1.6fr_1fr_1fr_auto_1fr_1fr_auto]' : 'md:grid-cols-[1.6fr_1fr_1fr_auto_1fr_1fr_auto]'
-        }`}
-      >
-        {canDecide && <span />}
-        <span>Vendor</span>
-        <span>Invoice no.</span>
-        <span className="text-right">Amount</span>
-        <span>{showEntity ? 'Entity' : ''}</span>
-        <span>Due</span>
-        <span>Received</span>
-        <span>Status</span>
+      <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+        {/* One template, two consumers. See the note above. */}
+        <Grid cols={cols} narrow={narrow} className="border-b border-line bg-canvas/60 px-3 py-1.5">
+          {cols.map((col) =>
+            col.key === 'select' ? (
+              <span key={col.key}>
+                <input
+                  type="checkbox"
+                  aria-label="Select all pending"
+                  checked={chosen.length === selectable.length && selectable.length > 0}
+                  disabled={selectable.length === 0}
+                  onChange={(e) =>
+                    setSelected(e.target.checked ? new Set(selectable.map((b) => b.id)) : new Set())
+                  }
+                  className="size-3.5 accent-navy-700 disabled:opacity-30"
+                />
+              </span>
+            ) : (
+              <span
+                key={col.key}
+                className={`truncate text-[10.5px] font-bold uppercase tracking-wide text-subtle ${
+                  col.align === 'right' ? 'text-right' : ''
+                } ${col.wide ? 'hidden xl:block' : ''}`}
+              >
+                {col.key === 'company' && !showCompany ? '' : col.header}
+              </span>
+            ),
+          )}
+        </Grid>
+
+        <ul className="divide-y divide-line-soft">
+          {bills.map((bill) => (
+            <Row
+              key={bill.id}
+              bill={bill}
+              cols={cols}
+              narrow={narrow}
+              canDecide={canDecide}
+              showCompany={showCompany}
+              showStatus={showStatus}
+              checked={selected.has(bill.id)}
+              active={openId === bill.id}
+              onToggle={() =>
+                setSelected((prev) => {
+                  const next = new Set(prev)
+                  if (next.has(bill.id)) next.delete(bill.id)
+                  else next.add(bill.id)
+                  return next
+                })
+              }
+              onOpen={() => setOpenId(bill.id)}
+            />
+          ))}
+        </ul>
       </div>
 
-      <ul className="space-y-2">
-        {bills.map((bill) => (
-          <Row
-            key={bill.id}
-            bill={bill}
-            canDecide={canDecide}
-            showEntity={showEntity}
-            checked={selected.has(bill.id)}
-            onToggle={() => toggle(bill.id)}
-          />
-        ))}
-      </ul>
-    </div>
+      {open && (
+        <Panel
+          bill={open}
+          canDecide={canDecide}
+          onClose={() => setOpenId(null)}
+          showCompany={showCompany}
+        />
+      )}
+
+      {/*
+        The selection bar is fixed to the bottom of the screen rather than sitting above
+        the list, because with ten or more rows the thing you are acting on and the button
+        that acts scroll apart — and an "Approve selected" you have to scroll back up to
+        find is one people stop using.
+      */}
+      {canDecide && chosen.length > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 pb-4">
+          <div className="pointer-events-auto flex flex-wrap items-center gap-3 rounded-xl border border-navy-500 bg-navy-900 px-3.5 py-2.5 shadow-[0_8px_28px_rgba(18,40,74,0.3)]">
+            {confirming ? (
+              <>
+                <span className="text-[13px] font-semibold text-white">
+                  Approve {chosen.length} bill{chosen.length === 1 ? '' : 's'} totalling{' '}
+                  <span className="tabular">{formatMoney({ toString: () => String(total) })}</span>?
+                </span>
+                <button type="button" className={BTN.done} disabled={pending} onClick={runBulk}>
+                  {pending ? 'Approving…' : 'Yes, approve'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirming(false)}
+                  className="text-[12.5px] font-medium text-navy-100/80 underline hover:text-white"
+                >
+                  Back
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-[13px] font-semibold text-white">
+                  {chosen.length} selected ·{' '}
+                  <span className="tabular">{formatMoney({ toString: () => String(total) })}</span>
+                </span>
+                <button type="button" className={BTN.done} onClick={() => setConfirming(true)}>
+                  <Check className="size-3.5" aria-hidden />
+                  Approve {chosen.length} selected
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelected(new Set())}
+                  className="text-[12.5px] font-medium text-navy-100/80 underline hover:text-white"
+                >
+                  Clear
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** The shared grid. Two templates — with and without the wide-screen columns. */
+function Grid({
+  cols,
+  narrow,
+  className,
+  children,
+}: {
+  cols: Column[]
+  narrow: Column[]
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <>
+      <div
+        className={`hidden items-center gap-x-3 xl:grid ${className ?? ''}`}
+        style={{
+          gridTemplateColumns: cols.map((c) => c.width).join(' '),
+          minWidth: MIN_WIDTH.wide,
+        }}
+      >
+        {children}
+      </div>
+      <div
+        className={`grid items-center gap-x-3 xl:hidden ${className ?? ''}`}
+        style={{
+          gridTemplateColumns: narrow.map((c) => c.width).join(' '),
+          minWidth: MIN_WIDTH.narrow,
+        }}
+      >
+        {children}
+      </div>
+    </>
   )
 }
 
 function Row({
   bill,
+  cols,
+  narrow,
   canDecide,
-  showEntity,
+  showCompany,
+  showStatus,
   checked,
+  active,
   onToggle,
+  onOpen,
+}: {
+  bill: ApprovalBill
+  cols: Column[]
+  narrow: Column[]
+  canDecide: boolean
+  showCompany: boolean
+  showStatus: boolean
+  checked: boolean
+  active: boolean
+  onToggle: () => void
+  onOpen: () => void
+}) {
+  const due = describeDue(bill.dueDate)
+
+  const cells: Record<string, React.ReactNode> = {
+    select: canDecide ? (
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={bill.status !== 'PENDING'}
+        onClick={(e) => e.stopPropagation()}
+        onChange={onToggle}
+        aria-label={`Select ${bill.vendorName ?? bill.title}`}
+        className="size-3.5 accent-navy-700 disabled:opacity-30"
+      />
+    ) : null,
+
+    vendor: (
+      <span className="truncate text-[13px] font-bold text-navy-900" title={bill.vendorName ?? bill.title}>
+        {bill.vendorName ?? bill.title}
+      </span>
+    ),
+
+    invoice: (
+      <span className="truncate font-mono text-[12px] text-muted" title={bill.invoiceNumber ?? ''}>
+        {bill.invoiceNumber ?? '—'}
+      </span>
+    ),
+
+    amount: (
+      <span className="tabular text-right text-[13px] font-bold text-navy-900">
+        {bill.amount ?? '—'}
+      </span>
+    ),
+
+    company:
+      showCompany && bill.companyCode ? (
+        <span
+          // The code is what fits; the name is what people actually know.
+          title={bill.companyName ?? bill.companyCode}
+          className={`inline-block w-fit cursor-help rounded-full px-1.5 py-0.5 font-mono text-[10.5px] font-bold ${entityColor(
+            bill.companyCode,
+            bill.companyIndex,
+          )}`}
+        >
+          {bill.companyCode}
+        </span>
+      ) : null,
+
+    due: (
+      <span
+        title={due.exact}
+        className={`inline-block w-fit cursor-help truncate rounded-full px-2 py-0.5 text-[11.5px] tabular ${DUE_TONE[due.tone]}`}
+      >
+        {due.text}
+      </span>
+    ),
+
+    received: (
+      <span className="tabular text-[12px] text-muted">
+        {formatDate(new Date(bill.receivedDate))}
+      </span>
+    ),
+
+    category: (
+      <span className="truncate text-[12px] text-muted" title={bill.categoryName ?? ''}>
+        {bill.categoryName ?? '—'}
+      </span>
+    ),
+
+    status: showStatus ? (
+      <span
+        className={`inline-block w-fit rounded-full px-2 py-0.5 text-[11px] font-bold ${STATUS_TONE[bill.status]}`}
+      >
+        {STATUS_LABEL[bill.status]}
+      </span>
+    ) : null,
+
+    actions: (
+      <span className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+        <IconButton label="Preview the invoice" onClick={onOpen} icon={FileText} />
+        <IconLink label="Download the invoice" href={`/api/files/${bill.id}?download=1`} icon={Download} />
+        <IconLink label="Full history" href={`/history/${bill.id}`} icon={History} />
+        {canDecide && (
+          <>
+            <span className="mx-0.5 h-5 w-px bg-line" aria-hidden />
+            <IconButton
+              label="Needs review — asks a question and sends it back"
+              onClick={onOpen}
+              icon={CircleHelp}
+            />
+            {/* Red outline, so refusing never sits a plain-button width away from asking
+                a question. Both send the bill back; only one of them is a no. */}
+            <IconButton label="Deny — refuse it with a reason" onClick={onOpen} icon={Ban} danger />
+            <ApproveButton id={bill.id} disabled={bill.status === 'APPROVED'} />
+          </>
+        )}
+      </span>
+    ),
+  }
+
+  /*
+   * A `div`, not a `span`. An inline wrapper has no width of its own, so `min-w-0` and
+   * `truncate` inside it resolve against nothing and the content spills over the next
+   * column instead of being cut — which is exactly what the vendor name did to the
+   * amount.
+   */
+  const body = (visible: Column[]) =>
+    visible.map((c) => (
+      <div key={c.key} className="min-w-0">
+        {cells[c.key]}
+      </div>
+    ))
+
+  return (
+    <li>
+      {/*
+        The whole row opens the panel. The checkbox and the buttons stop the click, so
+        the two gestures do not fight — and the row keeps a button's affordances for a
+        keyboard, which a div with an onClick does not.
+      */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onOpen()
+          }
+        }}
+        className={`w-full text-left transition-colors ${
+          active ? 'bg-navy-50' : 'hover:bg-navy-50/60'
+        }`}
+      >
+        <div
+          className="hidden items-center gap-x-3 px-3 py-2 xl:grid"
+          style={{
+            gridTemplateColumns: cols.map((c) => c.width).join(' '),
+            minWidth: MIN_WIDTH.wide,
+          }}
+        >
+          {body(cols)}
+        </div>
+        <div
+          className="grid items-center gap-x-3 px-3 py-2 xl:hidden"
+          style={{
+            gridTemplateColumns: narrow.map((c) => c.width).join(' '),
+            minWidth: MIN_WIDTH.narrow,
+          }}
+        >
+          {body(narrow)}
+        </div>
+      </div>
+    </li>
+  )
+}
+
+/** Approve is the one action on the row that commits without opening anything. */
+function ApproveButton({ id, disabled }: { id: string; disabled: boolean }) {
+  const [pending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+
+  if (disabled) return null
+
+  return (
+    <button
+      type="button"
+      title={error ?? 'Approve this bill'}
+      disabled={pending}
+      onClick={() =>
+        startTransition(async () => {
+          const res = await approveBill(id)
+          if (!res.ok) setError(res.error ?? 'That did not go through.')
+        })
+      }
+      className={`inline-flex items-center gap-1 rounded-lg bg-ok-700 px-2 py-1 text-[12px] font-semibold text-white transition-colors hover:bg-[#155538] active:bg-[#0f3f29] disabled:opacity-50 ${
+        error ? 'bg-danger-700' : ''
+      }`}
+    >
+      <Check className="size-3.5" aria-hidden />
+      {pending ? '…' : 'Approve'}
+    </button>
+  )
+}
+
+function IconButton({
+  label,
+  onClick,
+  icon: Icon,
+  danger,
+}: {
+  label: string
+  onClick: () => void
+  icon: typeof Check
+  danger?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className={`grid size-7 place-items-center rounded-lg border transition-colors ${
+        danger
+          ? 'border-danger-500 text-danger-700 hover:bg-danger-100 active:bg-danger-100'
+          : 'border-line text-muted hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700 active:bg-navy-100'
+      }`}
+    >
+      <Icon className="size-3.5" aria-hidden />
+    </button>
+  )
+}
+
+function IconLink({
+  label,
+  href,
+  icon: Icon,
+}: {
+  label: string
+  href: string
+  icon: typeof Check
+}) {
+  return (
+    <a
+      href={href}
+      title={label}
+      aria-label={label}
+      className="grid size-7 place-items-center rounded-lg border border-line text-muted transition-colors hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700 active:bg-navy-100"
+    >
+      <Icon className="size-3.5" aria-hidden />
+    </a>
+  )
+}
+
+/**
+ * The bill, opened.
+ *
+ * The invoice gets the right-hand two thirds because reading it is the decision, and the
+ * three answers sit at the top where the eye already is rather than below a document
+ * somebody has just finished scrolling. Full screen on a phone: a 640px panel on a
+ * 375px screen is a panel nobody can read.
+ */
+function Panel({
+  bill,
+  canDecide,
+  showCompany,
+  onClose,
 }: {
   bill: ApprovalBill
   canDecide: boolean
-  showEntity: boolean
-  checked: boolean
-  onToggle: () => void
+  showCompany: boolean
+  onClose: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const [asking, setAsking] = useState<'DENIED' | 'NEEDS_REVIEW' | null>(null)
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const due = describeDue(bill.dueDate)
 
-  // Three days, not the week the rest of the app uses: an approver is being asked
-  // whether this is urgent today.
-  const level = urgencyWithin(bill.dueDate, 3)
+  useEffect(() => {
+    function key(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', key)
+    return () => document.removeEventListener('keydown', key)
+  }, [onClose])
 
   function act(fn: () => Promise<{ ok: boolean; error?: string }>) {
     setError(null)
@@ -230,220 +633,172 @@ function Row({
   }
 
   return (
-    <li className="overflow-hidden rounded-xl border border-line bg-surface">
-      <div
-        className={`grid gap-x-3 gap-y-1.5 px-3 py-3 md:items-center ${
-          canDecide
-            ? 'md:grid-cols-[auto_1.6fr_1fr_1fr_auto_1fr_1fr_auto]'
-            : 'md:grid-cols-[1.6fr_1fr_1fr_auto_1fr_1fr_auto]'
-        }`}
-      >
-        {canDecide && (
-          <input
-            type="checkbox"
-            checked={checked}
-            disabled={bill.status !== 'PENDING'}
-            onChange={onToggle}
-            aria-label={`Select ${bill.vendorName ?? bill.title}`}
-            className="size-4 accent-navy-700 disabled:opacity-30"
-          />
-        )}
+    <div className="fixed inset-0 z-40 flex">
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className="hidden flex-1 bg-navy-900/25 md:block"
+      />
 
-        <span className="min-w-0">
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="truncate text-left text-[14px] font-bold text-navy-900 hover:underline"
-          >
-            {bill.vendorName ?? bill.title}
-          </button>
-          {bill.categoryName && (
-            <span className="block text-[12px] text-muted">{bill.categoryName}</span>
-          )}
-        </span>
+      <aside className="flex w-full flex-col bg-surface shadow-[0_0_40px_rgba(18,40,74,0.25)] md:w-[clamp(540px,52vw,780px)]">
+        <header className="border-b border-line px-4 py-3">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                {showCompany && bill.companyCode && (
+                  <span
+                    title={bill.companyName ?? bill.companyCode}
+                    className={`rounded-full px-2 py-0.5 font-mono text-[11px] font-bold ${entityColor(
+                      bill.companyCode,
+                      bill.companyIndex,
+                    )}`}
+                  >
+                    {bill.companyCode}
+                  </span>
+                )}
+                <h2 className="truncate text-[17px] font-bold tracking-tight text-navy-900">
+                  {bill.vendorName ?? bill.title}
+                </h2>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${STATUS_TONE[bill.status]}`}
+                >
+                  {STATUS_LABEL[bill.status]}
+                </span>
+              </div>
+              <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted">
+                <span className="tabular text-[16px] font-extrabold text-navy-900">
+                  {bill.amount ?? '—'}
+                </span>
+                <span title={due.exact} className={`cursor-help rounded-full px-2 py-0.5 ${DUE_TONE[due.tone]}`}>
+                  {due.text}
+                </span>
+                <span>Invoice {bill.invoiceNumber ?? '—'}</span>
+                <span>{bill.categoryName ?? 'Uncategorised'}</span>
+                <span>Received {formatDate(new Date(bill.receivedDate))}</span>
+              </p>
+            </div>
 
-        <Cell label="Invoice no.">
-          <span className="font-mono text-[12.5px]">{bill.invoiceNumber ?? '—'}</span>
-        </Cell>
-
-        <Cell label="Amount" align="right">
-          <span className="tabular text-[14px] font-bold text-navy-900">{bill.amount ?? '—'}</span>
-        </Cell>
-
-        <Cell label="Entity">
-          {showEntity && bill.entityCode ? (
-            <span
-              className={`rounded-full px-2 py-0.5 font-mono text-[11px] font-bold ${entityColor(
-                bill.entityCode,
-                bill.entityIndex,
-              )}`}
-            >
-              {bill.entityCode}
-            </span>
-          ) : null}
-        </Cell>
-
-        <Cell label="Due">
-          {bill.dueDate ? (
-            <span
-              className={`inline-flex rounded-full px-2 py-0.5 text-[11.5px] font-semibold tabular ${URGENCY_TONE[level]}`}
-            >
-              {level === 'overdue' ? 'Overdue ' : ''}
-              {formatDate(new Date(`${bill.dueDate}T00:00:00Z`))}
-            </span>
-          ) : (
-            <span className="text-[12.5px] text-subtle">No due date</span>
-          )}
-        </Cell>
-
-        <Cell label="Received">
-          <span className="tabular text-[12.5px] text-muted">
-            {formatDate(new Date(bill.receivedDate))}
-          </span>
-        </Cell>
-
-        <Cell label="Status">
-          <span
-            className={`inline-flex rounded-full px-2 py-0.5 text-[11.5px] font-bold ${STATUS_TONE[bill.status]}`}
-          >
-            {STATUS_LABEL[bill.status]}
-          </span>
-        </Cell>
-      </div>
-
-      {/* The note is the point of a sent-back bill, so it is never behind a toggle. */}
-      {bill.note && (
-        <p className="border-t border-line-soft bg-gold-100/40 px-3 py-2 text-[12.5px] text-gold-800">
-          <span className="font-bold">{STATUS_LABEL[bill.status]}</span>
-          {bill.decidedBy ? ` by ${bill.decidedBy}` : ''}
-          {bill.decidedAt ? ` on ${formatDate(new Date(bill.decidedAt))}` : ''} — {bill.note}
-        </p>
-      )}
-
-      {bill.status === 'APPROVED' && bill.decidedBy && (
-        <p className="border-t border-line-soft bg-ok-100/50 px-3 py-1.5 text-[12px] text-ok-700">
-          Approved by {bill.decidedBy}
-          {bill.decidedAt ? ` on ${formatDate(new Date(bill.decidedAt))}` : ''}
-        </p>
-      )}
-
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-line-soft px-3 py-2">
-        <button type="button" onClick={() => setOpen((v) => !v)} className={BTN.quiet}>
-          <FileText className="size-3.5" aria-hidden />
-          {open ? 'Hide invoice' : 'Preview'}
-        </button>
-        <a
-          href={`/api/files/${bill.id}?download=1`}
-          className={BTN.quiet}
-          aria-disabled={!bill.hasFile}
-        >
-          <Download className="size-3.5" aria-hidden />
-          Download
-        </a>
-        <a href={`/history/${bill.id}`} className={BTN.quiet}>
-          <History className="size-3.5" aria-hidden />
-          History
-        </a>
-
-        {canDecide && (
-          <span className="ml-auto flex flex-wrap items-center gap-1.5">
-            {bill.status !== 'APPROVED' && (
-              <button
-                type="button"
-                className={BTN.done}
-                disabled={pending}
-                onClick={() => act(() => approveBill(bill.id))}
-              >
-                <Check className="size-3.5" aria-hidden />
-                Approve
-              </button>
-            )}
             <button
               type="button"
-              className={BTN.quiet}
-              onClick={() => setAsking((v) => (v === 'NEEDS_REVIEW' ? null : 'NEEDS_REVIEW'))}
+              onClick={onClose}
+              aria-label="Close"
+              className="grid size-8 flex-none place-items-center rounded-lg text-muted transition-colors hover:bg-navy-50 hover:text-navy-700"
             >
-              <CircleHelp className="size-3.5" aria-hidden />
-              Needs review
-            </button>
-            <button
-              type="button"
-              className={BTN.danger}
-              onClick={() => setAsking((v) => (v === 'DENIED' ? null : 'DENIED'))}
-            >
-              <Ban className="size-3.5" aria-hidden />
-              Deny
-            </button>
-          </span>
-        )}
-      </div>
-
-      {asking && (
-        <div className="border-t border-line-soft bg-canvas px-3 py-2.5">
-          <label className="block text-[12px] font-semibold text-muted">
-            {asking === 'DENIED' ? 'Why are you denying this?' : 'What needs checking?'}
-          </label>
-          <div className="mt-1.5 flex flex-wrap gap-2">
-            <input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={
-                asking === 'DENIED' ? 'Duplicate of last month' : 'Is this the right entity?'
-              }
-              className="min-w-48 flex-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[13px] outline-none focus:border-navy-500"
-            />
-            <button
-              type="button"
-              className={BTN.primary}
-              disabled={pending || note.trim().length < 3}
-              onClick={() =>
-                act(() =>
-                  asking === 'DENIED' ? denyBill(bill.id, note) : flagForReview(bill.id, note),
-                )
-              }
-            >
-              {pending ? 'Sending…' : 'Send back'}
-            </button>
-            <button type="button" className={BTN.quiet} onClick={() => setAsking(null)}>
-              Cancel
+              <X className="size-4" aria-hidden />
             </button>
           </div>
-          <p className="mt-1 text-[11.5px] text-subtle">
-            The note goes back with the bill and stays in its history.
-          </p>
-        </div>
-      )}
 
-      {error && <p className="px-3 pb-2 text-[12px] text-danger-700">{error}</p>}
+          {canDecide && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {bill.status !== 'APPROVED' && (
+                <button
+                  type="button"
+                  className={BTN.done}
+                  disabled={pending}
+                  onClick={() => act(() => approveBill(bill.id))}
+                >
+                  <Check className="size-3.5" aria-hidden />
+                  Approve
+                </button>
+              )}
+              <button
+                type="button"
+                className={BTN.secondary}
+                onClick={() => setAsking((v) => (v === 'NEEDS_REVIEW' ? null : 'NEEDS_REVIEW'))}
+              >
+                <CircleHelp className="size-3.5" aria-hidden />
+                Needs review
+              </button>
+              <button
+                type="button"
+                onClick={() => setAsking((v) => (v === 'DENIED' ? null : 'DENIED'))}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-danger-500 bg-surface px-3.5 py-2 text-[13px] font-semibold text-danger-700 transition-colors hover:bg-danger-100 active:bg-danger-100"
+              >
+                <Ban className="size-3.5" aria-hidden />
+                Deny
+              </button>
 
-      {open && (
-        <div className="border-t border-line-soft p-3">
-          <PdfFrame id={bill.id} title={bill.title} hasFile={bill.hasFile} />
+              <a
+                href={`/api/files/${bill.id}?download=1`}
+                className={`${BTN.quiet} ml-auto`}
+                title="Download the invoice"
+              >
+                <Download className="size-3.5" aria-hidden />
+                Download
+              </a>
+              <a href={`/history/${bill.id}`} className={BTN.quiet} title="Full history">
+                <History className="size-3.5" aria-hidden />
+                History
+              </a>
+            </div>
+          )}
+
+          {/* The note is still required, and still the whole content of a refusal. */}
+          {asking && (
+            <div className="mt-3 rounded-xl border border-line bg-canvas p-2.5">
+              <label className="block text-[12px] font-semibold text-muted">
+                {asking === 'DENIED' ? 'Why are you denying this?' : 'What needs checking?'}
+              </label>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                <input
+                  autoFocus
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder={
+                    asking === 'DENIED' ? 'Duplicate of last month' : 'Is this the right company?'
+                  }
+                  className="min-w-48 flex-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[13px] outline-none focus:border-navy-500"
+                />
+                <button
+                  type="button"
+                  className={BTN.primary}
+                  disabled={pending || note.trim().length < 3}
+                  onClick={() =>
+                    act(() =>
+                      asking === 'DENIED'
+                        ? denyBill(bill.id, note)
+                        : flagForReview(bill.id, note),
+                    )
+                  }
+                >
+                  {pending ? 'Sending…' : 'Send back'}
+                </button>
+                <button type="button" className={BTN.quiet} onClick={() => setAsking(null)}>
+                  Cancel
+                </button>
+              </div>
+              <p className="mt-1 text-[11.5px] text-subtle">
+                The note goes back with the bill and stays in its history.
+              </p>
+            </div>
+          )}
+
+          {bill.note && (
+            <p className="mt-3 rounded-lg bg-gold-100/60 px-3 py-2 text-[12.5px] text-gold-800">
+              <span className="font-bold">
+                {STATUS_LABEL[bill.status]}
+                {bill.decidedBy ? ` by ${bill.decidedBy}` : ''}
+                {bill.decidedAt ? ` on ${formatDate(new Date(bill.decidedAt))}` : ''}
+              </span>{' '}
+              — {bill.note}
+            </p>
+          )}
+
+          {bill.status === 'APPROVED' && bill.decidedBy && (
+            <p className="mt-3 rounded-lg bg-ok-100/60 px-3 py-1.5 text-[12px] text-ok-700">
+              Approved by {bill.decidedBy}
+              {bill.decidedAt ? ` on ${formatDate(new Date(bill.decidedAt))}` : ''}
+            </p>
+          )}
+
+          {error && <p className="mt-2 text-[12px] text-danger-700">{error}</p>}
+        </header>
+
+        <div className="min-h-0 flex-1 bg-line-soft p-3">
+          <PdfFrame id={bill.id} title={bill.title} hasFile={bill.hasFile} fill />
         </div>
-      )}
-    </li>
+      </aside>
+    </div>
   )
 }
-
-/** A value that labels itself on a phone and sits under a column heading on a desk. */
-function Cell({
-  label,
-  children,
-  align,
-}: {
-  label: string
-  children: React.ReactNode
-  align?: 'right'
-}) {
-  if (!children) return <span className="hidden md:block" />
-  return (
-    <span className={`flex items-center gap-2 md:block ${align === 'right' ? 'md:text-right' : ''}`}>
-      <span className="w-24 shrink-0 text-[11px] font-bold uppercase tracking-wide text-subtle md:hidden">
-        {label}
-      </span>
-      {children}
-    </span>
-  )
-}
-
-export { PeekToggle }

@@ -18,17 +18,29 @@ export function PdfFrame({
   title,
   hasFile,
   height = 'h-[32rem]',
+  fill,
 }: {
   id: string
   title: string
   /** A historical row can exist before its PDF is attached; an iframe would 404. */
   hasFile: boolean
   height?: string
+  /**
+   * Take all the height the parent has, instead of a fixed 32rem.
+   *
+   * For the side panel, where the document is the point of the screen and a fixed height
+   * would either waste a third of a tall window or overflow a short one.
+   */
+  fill?: boolean
 }) {
   return (
-    <>
+    <div className={fill ? 'flex h-full flex-col' : undefined}>
       {hasFile ? (
-        <div className={`${height} overflow-hidden rounded-lg border border-line bg-line-soft`}>
+        <div
+          className={`${
+            fill ? 'min-h-0 flex-1' : height
+          } overflow-hidden rounded-lg border border-line bg-line-soft`}
+        >
           <iframe
             src={`/api/files/${id}#view=FitH&navpanes=0`}
             title={title}
@@ -40,7 +52,7 @@ export function PdfFrame({
           No file attached to this record.
         </p>
       )}
-      <div className="mt-2 flex items-center justify-end">
+      <div className="mt-2 flex flex-none items-center justify-end">
         <Link
           href={`/classify/${id}`}
           className="inline-flex items-center gap-1.5 text-[12px] font-medium text-muted transition-colors hover:text-navy-700"
@@ -49,7 +61,7 @@ export function PdfFrame({
           Edit the details
         </Link>
       </div>
-    </>
+    </div>
   )
 }
 

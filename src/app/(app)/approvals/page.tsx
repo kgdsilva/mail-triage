@@ -58,8 +58,9 @@ export default async function ApprovalsPage({
     invoiceNumber: d.invoiceNumber,
     amount: d.amount === null ? null : formatMoney(d.amount),
     amountValue: d.amount === null ? 0 : Number(d.amount.toString()),
-    entityCode: d.entity?.code ?? null,
-    entityIndex: d.entity?.sortOrder ?? 0,
+    companyCode: d.entity?.code ?? null,
+    companyName: d.entity?.legalName ?? null,
+    companyIndex: d.entity?.sortOrder ?? 0,
     dueDate: d.dueDate ? d.dueDate.toISOString().slice(0, 10) : null,
     receivedDate: d.createdAt.toISOString(),
     categoryName: d.category?.name ?? d.documentType?.label ?? null,
@@ -74,6 +75,17 @@ export default async function ApprovalsPage({
     .filter((r) => r.status === 'PENDING')
     .reduce((sum, r) => sum + r.amountValue, 0)
 
+  /*
+   * What is late, as its own number.
+   *
+   * "$9,515 waiting on you" is a workload; "$2,740 of it is overdue" is the reason to
+   * start now. They answer different questions and the second one was not on the screen.
+   */
+  const today = new Date().toISOString().slice(0, 10)
+  const overdueTotal = rows
+    .filter((r) => r.status === 'PENDING' && r.dueDate && r.dueDate < today)
+    .reduce((sum, r) => sum + r.amountValue, 0)
+
   const tabCount = (key: (typeof TABS)[number]['key']) =>
     key === 'pending'
       ? counts.pending
@@ -82,7 +94,7 @@ export default async function ApprovalsPage({
         : counts.denied + counts.needsReview
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    <div className="mx-auto max-w-[1600px] space-y-4">
       <header>
         <h1 className="text-[26px] font-bold tracking-tight text-navy-900">Bills to approve</h1>
         <p className="mt-1 text-sm text-muted">
@@ -133,18 +145,26 @@ export default async function ApprovalsPage({
             {formatMoney({ toString: () => String(pendingTotal) })} waiting on you
           </span>
         )}
+        {active.key === 'pending' && overdueTotal > 0 && (
+          <span className="tabular rounded-full bg-danger-100 px-3 py-1.5 text-[12.5px] font-bold text-danger-700">
+            {formatMoney({ toString: () => String(overdueTotal) })} overdue
+          </span>
+        )}
       </div>
 
       <ApprovalsTable
         bills={rows}
         canDecide={canApprove(session.role)}
-        showEntity={entities.length > 1}
+        showCompany={entities.length > 1}
+        // Everything on this tab is pending, so a column saying so is width spent
+        // repeating the tab's own name.
+        showStatus={active.key !== 'pending'}
       />
 
       {canConfigure(session.role) && (
         <p className="text-[12.5px] text-subtle">
           You are seeing every company because you are an administrator. An approver sees
-          only the ones assigned to them in Settings.
+          only the companies assigned to them in Settings.
         </p>
       )}
     </div>

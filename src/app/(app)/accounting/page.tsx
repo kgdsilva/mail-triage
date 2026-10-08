@@ -78,6 +78,7 @@ export default async function AccountingPage({
     amountRaw: d.amount === null ? null : Number(d.amount.toString()).toFixed(2),
     entityId: d.entityId,
     entityCode: d.entity?.code ?? null,
+    companyName: d.entity?.legalName ?? null,
     entityIndex: d.entity?.sortOrder ?? 0,
     dueDate: d.dueDate ? d.dueDate.toISOString().slice(0, 10) : null,
     receivedDate: d.createdAt.toISOString(),
@@ -105,8 +106,9 @@ export default async function AccountingPage({
     invoiceNumber: d.invoiceNumber,
     amount: d.amount === null ? null : formatMoney(d.amount),
     amountValue: d.amount === null ? 0 : Number(d.amount.toString()),
-    entityCode: d.entity?.code ?? null,
-    entityIndex: d.entity?.sortOrder ?? 0,
+    companyCode: d.entity?.code ?? null,
+    companyName: d.entity?.legalName ?? null,
+    companyIndex: d.entity?.sortOrder ?? 0,
     dueDate: d.dueDate ? d.dueDate.toISOString().slice(0, 10) : null,
     receivedDate: d.createdAt.toISOString(),
     categoryName: d.category?.name ?? d.documentType?.label ?? null,
@@ -203,7 +205,9 @@ export default async function AccountingPage({
           <ApprovalsTable
             bills={waitingRows}
             canDecide={false}
-            showEntity={entities.length > 1}
+            showCompany={entities.length > 1}
+            // Pending and needs-review are mixed here, so the status is the useful part.
+            showStatus
           />
         </>
       ) : (
