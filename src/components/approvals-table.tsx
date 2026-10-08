@@ -143,6 +143,23 @@ export function ApprovalsTable({
    */
   if (openId && !bills.some((b) => b.id === openId)) setOpenId(null)
 
+  /**
+   * The bill to land on after deciding this one.
+   *
+   * Forward only, and only onto something still pending — which is the whole of Eric's
+   * request: "check approved, approved, approved". Wrapping round to the top would
+   * re-show bills already passed over, and stopping at the end is the signal that the
+   * pile is finished.
+   *
+   * Computed from the list as it stands *now*, before the server sends back a list
+   * without the decided row, so "next in the current sort order" means what it says.
+   */
+  function nextAfter(id: string) {
+    const from = bills.findIndex((b) => b.id === id)
+    if (from === -1) return null
+    return bills.slice(from + 1).find((b) => b.status === 'PENDING')?.id ?? null
+  }
+
   function runBulk() {
     setError(null)
     startTransition(async () => {
@@ -239,6 +256,7 @@ export function ApprovalsTable({
           bill={open}
           canDecide={canDecide}
           onClose={() => setOpenId(null)}
+          onDecided={() => setOpenId(nextAfter(open.id))}
           showCompany={showCompany}
         />
       )}
@@ -600,11 +618,14 @@ function Panel({
   canDecide,
   showCompany,
   onClose,
+  onDecided,
 }: {
   bill: ApprovalBill
   canDecide: boolean
   showCompany: boolean
   onClose: () => void
+  /** Hands control back so the list can move to the next bill, or close. */
+  onDecided: () => void
 }) {
   const [asking, setAsking] = useState<'DENIED' | 'NEEDS_REVIEW' | null>(null)
   const [note, setNote] = useState('')
@@ -624,11 +645,15 @@ function Panel({
     setError(null)
     startTransition(async () => {
       const res = await fn()
-      if (!res.ok) setError(res.error ?? 'That did not go through.')
-      else {
-        setAsking(null)
-        setNote('')
+      if (!res.ok) {
+        // A failure keeps the panel where it is. Advancing past a bill that did not
+        // actually get decided is how one silently stays in the pile.
+        setError(res.error ?? 'That did not go through.')
+        return
       }
+      setAsking(null)
+      setNote('')
+      onDecided()
     })
   }
 

@@ -65,9 +65,19 @@ export function describeDue(iso: string | null): Due {
   return { text: `Due ${short}`, tone: 'later', exact, days }
 }
 
+/**
+ * All four are pills of the same geometry, including the quiet ones.
+ *
+ * The padding and height were already identical — measured, 8px by 2px, 21px tall. What
+ * made the neutral date look misaligned was having no background at all: a coloured
+ * pill's *box* starts at the column edge while bare text starts 8px inside it, so the
+ * eye reads the plain one as indented even though its baseline matches. A faint
+ * background costs nothing and makes the column line up by construction rather than by
+ * luck, and weight still does the work of saying which ones are urgent.
+ */
 export const DUE_TONE: Record<DueTone, string> = {
   overdue: 'bg-danger-100 text-danger-700 font-bold',
   soon: 'bg-gold-100 text-gold-800 font-semibold',
-  later: 'text-muted',
-  none: 'text-subtle',
+  later: 'bg-line-soft text-muted font-medium',
+  none: 'bg-line-soft/60 text-subtle font-medium',
 }
