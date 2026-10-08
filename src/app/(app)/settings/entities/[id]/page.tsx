@@ -41,6 +41,9 @@ export default async function EntityDetailPage({
   const meta = (entity.metadata as Record<string, unknown> | null) ?? {}
   const ein = typeof meta.ein === 'string' ? meta.ein : ''
   const state = typeof meta.state === 'string' ? meta.state : ''
+  const taxAccounts = Array.isArray(meta.taxAccounts)
+    ? meta.taxAccounts.filter((a): a is string => typeof a === 'string').join('\n')
+    : ''
 
   return (
     <div className="max-w-3xl space-y-5">
@@ -133,6 +136,23 @@ export default async function EntityDetailPage({
           </Field>
           <Field label="State" hint="Helps place state agency notices">
             <input name="state" defaultValue={state} placeholder="PA" className={INPUT} />
+          </Field>
+          {/*
+            The field that separates two companies sharing a brand and an address. A CA
+            EDD notice for CP and one for OP look alike down to the suite number; the
+            account number printed in the body is the only thing that does not.
+          */}
+          <Field
+            label="Tax accounts"
+            hint="One per line, e.g. CA EDD: 233-1313-3. Read off the notice itself"
+          >
+            <textarea
+              name="taxAccounts"
+              defaultValue={taxAccounts}
+              rows={3}
+              placeholder={'CA EDD: 233-1313-3\nPA UC: 1234567'}
+              className={`${INPUT} font-mono text-[12.5px]`}
+            />
           </Field>
           <Field label="Sort order" hint="Also picks the badge colour">
             <input

@@ -339,6 +339,30 @@ function approvalFor(actionKind: ActionKind | null) {
  * constraint. The constraint is the guarantee; this is so the operator gets a sentence
  * instead of a Postgres error.
  */
+/**
+ * What the model had suggested, flattened to the fields a person can disagree with.
+ *
+ * Recorded on every classification so a correction is self-describing: the event says
+ * what was proposed and what was decided, side by side, instead of only what the row
+ * used to hold. `aiSuggestion` alone cannot answer this later — it lives on the document
+ * and a re-read overwrites it, so without this the evidence of a disagreement is gone
+ * the next time the reader runs. Monthly divergence reports are built from these.
+ */
+function suggestedBy(aiSuggestion: unknown) {
+  if (!aiSuggestion || typeof aiSuggestion !== 'object') return null
+  const s = aiSuggestion as Record<string, unknown>
+  return {
+    disposition: s.disposition ?? null,
+    dispositionReason: s.dispositionReason ?? null,
+    actionKind: s.actionKind ?? null,
+    entityId: s.entityId ?? null,
+    documentTypeId: s.documentTypeId ?? null,
+    confidence: s.confidence ?? null,
+    decisionConfidence: s.decisionConfidence ?? null,
+    readAt: s.readAt ?? null,
+  }
+}
+
 export async function classifyDocument(
   companyGroupId: string,
   documentId: string,
@@ -380,6 +404,7 @@ export async function classifyDocument(
           dispositionReason: before.dispositionReason,
           status: before.status,
           entityId: before.entityId,
+          suggested: suggestedBy(before.aiSuggestion),
         },
         toValue: {
           disposition: updated.disposition,
@@ -450,6 +475,7 @@ export async function quickDecide(
       actionKind: true,
       status: true,
       documentTypeId: true,
+      aiSuggestion: true,
     },
   })
   if (!before) throw new Error('Document not found')
@@ -493,6 +519,7 @@ export async function quickDecide(
           dispositionReason: before.dispositionReason,
           actionKind: before.actionKind,
           status: before.status,
+          suggested: suggestedBy(before.aiSuggestion),
         },
         toValue: { ...target, via: 'quick-review' },
       },

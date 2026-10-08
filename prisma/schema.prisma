@@ -48,6 +48,7 @@ model CompanyGroup {
   batches       Batch[]
   documents     Document[]
   payments      Payment[]
+  evalRuns      AiEvalRun[]
 
   @@map("company_group")
 }
@@ -730,6 +731,7 @@ model Document {
   events        DocumentEvent[]
   payments      Payment[]
   notifications Notification[]
+  evalResults   AiEvalResult[]
 
   @@index([companyGroupId, status, disposition])
   @@index([companyGroupId, entityId, documentDate])
@@ -857,4 +859,66 @@ model VerificationToken {
 
   @@unique([identifier, token])
   @@map("verification_token")
+}
+
+// ---------------------------------------------------------------------------
+
+/// One scoring run of the reader against documents whose answer is already known.
+///
+/// Repeatable on purpose: the only way to know whether a change to the prompt, the
+/// entity matcher or the filing rules helped is to run the same set twice and compare.
+/// Nothing here is part of the master log — these rows are measurements, not records of
+/// mail, and deleting a run loses no evidence about any document.
+model AiEvalRun {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  label String
+  model String
+  note  String?
+
+  documentCount Int @default(0) @map("document_count")
+  inputTokens   Int @default(0) @map("input_tokens")
+  outputTokens  Int @default(0) @map("output_tokens")
+
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+
+  results AiEvalResult[]
+
+  @@index([companyGroupId, startedAt])
+  @@map("ai_eval_run")
+}
+
+/// What the reader said about one document, and what the pipeline concluded from it.
+model AiEvalResult {
+  id    String    @id @default(cuid())
+  runId String    @map("run_id")
+  run   AiEvalRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  documentId String   @map("document_id")
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  /// The answer key, snapshotted at run time so a later correction cannot rewrite a
+  /// past score.
+  truthEntityId       String? @map("truth_entity_id")
+  truthDocumentTypeId String? @map("truth_document_type_id")
+  truthDisposition    String  @map("truth_disposition")
+  truthActionKind     String? @map("truth_action_kind")
+
+  /// Raw, as the model reported it.
+  extraction Json?
+  /// What the code made of it — kept separately, because the entity decision is due to
+  /// move out of the model and the two runs still have to be comparable.
+  suggestion Json?
+  readError  String? @map("read_error")
+
+  inputTokens  Int?     @map("input_tokens")
+  outputTokens Int?     @map("output_tokens")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([runId, documentId])
+  @@index([documentId])
+  @@map("ai_eval_result")
 }

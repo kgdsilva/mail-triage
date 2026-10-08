@@ -151,7 +151,40 @@ export async function analyzeDocument(
   if (!read.ok) return { ok: false, error: read.error }
 
   const x = read.extraction
+  const suggestion = await buildSuggestion(companyGroupId, x)
 
+  await prisma.document.update({
+    where: { id: documentId },
+    data: {
+      aiSuggestion: suggestion as unknown as Prisma.InputJsonValue,
+      aiConfidence: x.confidence,
+    },
+  })
+
+  await adoptEntityFromDocument(documentId, existing, suggestion.entityId, x)
+
+  const applied = suggestion.autoApplicable
+    ? await applyDecision(companyGroupId, documentId, suggestion)
+    : false
+
+  return { ok: true, suggestion, applied }
+}
+
+/**
+ * Everything between "the page says this" and "so the suggestion is that" — and not one
+ * byte of it written down.
+ *
+ * Split out of `analyzeDocument` so the same reasoning can be scored against documents
+ * whose answer is already known without touching them. An evaluation that ran the real
+ * path would write `aiSuggestion`, possibly adopt an entity and possibly auto-apply a
+ * decision — it would grade the history by overwriting it. This way the measured code
+ * and the running code are the same code, which is the only way the measurement means
+ * anything after the next change.
+ */
+export async function buildSuggestion(
+  companyGroupId: string,
+  x: Extraction,
+): Promise<AiSuggestion> {
   const [entity, documentType, vendor] = await Promise.all([
     x.entityCode
       ? prisma.entity.findFirst({
@@ -184,7 +217,7 @@ export async function analyzeDocument(
 
   const merged = mergeVerdict(verdict, x)
 
-  const suggestion: AiSuggestion = {
+  return {
     entityId: entity?.id ?? null,
     documentTypeId: documentType?.id ?? null,
     vendorId: vendor?.id ?? null,
@@ -202,22 +235,6 @@ export async function analyzeDocument(
     raw: x,
     readAt: new Date().toISOString(),
   }
-
-  await prisma.document.update({
-    where: { id: documentId },
-    data: {
-      aiSuggestion: suggestion as unknown as Prisma.InputJsonValue,
-      aiConfidence: x.confidence,
-    },
-  })
-
-  await adoptEntityFromDocument(documentId, existing, entity?.id ?? null, x)
-
-  const applied = suggestion.autoApplicable
-    ? await applyDecision(companyGroupId, documentId, suggestion)
-    : false
-
-  return { ok: true, suggestion, applied }
 }
 
 /**

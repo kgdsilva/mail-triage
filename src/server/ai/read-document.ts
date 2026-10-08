@@ -62,7 +62,13 @@ async function groupContext(companyGroupId: string) {
     const meta = e.metadata as Record<string, unknown> | null
     const ein = typeof meta?.ein === 'string' ? ` EIN ${meta.ein}` : ''
     const also = aliases.length ? ` (also: ${aliases.join('; ')})` : ''
-    return `- ${e.code} = ${e.legalName}${also}${ein}`
+    // The account numbers go in because two of these companies are otherwise
+    // indistinguishable on the page: same brand, same street, adjacent suites.
+    const accounts = Array.isArray(meta?.taxAccounts)
+      ? meta.taxAccounts.filter((a): a is string => typeof a === 'string')
+      : []
+    const tax = accounts.length ? `, accounts: ${accounts.join('; ')}` : ''
+    return `- ${e.code} = ${e.legalName}${also}${ein}${tax}`
   })
 
   const typeLines = types.map((t) => `- ${t.code} = ${t.label}`)

@@ -510,6 +510,16 @@ const entityDetailSchema = z.object({
   legalName: z.string().trim().min(1),
   ein: z.string().trim().max(20).optional(),
   state: z.string().trim().max(40).optional(),
+  /**
+   * State and local tax account numbers, one per line as "CA EDD: 233-1313-3".
+   *
+   * These are what actually separates two entities that share a brand, a mailing
+   * address and most of a name: the body of a CA EDD notice carries the account number
+   * and nothing else distinguishes CP from OP. Free text on purpose — every agency
+   * names its identifier differently, and a schema per agency would be a new migration
+   * each time a state is added.
+   */
+  taxAccounts: z.string().trim().max(1000).optional(),
   isSegregated: z.coerce.boolean().default(false),
   sortOrder: z.coerce.number().int().default(0),
 })
@@ -535,6 +545,14 @@ export async function saveEntityDetail(formData: FormData) {
   else delete metadata.ein
   if (data.state) metadata.state = data.state
   else delete metadata.state
+  // Stored as a list so the prompt can print one per line, and so a blank line or a
+  // stray space never becomes an identifier the matcher would look for.
+  const accounts = (data.taxAccounts ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  if (accounts.length > 0) metadata.taxAccounts = accounts
+  else delete metadata.taxAccounts
 
   await prisma.entity.update({
     where: { id: entity.id },
