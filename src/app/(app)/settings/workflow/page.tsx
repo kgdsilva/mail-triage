@@ -1,6 +1,7 @@
 import { ArrowLeftRight } from 'lucide-react'
 import { setReturnedBillsRole } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
+import { DEFAULT_RETURN_ROLE, configuredReturnRole, type ReturnRole } from '@/server/returns'
 import { requireAdmin } from '@/server/session'
 import { BTN } from '@/lib/theme'
 
@@ -35,8 +36,7 @@ export default async function WorkflowPage() {
     where: { id: session.companyGroupId },
     select: { settings: true },
   })
-  const current =
-    (group.settings as { returnedBillsRole?: string } | null)?.returnedBillsRole ?? 'ADMIN'
+  const current = configuredReturnRole(group.settings)
 
   // Who currently holds each role, so the choice shows its consequence rather than
   // making somebody go and look it up on another screen.
@@ -44,7 +44,7 @@ export default async function WorkflowPage() {
     where: {
       companyGroupId: session.companyGroupId,
       isActive: true,
-      role: { in: ['ADMIN', 'OPERATOR', 'OWNER'] },
+      role: { in: CHOICES.map((c) => c.role) },
     },
     orderBy: { createdAt: 'asc' },
     select: { role: true, user: { select: { name: true, email: true } } },
@@ -93,6 +93,13 @@ export default async function WorkflowPage() {
                       {on && (
                         <span className="rounded-full bg-navy-700 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-white">
                           current
+                        </span>
+                      )}
+                      {/* Says which one applies when nobody has chosen, so an untouched
+                          setting is not a mystery. */}
+                      {choice.role === DEFAULT_RETURN_ROLE && (
+                        <span className="rounded-full bg-line-soft px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-muted">
+                          default
                         </span>
                       )}
                     </span>

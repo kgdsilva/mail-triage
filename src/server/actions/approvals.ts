@@ -6,6 +6,7 @@ import type { ApprovalStatus } from '@/generated/prisma/enums'
 import { prisma } from '@/server/db/client'
 import { recordEvent } from '@/server/documents'
 import { entityWhere, visibleEntityIds } from '@/server/scope'
+import { returnTo } from '@/server/returns'
 import { requireApprover } from '@/server/session'
 
 /**
@@ -44,53 +45,6 @@ async function decidable(session: { companyGroupId: string; role: string; entity
     },
     select: { id: true, approvalStatus: true, assignedToUserId: true, amount: true },
   })
-}
-
-/**
- * Where a refused bill goes.
- *
- * To a role, never to a name. The person who runs the mail changes, goes on holiday and
- * leaves; a bill that is addressed to whoever currently holds a job keeps arriving, and
- * one addressed to a person stops the week they are away — which is exactly how this was
- * found, with the owner out for a week and refusals piling up in her name.
- *
- * Configured in Settings as `returnedBillsRole`, defaulting to ADMIN, which is the role
- * that actually works the mail. The fallback chain matters as much as the setting: if
- * nobody holds the configured role the bill tries the next one rather than failing, and
- * if nobody holds any of them it is returned **unassigned** — which still shows up, on
- * the board's "Nobody yet" tab. A refused bill must never end up addressed to a person
- * who does not exist, because that is indistinguishable from it having gone nowhere.
- */
-export type ReturnRole = 'ADMIN' | 'OPERATOR' | 'OWNER'
-
-const RETURN_ROLES: ReturnRole[] = ['ADMIN', 'OPERATOR', 'OWNER']
-
-function returnChain(configured: string | undefined): ReturnRole[] {
-  const first = RETURN_ROLES.find((r) => r === configured)
-  // Deduplicated, configured first, then the rest in order of who is most likely to be
-  // the one handling post.
-  return first ? [first, ...RETURN_ROLES.filter((r) => r !== first)] : RETURN_ROLES
-}
-
-async function returnTo(companyGroupId: string) {
-  const group = await prisma.companyGroup.findUnique({
-    where: { id: companyGroupId },
-    select: { settings: true },
-  })
-  const configured = (group?.settings as { returnedBillsRole?: string } | null)?.returnedBillsRole
-
-  for (const role of returnChain(configured)) {
-    const member = await prisma.membership.findFirst({
-      where: { companyGroupId, role, isActive: true },
-      // The longest-standing holder of the role, so the choice is the same every time
-      // rather than depending on query order.
-      orderBy: { createdAt: 'asc' },
-      select: { userId: true },
-    })
-    if (member) return member.userId
-  }
-
-  return null
 }
 
 async function decide(

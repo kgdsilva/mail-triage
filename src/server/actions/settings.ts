@@ -393,15 +393,14 @@ export async function setMemberRole(membershipId: string, role: string) {
  * Stored in CompanyGroup.settings beside the filename template and the auto-apply flag,
  * which is where this group's choices already live.
  *
- * A role rather than a person because the alternative was tried and broke within a week:
- * refusals were addressed to the group's owner, the owner went away, and the bills
- * waited in the name of somebody who was not reading them. A role is held by whoever is
- * currently doing the job.
+ * A role rather than a person, because a role is held by whoever is currently doing the
+ * job. Which role is the per-company part — see src/server/returns.ts for the default
+ * and the fallback order.
  */
 export async function setReturnedBillsRole(role: string) {
   const session = await requireAdmin()
 
-  const parsed = z.enum(['ADMIN', 'OPERATOR', 'OWNER']).safeParse(role)
+  const parsed = z.enum(['OWNER', 'ADMIN', 'OPERATOR']).safeParse(role)
   if (!parsed.success) throw new Error('Choose one of the roles that works the mail.')
 
   const group = await prisma.companyGroup.findUniqueOrThrow({
