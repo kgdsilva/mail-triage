@@ -6,6 +6,9 @@ import { requireTriage } from '@/server/session'
 import { ReviewTable, type ReviewRow } from '@/components/review-table'
 import { RunReader } from '@/components/run-reader'
 import { AutoApplyToggle } from '@/components/auto-apply-toggle'
+import { DuplicateSweep } from '@/components/duplicate-sweep'
+import { duplicateCounts } from '@/server/duplicates'
+import { visibleEntityIds } from '@/server/scope'
 import { aiConfigured } from '@/server/ai/read-document'
 import { MAX_READ_ATTEMPTS, autoApplyEnabled } from '@/server/ai/suggest'
 
@@ -21,10 +24,10 @@ export const dynamic = 'force-dynamic'
 export default async function ReviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ show?: string; entity?: string }>
+  searchParams: Promise<{ show?: string; entity?: string; removed?: string }>
 }) {
   const session = await requireTriage()
-  const { show, entity } = await searchParams
+  const { show, entity, removed } = await searchParams
   const includeDecided = show === 'all'
   const notFiledOnly = show === 'notfiled'
 
@@ -71,6 +74,13 @@ export default async function ReviewPage({
     countNotFiled(session.companyGroupId),
   ])
 
+  // Identical files already in the log. Counted here rather than inside the table: it is
+  // a property of the whole log, not of this filter's rows, so it must not change when
+  // somebody narrows the view to one entity.
+  const dupes = await duplicateCounts(session.companyGroupId, await visibleEntityIds(session))
+
+  const justRemoved = Number.parseInt(removed ?? '', 10) || 0
+
   const aiAvailable = aiConfigured()
   const autoApply = aiAvailable ? await autoApplyEnabled(session.companyGroupId) : false
   // One source for both numbers, so the button and the rows cannot disagree about
@@ -94,6 +104,18 @@ export default async function ReviewPage({
           </div>
         )}
       </header>
+
+      {/* Said once, after the sweep, and gone on the next navigation. */}
+      {justRemoved > 0 && (
+        <p className="rounded-xl border border-ok-300 bg-ok-100 px-4 py-2.5 text-[13px] text-emerald-900">
+          Removed {justRemoved} duplicate{justRemoved === 1 ? '' : 's'}.{' '}
+          <Link href="/log?deleted=1" className="underline">
+            See them, or put any back
+          </Link>
+        </p>
+      )}
+
+      <DuplicateSweep removable={dupes.removable} heldBack={dupes.heldBack} />
 
       {/* One bar. Two questions — what to show, and whose — on one line each. */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-y border-line py-2.5 text-xs">

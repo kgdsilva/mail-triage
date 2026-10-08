@@ -2,6 +2,7 @@
 
 import path from 'node:path'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { prisma } from '@/server/db/client'
 import {
@@ -11,7 +12,9 @@ import {
   setArchiveReason,
   type QuickDecision,
 } from '@/server/documents'
+import { DUPLICATE_NOTE, duplicateGroups } from '@/server/duplicates'
 import { parseIncomingFilename } from '@/server/filename-parse'
+import { visibleEntityIds } from '@/server/scope'
 import { canSeeWholeLog, requireDecider, requireSession, requireTriage } from '@/server/session'
 import {
   buildKey,
@@ -26,14 +29,23 @@ import {
 const MAX_BYTES = 50 * 1024 * 1024
 const ALLOWED = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff'])
 
-export type UploadResult = { batchId: string; created: number; skipped: string[] }
+export type UploadResult = {
+  batchId: string
+  created: number
+  skipped: string[]
+  /** Filenames that were identical to a document already in the log, and so removed. */
+  duplicates: string[]
+}
 
 /**
  * Ingests a batch of scans. Files land in our own storage and become UNREVIEWED rows in
  * the master log; nothing is classified here.
  *
- * Duplicate detection is by content hash: re-uploading the same scan links the new row
- * to the original rather than creating a silent second copy of the same bill.
+ * Duplicate detection is by content hash. The same bytes arriving twice is the folder
+ * being re-dragged, not a second bill, so the newcomer is linked to the original and
+ * then removed from the log straight away — it never reaches Review. `created` counts
+ * what stayed; the removed names come back separately so the person who dragged the
+ * folder is told rather than left to wonder why the count is short.
  */
 export async function uploadBatch(formData: FormData): Promise<UploadResult> {
   const session = await requireTriage()
@@ -52,6 +64,7 @@ export async function uploadBatch(formData: FormData): Promise<UploadResult> {
   })
 
   const skipped: string[] = []
+  const duplicates: string[] = []
   let created = 0
 
   for (const file of files) {
@@ -71,13 +84,16 @@ export async function uploadBatch(formData: FormData): Promise<UploadResult> {
 
     try {
       const prefill = await parseIncomingFilename(session.companyGroupId, file.name)
+      // Oldest first: with several copies already in the log, the original is the one
+      // the history and any existing link already point at.
       const duplicate = await prisma.document.findFirst({
         where: {
           companyGroupId: session.companyGroupId,
           sha256: stored.sha256,
           deletedAt: null,
         },
-        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, entityId: true },
       })
 
       const doc = await prisma.document.create({
@@ -102,19 +118,22 @@ export async function uploadBatch(formData: FormData): Promise<UploadResult> {
         toValue: { originalFilename: file.name, batch: label, byteSize: stored.byteSize },
       })
 
-      if (duplicate) {
-        await prisma.documentLink.create({
-          data: {
-            fromDocumentId: doc.id,
-            toDocumentId: duplicate.id,
-            relation: 'DUPLICATE_OF',
-            createdByUserId: session.userId,
-            note: 'Identical file content (sha256) already in the log.',
-          },
+      if (duplicate && differentCompany(prefill.entityId, duplicate.entityId)) {
+        // The same scan deliberately filed under a second company. Linked, kept, and
+        // left to be reviewed — which is what this did before anything was automatic.
+        await linkDuplicate(doc.id, duplicate.id, session.userId)
+        created += 1
+      } else if (duplicate) {
+        await linkAndRemoveDuplicate({
+          newDocumentId: doc.id,
+          originalDocumentId: duplicate.id,
+          originalFilename: file.name,
+          actorUserId: session.userId,
         })
+        duplicates.push(file.name)
+      } else {
+        created += 1
       }
-
-      created += 1
     } catch (err) {
       // Never leave an orphaned object behind when the row could not be written.
       await deleteObject(stored.key, stored.bucket)
@@ -123,7 +142,79 @@ export async function uploadBatch(formData: FormData): Promise<UploadResult> {
   }
 
   revalidatePath('/', 'layout')
-  return { batchId: batch.id, created, skipped }
+  return { batchId: batch.id, created, skipped, duplicates }
+}
+
+/**
+ * Records that a freshly uploaded row is the same file as one already in the log, and
+ * takes it back out again.
+ *
+ * Both halves matter. The link is what makes the removal explicable later — it names the
+ * document this one was a copy of, and the Log's removed filter can get you to it. The
+ * soft delete is the part the person actually wanted: an identical file should not turn
+ * up in Review asking to be classified a second time.
+ *
+ * The stored object is deliberately left in place. These bytes are a byte-for-byte copy
+ * of the original's, so nothing is being preserved that is not already there twice — but
+ * a removal that can be undone has to produce a document that still opens.
+ */
+/**
+ * Whether these two copies are filed to two different companies.
+ *
+ * A null on the newcomer's side is the filename parser having no opinion, not somebody
+ * deciding this belongs to another company, so it does not count.
+ */
+function differentCompany(incoming: string | null, existing: string | null): boolean {
+  return incoming !== null && existing !== null && incoming !== existing
+}
+
+/** Records that one document is the same file as another, and nothing more. */
+async function linkDuplicate(fromId: string, toId: string, actorUserId: string) {
+  await prisma.documentLink.create({
+    data: {
+      fromDocumentId: fromId,
+      toDocumentId: toId,
+      relation: 'DUPLICATE_OF',
+      createdByUserId: actorUserId,
+      note: DUPLICATE_NOTE,
+    },
+  })
+}
+
+async function linkAndRemoveDuplicate(input: {
+  newDocumentId: string
+  originalDocumentId: string
+  originalFilename: string
+  actorUserId: string
+}) {
+  await prisma.$transaction(async (tx) => {
+    await tx.documentLink.create({
+      data: {
+        fromDocumentId: input.newDocumentId,
+        toDocumentId: input.originalDocumentId,
+        relation: 'DUPLICATE_OF',
+        createdByUserId: input.actorUserId,
+        note: DUPLICATE_NOTE,
+      },
+    })
+    await tx.document.update({
+      where: { id: input.newDocumentId },
+      data: { deletedAt: new Date() },
+    })
+    await recordEvent(
+      {
+        documentId: input.newDocumentId,
+        actorUserId: input.actorUserId,
+        action: 'removed_as_duplicate',
+        toValue: {
+          originalFilename: input.originalFilename,
+          duplicateOfDocumentId: input.originalDocumentId,
+          automatic: true,
+        },
+      },
+      tx,
+    )
+  })
 }
 
 function defaultBatchLabel() {
@@ -525,7 +616,7 @@ export async function attachUpload(input: {
   filename: string
   contentType: string
   sha256: string | null
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; error?: string; duplicate?: boolean }> {
   const session = await requireTriage()
 
   const batch = await prisma.batch.findFirst({
@@ -548,7 +639,8 @@ export async function attachUpload(input: {
   const duplicate = sha256
     ? await prisma.document.findFirst({
         where: { companyGroupId: session.companyGroupId, sha256, deletedAt: null },
-        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, entityId: true },
       })
     : null
 
@@ -579,20 +671,22 @@ export async function attachUpload(input: {
     },
   })
 
-  if (duplicate) {
-    await prisma.documentLink.create({
-      data: {
-        fromDocumentId: doc.id,
-        toDocumentId: duplicate.id,
-        relation: 'DUPLICATE_OF',
-        createdByUserId: session.userId,
-        note: 'Identical file content (sha256) already in the log.',
-      },
+  const keepAnyway = duplicate && differentCompany(prefill.entityId, duplicate.entityId)
+  if (duplicate && keepAnyway) {
+    await linkDuplicate(doc.id, duplicate.id, session.userId)
+  } else if (duplicate) {
+    await linkAndRemoveDuplicate({
+      newDocumentId: doc.id,
+      originalDocumentId: duplicate.id,
+      originalFilename: input.filename,
+      actorUserId: session.userId,
     })
   }
 
   revalidatePath('/', 'layout')
-  return { ok: true }
+  // `duplicate` tells the caller the file was recognised and taken back out, so the
+  // direct-upload path can say the same thing the batch one does.
+  return { ok: true, duplicate: Boolean(duplicate) && !keepAnyway }
 }
 
 
@@ -652,4 +746,101 @@ export async function restoreDocument(documentId: string) {
 
   revalidatePath('/log')
   revalidatePath('/review')
+}
+
+/**
+ * Removes the identical copies already sitting in the log.
+ *
+ * Automatic removal on upload only helps from now on — it cannot reach the copies that
+ * arrived before it existed, and it never saw the ones that came in through the
+ * historical import, which created no links at all. This is the sweep for those: one
+ * click, run by a person, undoable per document from the Log's removed filter.
+ *
+ * It is deliberately not run on page load. A screen that silently deletes rows while
+ * being looked at is the kind of thing nobody can audit afterwards, and a removal
+ * belongs to whoever decided it.
+ */
+export async function sweepDuplicates(): Promise<void> {
+  const session = await requireTriage()
+  const scope = await visibleEntityIds(session)
+  const groups = await duplicateGroups(session.companyGroupId, scope)
+
+  let removed = 0
+  for (const group of groups) {
+    for (const extra of group.extras) {
+      await prisma.$transaction(async (tx) => {
+        // Re-read inside the transaction: the sweep can take a moment, and a document
+        // that gained a payment, an approval or a different company in the meantime must
+        // not be removed. Re-checking is cheap; re-deciding after the fact is not.
+        const [fresh, keeper] = await Promise.all([
+          tx.document.findFirst({
+            where: { id: extra.id, deletedAt: null },
+            select: {
+              id: true,
+              entityId: true,
+              approvalStatus: true,
+              _count: { select: { payments: true } },
+            },
+          }),
+          tx.document.findFirst({
+            where: { id: group.keeper.id, deletedAt: null },
+            select: { id: true, entityId: true },
+          }),
+        ])
+        if (!fresh || !keeper) return
+        if (fresh.approvalStatus !== null || fresh._count.payments > 0) return
+        if (
+          fresh.entityId !== null &&
+          keeper.entityId !== null &&
+          fresh.entityId !== keeper.entityId
+        ) {
+          return
+        }
+
+        // The link may already exist from the upload path, and saying it twice is not an
+        // error worth failing a sweep over.
+        await tx.documentLink.upsert({
+          where: {
+            fromDocumentId_toDocumentId_relation: {
+              fromDocumentId: extra.id,
+              toDocumentId: group.keeper.id,
+              relation: 'DUPLICATE_OF',
+            },
+          },
+          create: {
+            fromDocumentId: extra.id,
+            toDocumentId: group.keeper.id,
+            relation: 'DUPLICATE_OF',
+            createdByUserId: session.userId,
+            note: DUPLICATE_NOTE,
+          },
+          update: {},
+        })
+
+        await tx.document.update({ where: { id: extra.id }, data: { deletedAt: new Date() } })
+
+        await recordEvent(
+          {
+            documentId: extra.id,
+            actorUserId: session.userId,
+            action: 'removed_as_duplicate',
+            toValue: {
+              originalFilename: extra.originalFilename,
+              duplicateOfDocumentId: group.keeper.id,
+              automatic: false,
+            },
+          },
+          tx,
+        )
+        removed += 1
+      })
+    }
+  }
+
+  revalidatePath('/log')
+  revalidatePath('/review')
+  revalidatePath('/', 'layout')
+  // Back to Review carrying the count, so the screen can say what it did instead of just
+  // quietly having fewer rows on it.
+  redirect(`/review?removed=${removed}`)
 }

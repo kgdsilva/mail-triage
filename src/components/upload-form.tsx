@@ -53,6 +53,7 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
         setResult(await uploadBatch(fd))
       } else {
         const skipped: string[] = []
+        const duplicates: string[] = []
         let created = 0
 
         for (const [i, file] of files.entries()) {
@@ -76,14 +77,15 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
               contentType,
               sha256: await hashFile(file),
             })
-            if (res.ok) created += 1
+            if (res.ok && res.duplicate) duplicates.push(file.name)
+            else if (res.ok) created += 1
             else skipped.push(`${file.name} (${res.error})`)
           } catch (err) {
             skipped.push(`${file.name} (${err instanceof Error ? err.message : 'failed'})`)
           }
         }
 
-        setResult({ batchId, created, skipped })
+        setResult({ batchId, created, skipped, duplicates })
       }
 
       setFiles([])
@@ -188,6 +190,23 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
               <span>Nothing else to do — these are now in the queue to be reviewed.</span>
             )}
           </p>
+          {/*
+            An identical file is not an error and not a skip — it was recognised and
+            taken straight back out, which is the whole point. Said plainly so the short
+            count is never a mystery, and said with the way back, because "removed" is
+            the one word in here that people want to be able to undo.
+          */}
+          {result.duplicates.length > 0 && (
+            <p className="mt-1.5 text-xs">
+              {result.duplicates.length} file{result.duplicates.length === 1 ? ' was' : 's were'}{' '}
+              already in the log and {result.duplicates.length === 1 ? 'was' : 'were'} removed as
+              duplicate{result.duplicates.length === 1 ? '' : 's'}:{' '}
+              <span className="font-medium">{result.duplicates.join(', ')}</span>.{' '}
+              <Link href="/log?deleted=1" className="underline">
+                See removed
+              </Link>
+            </p>
+          )}
           {result.skipped.length > 0 && (
             <ul className="mt-1 text-xs">
               {result.skipped.map((s) => (
