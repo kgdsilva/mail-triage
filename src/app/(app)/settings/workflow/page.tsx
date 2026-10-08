@@ -11,23 +11,27 @@ export const dynamic = 'force-dynamic'
  * How work moves between people. One setting so far, and it earned its own screen.
  */
 
-const CHOICES = [
+/*
+ * Listed in the order they are tried, so the list doubles as the fallback chain: the
+ * first one with somebody in it gets the bill.
+ */
+const CHOICES: { role: ReturnRole; label: string; help: string }[] = [
+  {
+    role: 'OWNER',
+    label: 'Owner',
+    help: 'The person who actually reads the post. The default here.',
+  },
   {
     role: 'ADMIN',
     label: 'Admin',
-    help: 'Whoever runs the mail day to day. The usual answer.',
+    help: 'If running the mail day to day is somebody else’s job.',
   },
   {
     role: 'OPERATOR',
     label: 'Operator',
-    help: 'If uploading and classifying is somebody else’s job.',
+    help: 'If uploading and classifying belongs to a third person again.',
   },
-  {
-    role: 'OWNER',
-    label: 'Owner',
-    help: 'Only if the owner is the person actually reading the post.',
-  },
-] as const
+]
 
 export default async function WorkflowPage() {
   const session = await requireAdmin()
