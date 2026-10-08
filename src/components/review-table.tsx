@@ -2,8 +2,19 @@
 
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
-import { Ban, Check, CircleDot, Copy, FileText, Pencil, Sparkles, TriangleAlert, Wallet } from 'lucide-react'
-import { decideQuickly, refineArchiveReason } from '@/server/actions/documents'
+import {
+  Ban,
+  Check,
+  CircleDot,
+  Copy,
+  FileText,
+  Pencil,
+  Sparkles,
+  Trash2,
+  TriangleAlert,
+  Wallet,
+} from 'lucide-react'
+import { decideQuickly, deleteDocument, refineArchiveReason } from '@/server/actions/documents'
 import { resolveEntity } from '@/server/actions/ai'
 import { EntityBadge, formatDate, formatMoney } from '@/components/badges'
 import { documentTypeIcon, documentTypeInk } from '@/lib/theme'
@@ -280,6 +291,37 @@ export function ReviewTable({
 }
 
 /**
+ * Takes this copy off the screen, right where it is flagged.
+ *
+ * Next to the badge rather than in a menu, because by the time you can see the word
+ * "Duplicate" you have already decided — and the cases the automatic removal holds back
+ * on purpose (filed under another company, or pointed at by a payment) are exactly the
+ * ones where a person is standing here looking at it.
+ *
+ * It is the log's own removal: gone from Review, gone from the Log, gone from every
+ * count, with the row and the file still recoverable under removed documents. Nothing in
+ * this system destroys a record — the master log is the evidence that something arrived
+ * — and a row that can come back is what makes a one-click removal safe to put next to a
+ * badge in the first place.
+ */
+function RemoveDuplicate({ id, name }: { id: string; name: string }) {
+  const [pending, start] = useTransition()
+
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => start(() => void deleteDocument(id))}
+      title={`Remove ${name} from the log. It can be put back from removed documents.`}
+      className="inline-flex items-center gap-1 rounded bg-line-soft px-1.5 py-0.5 text-[11px] font-semibold text-muted hover:bg-danger-100 hover:text-danger-700 disabled:opacity-50"
+    >
+      <Trash2 className="size-3" aria-hidden />
+      {pending ? 'Removing…' : 'Remove'}
+    </button>
+  )
+}
+
+/**
  * The two things about a row that are neither a decision nor a reason: that the same
  * file is already in the log, and that the reader could not read it.
  *
@@ -304,6 +346,7 @@ function Flags({ row }: { row: ReviewRow }) {
           Duplicate
         </Link>
       )}
+      {row.duplicateOfId && <RemoveDuplicate id={row.id} name={row.originalFilename} />}
       {row.readError && (
         <span
           className="inline-flex items-center gap-1 rounded bg-danger-100 px-1.5 py-0.5 text-[11px] font-semibold text-danger-700"
