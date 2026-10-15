@@ -22,6 +22,11 @@ const MAX_RECEIPT_BYTES = 25 * 1024 * 1024
 export type PaymentInput = {
   /** The bill being settled, when the payment starts from one. */
   documentId?: string | null
+  /**
+   * Set only by `approveAndPay`, where approving and paying are one act — a card
+   * already charged. Never settable from a form: the field is dropped on the way in.
+   */
+  selfSettleAllowed?: boolean
   entityId: string
   vendorId?: string | null
   payeeName?: string | null
@@ -74,6 +79,15 @@ export async function signReceiptUpload(filename: string, contentType: string, s
  */
 export async function recordPayment(input: PaymentInput, formData?: FormData) {
   /*
+   * A server action's arguments arrive from the browser, so the self-settle bypass is
+   * cleared here and can be set only by code inside this module. A control the client
+   * can switch off is not a control.
+   */
+  return settle({ ...input, selfSettleAllowed: false }, formData)
+}
+
+async function settle(input: PaymentInput, formData?: FormData) {
+  /*
    * Recording a payment is the accountant's job and the office's; it is not the
    * approver's. The one control this workflow has is that the person who clears a bill
    * for payment is not the person who settles it, and a permission that only the screen
@@ -107,10 +121,41 @@ export async function recordPayment(input: PaymentInput, formData?: FormData) {
           deletedAt: null,
           ...(scope === null ? {} : { entityId: { in: scope } }),
         },
-        select: { id: true, status: true, originalFilename: true },
+        select: {
+          id: true,
+          status: true,
+          originalFilename: true,
+          approvalDecidedByUserId: true,
+          approvalStatus: true,
+        },
       })
     : null
   if (input.documentId && !document) throw new Error('Document not found')
+
+  /*
+   * Nobody settles a bill they cleared themselves.
+   *
+   * The role lists already keep a pure approver away from paying and the accountant
+   * away from approving, but an owner or an administrator holds both — so for them the
+   * separation existed on paper and nowhere else. One person creating a payable and
+   * paying it is the whole of the fraud Eric and Chris were worried about, and it does
+   * not need a stranger: it needs one account with both powers and nothing in the way.
+   *
+   * Checked per document rather than per role, because that is where the conflict
+   * actually lives. `approveAndPay` passes through deliberately — a card already
+   * charged at the till is one act, the approval and the payment are the same decision,
+   * and splitting it between two people would be theatre.
+   */
+  if (
+    !input.selfSettleAllowed &&
+    document?.approvalDecidedByUserId &&
+    document.approvalDecidedByUserId === session.userId
+  ) {
+    throw new Error(
+      'You approved this bill, so somebody else has to record its payment. ' +
+        'Approving and paying the same bill is the one thing this workflow keeps apart.',
+    )
+  }
 
   /*
    * The payee, resolved as far as it can be without asking.

@@ -108,6 +108,7 @@ export default async function AccountingPage({
           reference: d.payments[0].reference,
         }
       : null,
+    approvalNote: d.approvalNote,
     refusal:
       d.approvalStatus === 'DENIED'
         ? {

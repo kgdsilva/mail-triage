@@ -451,6 +451,23 @@ export async function setMemberEntityScope(membershipId: string, entityIds: stri
     select: { id: true },
   })
 
+  /*
+   * An approver must say which companies.
+   *
+   * Everywhere else an empty scope means "all", which is the sensible default for an
+   * operator who files everyone's mail. For an approver it is the opposite of sensible:
+   * it silently grants the power to clear payments for every company in the group,
+   * including ones nobody meant to give them — and it does it by omission, which is the
+   * worst way to grant anything. Eric approves for MMT; that has to be a thing somebody
+   * chose, not a box nobody ticked.
+   */
+  if (membership.role === 'APPROVER' && valid.length === 0) {
+    throw new Error(
+      'An approver needs at least one company. Leaving this empty would let them approve ' +
+        'bills for every company, which is almost never what is meant.',
+    )
+  }
+
   await prisma.membership.update({
     where: { id: membership.id },
     data: { entityScope: valid.map((e) => e.id) },

@@ -99,7 +99,7 @@ export function MemberEntities({
       {chosen.length === 0 ? (
         <p className="mt-1.5 text-[11.5px] font-semibold text-gold-800">
           {role === 'APPROVER'
-            ? 'No companies assigned — this approver will see an empty list.'
+            ? 'Nothing ticked means EVERY company, not none — this approver could clear bills for all of them. Pick at least one; saving an approver with none is refused.'
             : 'No companies ticked, so this member can see every company except the separate ones.'}
         </p>
       ) : (

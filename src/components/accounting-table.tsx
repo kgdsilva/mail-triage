@@ -30,6 +30,8 @@ export type AccountingBill = {
   payment: { paidOn: string; amount: string; method: string | null; reference: string | null } | null
   /** Set on the Denied tab: who refused it, when, and the note they had to leave. */
   refusal: { by: string | null; at: string | null; note: string | null } | null
+  /** What the approver said when clearing it — often how to pay it. */
+  approvalNote: string | null
 }
 
 /**
@@ -170,6 +172,19 @@ function Row({
         Who approved it, on every row. It is the accountant's authority to pay and the
         first thing anyone asks about afterwards, so it is not behind a panel.
       */}
+      {/*
+        The approver's instruction, where the money is about to move.
+        "Pay this with the Munar card" is the kind of thing that was said in a meeting
+        and then lost: before this the note was discarded on approval, and the person
+        paying had no way to know. It sits above the approval line because it is an
+        instruction, not provenance.
+      */}
+      {mode === 'ready' && bill.approvalNote && (
+        <p className="border-t border-line-soft bg-navy-50 px-3 py-2 text-[12.5px] text-navy-900">
+          <span className="font-bold">From the approver:</span> {bill.approvalNote}
+        </p>
+      )}
+
       {bill.approvedBy && mode !== 'denied' && (
         <p className="flex items-center gap-1.5 border-t border-line-soft bg-ok-100/50 px-3 py-1.5 text-[12px] text-ok-700">
           <ShieldCheck className="size-3.5 flex-none" aria-hidden />

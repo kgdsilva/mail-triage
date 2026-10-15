@@ -1,8 +1,22 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Ban, Check, CircleHelp, Download, History, X } from 'lucide-react'
-import { approveBill, denyBill, flagForReview } from '@/server/actions/approvals'
+import {
+  Ban,
+  Check,
+  CircleHelp,
+  CreditCard,
+  Download,
+  History,
+  StickyNote,
+  X,
+} from 'lucide-react'
+import {
+  approveAndRecordCardPayment,
+  approveBill,
+  denyBill,
+  flagForReview,
+} from '@/server/actions/approvals'
 import { PdfFrame } from '@/components/pdf-peek'
 import { formatDate } from '@/components/badges'
 import { DUE_TONE, describeDue } from '@/lib/due'
@@ -70,7 +84,11 @@ export function BillPanel({
    */
   initialAsking?: 'DENIED' | 'NEEDS_REVIEW' | null
 }) {
-  const [asking, setAsking] = useState<'DENIED' | 'NEEDS_REVIEW' | null>(initialAsking ?? null)
+  type Asking = 'DENIED' | 'NEEDS_REVIEW' | 'APPROVE_NOTE' | 'CARD'
+  const [asking, setAsking] = useState<Asking | null>(initialAsking ?? null)
+  // Only used by the card flow, where both are required.
+  const [method, setMethod] = useState('')
+  const [last4, setLast4] = useState('')
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -170,6 +188,34 @@ export function BillPanel({
                   Approve
                 </button>
               )}
+              {/*
+                Approving stays one click. The note is a second, quieter button rather
+                than a field in the way, because most approvals have nothing to say and
+                the ones that do are the exception worth a deliberate press.
+              */}
+              {bill.status !== 'APPROVED' && (
+                <button
+                  type="button"
+                  className={BTN.quiet}
+                  onClick={() => setAsking((v) => (v === 'APPROVE_NOTE' ? null : 'APPROVE_NOTE'))}
+                  title="Approve, and tell whoever pays it something"
+                >
+                  <StickyNote className="size-3.5" aria-hidden />
+                  Approve with a note
+                </button>
+              )}
+              {/* Already charged at the till: approving and paying are one act. */}
+              {bill.status !== 'APPROVED' && (
+                <button
+                  type="button"
+                  className={BTN.quiet}
+                  onClick={() => setAsking((v) => (v === 'CARD' ? null : 'CARD'))}
+                  title="For a bill already paid on a card"
+                >
+                  <CreditCard className="size-3.5" aria-hidden />
+                  Already paid by card
+                </button>
+              )}
               <button
                 type="button"
                 className={BTN.secondary}
@@ -202,8 +248,92 @@ export function BillPanel({
             </div>
           )}
 
+          {/* Approve, with something to say to whoever pays it. Note optional. */}
+          {asking === 'APPROVE_NOTE' && (
+            <div className="mt-3 rounded-xl border border-line bg-canvas p-2.5">
+              <label className="block text-[12px] font-semibold text-muted">
+                Anything the person paying should know?
+              </label>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                <input
+                  autoFocus
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Pay this with the Munar card"
+                  className="min-w-48 flex-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[13px] outline-none focus:border-navy-500"
+                />
+                <button
+                  type="button"
+                  className={BTN.done}
+                  disabled={pending}
+                  onClick={() => act(() => approveBill(bill.id, note))}
+                >
+                  {pending ? 'Approving…' : 'Approve'}
+                </button>
+                <button type="button" className={BTN.quiet} onClick={() => setAsking(null)}>
+                  Cancel
+                </button>
+              </div>
+              <p className="mt-1 text-[11.5px] text-subtle">
+                Optional. It appears on the bill in Accounting and stays in its history.
+              </p>
+            </div>
+          )}
+
+          {/*
+            The card flow. Both fields are required: a payment recorded as "paid,
+            somehow" cannot be reconciled against a statement, and this is the one path
+            where the same person approves and pays.
+          */}
+          {asking === 'CARD' && (
+            <div className="mt-3 rounded-xl border border-gold-500 bg-gold-50 p-2.5">
+              <label className="block text-[12px] font-semibold text-navy-900">
+                Already paid — record the card that paid it
+              </label>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                <input
+                  autoFocus
+                  value={method}
+                  onChange={(e) => setMethod(e.target.value)}
+                  placeholder="Amex — Munar"
+                  className="min-w-40 flex-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[13px] outline-none focus:border-navy-500"
+                />
+                <input
+                  value={last4}
+                  onChange={(e) => setLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="1234"
+                  inputMode="numeric"
+                  className="w-24 rounded-lg border border-line bg-surface px-2.5 py-1.5 font-mono text-[13px] outline-none focus:border-navy-500"
+                />
+                <button
+                  type="button"
+                  className={BTN.done}
+                  disabled={pending || method.trim().length < 2 || last4.length !== 4}
+                  onClick={() =>
+                    act(() =>
+                      approveAndRecordCardPayment(bill.id, {
+                        method,
+                        reference: last4,
+                        note: note.trim() || undefined,
+                      }),
+                    )
+                  }
+                >
+                  {pending ? 'Recording…' : 'Approve and record as paid'}
+                </button>
+                <button type="button" className={BTN.quiet} onClick={() => setAsking(null)}>
+                  Cancel
+                </button>
+              </div>
+              <p className="mt-1 text-[11.5px] text-navy-900">
+                Last four digits of the card. This skips the accountant, so it is only for
+                money that has already left — never for a cheque or a transfer.
+              </p>
+            </div>
+          )}
+
           {/* The note is still required, and still the whole content of a refusal. */}
-          {asking && (
+          {(asking === 'DENIED' || asking === 'NEEDS_REVIEW') && (
             <div className="mt-3 rounded-xl border border-line bg-canvas p-2.5">
               <label className="block text-[12px] font-semibold text-muted">
                 {asking === 'DENIED' ? 'Why are you denying this?' : 'What needs checking?'}

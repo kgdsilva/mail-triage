@@ -12,6 +12,35 @@ import {
   type UploadResult,
 } from '@/server/actions/documents'
 
+/**
+ * An iPhone photo, turned into something the rest of the system can read.
+ *
+ * HEIC is what a phone produces by default and nothing downstream opens it: not the
+ * browser preview, not the PDF frame, not the model that reads the page. Before this it
+ * was simply refused at the door, which in practice meant "photograph the bill with
+ * something that is not your phone".
+ *
+ * Converted in the browser, before the upload, for two reasons. A HEIC is often several
+ * megabytes and the JPEG is a fraction of it, so the slow part of the trip carries less;
+ * and the server never has to hold a format it cannot read anyway.
+ *
+ * The library is loaded only when a HEIC is actually chosen. It is 1.3 MB — a whole
+ * image codec compiled to JavaScript — and making everyone who uploads a PDF pay for it
+ * would be the wrong trade. Imported this way it costs nothing until the moment it is
+ * the only thing that helps.
+ */
+async function toJpegIfHeic(file: File): Promise<File> {
+  const looksHeic =
+    /^image\/hei[cf]$/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)
+  if (!looksHeic) return file
+
+  const { default: heic2any } = await import('heic2any')
+  const out = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 })
+  const blob = Array.isArray(out) ? out[0] : out
+  const renamed = file.name.replace(/\.(heic|heif)$/i, '.jpg')
+  return new File([blob], renamed, { type: 'image/jpeg', lastModified: file.lastModified })
+}
+
 export function UploadForm({ canClassify }: { canClassify: boolean }) {
   const router = useRouter()
   const formRef = useRef<HTMLFormElement>(null)
@@ -44,20 +73,35 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
     const label = String(new FormData(formRef.current!).get('label') ?? '')
 
     try {
+      /*
+       * Phone photos become JPEGs before anything else happens, so both upload paths
+       * and everything downstream see a format they can actually open.
+       */
+      setProgress({ done: 0, total: files.length, name: 'Preparing…' })
+      let ready: File[]
+      try {
+        ready = await Promise.all(files.map(toJpegIfHeic))
+      } catch {
+        setError('That iPhone photo could not be converted. Export it as JPEG and try again.')
+        setBusy(false)
+        setProgress(null)
+        return
+      }
+
       const { batchId, direct } = await beginUpload(label)
 
       if (!direct || !batchId) {
         const fd = new FormData()
         fd.set('label', label)
-        files.forEach((f) => fd.append('files', f))
+        ready.forEach((f) => fd.append('files', f))
         setResult(await uploadBatch(fd))
       } else {
         const skipped: string[] = []
         const duplicates: string[] = []
         let created = 0
 
-        for (const [i, file] of files.entries()) {
-          setProgress({ done: i, total: files.length, name: file.name })
+        for (const [i, file] of ready.entries()) {
+          setProgress({ done: i, total: ready.length, name: file.name })
           const contentType = file.type || 'application/pdf'
 
           try {
@@ -142,7 +186,7 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
               type="file"
               name="files"
               multiple
-              accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff"
+              accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.heic,.heif"
               className="hidden"
               onChange={(e) => setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])])}
             />
