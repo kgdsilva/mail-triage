@@ -37,6 +37,29 @@ const SAID: Record<string, string> = {
   restored_to_log: 'Restored to the log',
 }
 
+/**
+ * The same action means different things depending on how it happened.
+ *
+ * A payment and an approval are both recorded as what they are, but the card flow writes
+ * them in one breath: approving and paying were one act, and a history that labels the
+ * payment half "Status changed" makes the reader open it to find out that money left.
+ * The `via` on the event already says which path it came from, so the label can too.
+ */
+function said(action: string, toValue: unknown): string {
+  const via =
+    toValue && typeof toValue === 'object' && 'via' in toValue
+      ? String((toValue as { via?: unknown }).via ?? '')
+      : ''
+
+  if (via === 'approve-and-pay') {
+    if (action === 'status_changed') return 'Paid by card'
+    if (action === 'approved') return 'Approved and paid'
+  }
+  if (action === 'status_changed' && via === 'payment-recorded') return 'Paid'
+
+  return SAID[action] ?? action
+}
+
 const TONE: Record<string, string> = {
   approved: 'bg-ok-100 text-ok-700',
   denied: 'bg-danger-100 text-danger-700',
@@ -120,7 +143,7 @@ export default async function HistoryPage({ params }: { params: Promise<{ id: st
                     TONE[e.action] ?? 'bg-line-soft text-muted'
                   }`}
                 >
-                  {SAID[e.action] ?? e.action}
+                  {said(e.action, e.toValue)}
                 </span>
                 <span className="text-[12.5px] font-semibold text-navy-900">
                   {e.actor?.name ?? e.actor?.email ?? 'The system'}
