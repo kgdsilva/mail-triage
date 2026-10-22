@@ -105,6 +105,25 @@ export function canApprove(role: string) {
  * payment is never the person who settles it, which is the only control in this
  * workflow an audit actually cares about.
  */
+/**
+ * Deciding what is a bill — narrow on purpose.
+ *
+ * The accountant now owns every document that involves money: whether it has to be
+ * paid, whether it is a bill at all, and who should handle it if it is not. That is
+ * three actions over one kind of document, and it is emphatically *not* the triage
+ * role: he does not reclassify entities, does not touch HR or operations, and does not
+ * get the Review screen. Widening DECIDE_ROLES would have given him all of that in one
+ * line, which is why this exists separately.
+ *
+ * Owner and administrator are here because they already hold everything; listing them
+ * keeps the screen usable for whoever is covering.
+ */
+const PAYMENT_TRIAGE_ROLES = ['OWNER', 'ADMIN', 'ACCOUNTANT'] as const
+
+export function canTriagePayments(role: string) {
+  return (PAYMENT_TRIAGE_ROLES as readonly string[]).includes(role)
+}
+
 const SETTLE_ROLES = ['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'ACCOUNTANT'] as const
 
 export function canSettle(role: string) {
@@ -201,6 +220,13 @@ export async function requireTriage(): Promise<Session> {
 }
 
 /** Acting on an item that is already on the board. */
+/** The accountant's inbox, and nothing else. */
+export async function requirePaymentTriage(): Promise<Session> {
+  const session = await requireSession()
+  if (!canTriagePayments(session.role)) redirect(homeFor(session.role))
+  return session
+}
+
 export async function requireDecider(): Promise<Session> {
   const session = await requireSession()
   if (!canDecide(session.role)) redirect('/')

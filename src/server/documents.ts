@@ -457,6 +457,81 @@ const QUICK_DECISIONS: Record<
   },
 }
 
+/** The archive reasons a person may choose from, which is all of them but AUTOPAY. */
+export type ArchiveReason =
+  | 'SPAM_SOLICITATION'
+  | 'FYI_STATEMENT'
+  | 'INCOMING_CHECK'
+  | 'NOT_COMPANY_MAIL'
+  | 'OTHER'
+
+/**
+ * Files a document with a stated reason, recorded as the decision it is.
+ *
+ * `quickDecide` carries a fixed reason per button, which is right for a two-button
+ * triage row but not for the accountant, who is answering "why is this not a bill" and
+ * whose answer is the part an auditor reads back a year later. Same writes, same event,
+ * same coherence check — only the reason comes from the caller.
+ */
+export async function archiveWithReason(
+  companyGroupId: string,
+  documentId: string,
+  actorUserId: string,
+  reason: ArchiveReason,
+) {
+  const target = {
+    disposition: 'ARCHIVE' as const,
+    dispositionReason: reason as DispositionReason,
+    actionKind: null,
+    status: 'ARCHIVED' as const,
+  }
+  assertDecisionCoherent(target)
+
+  const before = await prisma.document.findFirst({
+    where: { id: documentId, companyGroupId, deletedAt: null },
+    select: {
+      disposition: true,
+      dispositionReason: true,
+      actionKind: true,
+      status: true,
+      aiSuggestion: true,
+    },
+  })
+  if (!before) throw new Error('Document not found')
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.document.update({
+      where: { id: documentId },
+      data: {
+        ...target,
+        // An archived document is in nobody's queue, so it keeps no assignee.
+        assignedToUserId: null,
+        reviewedByUserId: actorUserId,
+        reviewedAt: new Date(),
+      },
+    })
+
+    await recordEvent(
+      {
+        documentId,
+        actorUserId,
+        action: before.disposition === 'UNREVIEWED' ? 'classified' : 'reclassified',
+        fromValue: {
+          disposition: before.disposition,
+          dispositionReason: before.dispositionReason,
+          actionKind: before.actionKind,
+          status: before.status,
+          suggested: suggestedBy(before.aiSuggestion),
+        },
+        toValue: { ...target, via: 'accounting-not-a-bill' },
+      },
+      tx,
+    )
+
+    return updated
+  })
+}
+
 export async function quickDecide(
   companyGroupId: string,
   documentId: string,

@@ -4,7 +4,11 @@ import type { ApprovalStatus } from '@/generated/prisma/enums'
 import { billCounts, listBills } from '@/server/approvals'
 import { narrowEntityChoice, visibleEntities, visibleEntityIds } from '@/server/scope'
 import { canApprove, canSettle, requireSettler } from '@/server/session'
+import { prisma } from '@/server/db/client'
+import { countToDecide, handoff, listToDecide } from '@/server/to-decide'
+import { canTriagePayments } from '@/server/session'
 import { AccountingTable, type AccountingBill } from '@/components/accounting-table'
+import { ToDecideList } from '@/components/to-decide-list'
 import { ApprovalsTable, type ApprovalBill } from '@/components/approvals-table'
 import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
@@ -20,7 +24,7 @@ export const dynamic = 'force-dynamic'
  * separation this workflow exists to keep.
  */
 
-const TABS = ['ready', 'waiting', 'denied', 'paid'] as const
+const TABS = ['decide', 'ready', 'waiting', 'denied', 'paid'] as const
 type Tab = (typeof TABS)[number]
 
 /*
@@ -30,6 +34,7 @@ type Tab = (typeof TABS)[number]
  * gone, so from here a refusal and a bill nobody had decided yet looked identical.
  */
 const LABELS: Record<Tab, string> = {
+  decide: 'To decide',
   ready: 'Ready to pay',
   waiting: 'Waiting on approval',
   denied: 'Denied',
@@ -49,7 +54,12 @@ export default async function AccountingPage({
   const session = await requireSettler()
   const { tab, entity } = await searchParams
 
-  const active: Tab = TABS.includes(tab as Tab) ? (tab as Tab) : 'ready'
+  /*
+   * "To decide" is the landing tab because it is the first question of the day: is this
+   * a bill at all. Ready to pay is the second. Before this the decision lived on a
+   * different screen the accountant could not even open.
+   */
+  const active: Tab = TABS.includes(tab as Tab) ? (tab as Tab) : 'decide'
   const scope = await visibleEntityIds(session)
   const chosen = narrowEntityChoice(entity, scope)
 
@@ -72,7 +82,25 @@ export default async function AccountingPage({
     visibleEntities(session),
   ])
 
+  const [decideRows, decideCount, handoverPeople] = await Promise.all([
+    active === 'decide' ? listToDecide(session, chosen) : Promise.resolve([]),
+    countToDecide(session, chosen),
+    canTriagePayments(session.role)
+      ? prisma.membership.findMany({
+          where: {
+            companyGroupId: session.companyGroupId,
+            isActive: true,
+            userId: { not: session.userId },
+            role: { in: ['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER'] },
+          },
+          orderBy: { createdAt: 'asc' },
+          select: { user: { select: { id: true, name: true, email: true } } },
+        })
+      : Promise.resolve([]),
+  ])
+
   const count: Record<Tab, number> = {
+    decide: decideCount,
     ready: counts.approvedUnpaid,
     waiting: counts.pending + counts.needsReview,
     denied: counts.denied,
@@ -194,7 +222,31 @@ export default async function AccountingPage({
         )}
       </div>
 
-      {active === 'waiting' ? (
+      {active === 'decide' ? (
+        <ToDecideList
+          rows={decideRows.map((d) => ({
+            id: d.id,
+            title: d.finalFilename ?? d.originalFilename,
+            vendorName: d.vendor?.name ?? null,
+            amount: d.amount === null ? null : d.amount.toString(),
+            dueDate: d.dueDate ? d.dueDate.toISOString().slice(0, 10) : null,
+            receivedDate: d.createdAt.toISOString(),
+            entityCode: d.entity?.code ?? null,
+            companyName: d.entity?.legalName ?? null,
+            entityIndex: d.entity?.sortOrder ?? 0,
+            typeLabel: d.documentType?.label ?? null,
+            categoryName: d.category?.name ?? null,
+            summary: d.summaryNote,
+            hasFile: Boolean(d.storageKey),
+            handedBy: handoff(d, session.userId)?.by ?? null,
+            handNote: handoff(d, session.userId)?.note ?? null,
+          }))}
+          people={handoverPeople.map((m) => ({
+            id: m.user.id,
+            name: m.user.name ?? m.user.email,
+          }))}
+        />
+      ) : active === 'waiting' ? (
         <>
           {/* How long each has been sitting, which is what turns this list into a
               conversation with the approver rather than a wait. */}

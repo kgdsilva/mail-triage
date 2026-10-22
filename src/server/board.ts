@@ -1,5 +1,6 @@
 import { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/server/db/client'
+import { toDecideWhere } from '@/server/to-decide'
 
 /**
  * The board: everything waiting on a decision, from every company, in one place.
@@ -55,6 +56,19 @@ function where(filters: BoardFilters, companyGroupId: string): Prisma.DocumentWh
      * all, so it would have emptied the board.
      */
     OR: [{ approvalStatus: null }, { approvalStatus: { not: 'APPROVED' } }],
+    /*
+     * And a money document still waiting on the accountant is not here either.
+     *
+     * Deciding whether something has to be paid is his job now, and the whole point of
+     * moving it was to stop the same question living on two screens. The exclusion uses
+     * the very predicate his tab selects by, so the two cannot drift: anything that
+     * leaves this board appears there, and nothing can fall between them.
+     *
+     * What stays: a document nobody could place to a company. That is not a payment
+     * question yet, however much money it mentions, and it stays with whoever can work
+     * out whose it is.
+     */
+    NOT: { AND: [toDecideWhere(companyGroupId)] },
     ...(filters.entityId ? { entityId: filters.entityId } : {}),
     ...(filters.scope === 'mine' ? { assignedToUserId: filters.userId } : {}),
     ...(filters.scope === 'unassigned' ? { assignedToUserId: null } : {}),
@@ -91,6 +105,8 @@ export async function boardCounts(companyGroupId: string, userId: string) {
     // The same exclusion as the list, or the tab would promise items the board does
     // not show — which is how a count stops being believed.
     OR: [{ approvalStatus: null }, { approvalStatus: { not: 'APPROVED' as const } }],
+    // Same exclusion as the list, or the badge promises work the board will not show.
+    NOT: { AND: [toDecideWhere(companyGroupId)] },
   }
 
   const [mine, everyone, unassigned] = await Promise.all([
