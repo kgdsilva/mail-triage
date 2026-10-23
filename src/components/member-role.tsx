@@ -35,14 +35,14 @@ export function MemberRole({
     setValue(next)
     setBusy(true)
     setError(null)
-    try {
-      await setMemberRole(membershipId, next)
-    } catch (err) {
+    // A refusal comes back as a value now. It used to be thrown, which in production
+    // reached here as React's minified "#441" and told nobody anything.
+    const res = await setMemberRole(membershipId, next)
+    if (!res.ok) {
       setValue(previous)
-      setError(err instanceof Error ? err.message : 'Could not change the role.')
-    } finally {
-      setBusy(false)
+      setError(res.error)
     }
+    setBusy(false)
   }
 
   const badge = `rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${

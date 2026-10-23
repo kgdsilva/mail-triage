@@ -341,6 +341,27 @@ export async function setMemberActive(membershipId: string, isActive: boolean) {
 }
 
 /**
+ * What a member screen's write answers back.
+ *
+ * These two actions refuse for reasons a person has to read — you cannot demote the last
+ * owner, an approver needs at least one company — and until now they refused by throwing.
+ * In production that is the same as refusing silently: Next replaces a thrown message
+ * with a generic one and React minifies it, so every one of these carefully worded
+ * sentences reached the screen as "Minified React error #441". The screens were built to
+ * explain and the environment deleted the explanation.
+ *
+ * A refusal is an ordinary outcome, so it comes back as a value. Only a genuine fault
+ * throws, and that one is caught here too and returned, because an admin staring at a
+ * broken settings page needs the reason more than the stack needs privacy.
+ */
+export type Saved = { ok: true } | { ok: false; error: string }
+
+/** The message, for a fault nobody wrote a refusal for. */
+function fault(err: unknown): Saved {
+  return { ok: false, error: err instanceof Error ? err.message : 'That could not be saved.' }
+}
+
+/**
  * Changes what a member may do.
  *
  * Added because the roles were only ever settable when the account was created, and the
@@ -352,37 +373,42 @@ export async function setMemberActive(membershipId: string, isActive: boolean) {
  * nobody changes their own role, the last owner cannot be demoted, and only an owner
  * can create another owner.
  */
-export async function setMemberRole(membershipId: string, role: string) {
-  const session = await requireAdmin()
+export async function setMemberRole(membershipId: string, role: string): Promise<Saved> {
+  try {
+    const session = await requireAdmin()
 
-  const parsed = z.enum(ROLES).safeParse(role)
-  if (!parsed.success) throw new Error(`Unknown role: ${role}`)
+    const parsed = z.enum(ROLES).safeParse(role)
+    if (!parsed.success) return { ok: false, error: `Unknown role: ${role}` }
 
-  const membership = await prisma.membership.findFirst({
-    where: { id: membershipId, companyGroupId: session.companyGroupId },
-    select: { id: true, role: true, userId: true },
-  })
-  if (!membership) throw new Error('Member not found')
-  if (membership.role === parsed.data) return
-
-  if (membership.userId === session.userId) {
-    throw new Error('You cannot change your own role — ask another owner or admin.')
-  }
-  if (parsed.data === 'OWNER' && session.role !== 'OWNER') {
-    throw new Error('Only an owner can make someone else an owner.')
-  }
-  if (membership.role === 'OWNER') {
-    const owners = await prisma.membership.count({
-      where: { companyGroupId: session.companyGroupId, role: 'OWNER', isActive: true },
+    const membership = await prisma.membership.findFirst({
+      where: { id: membershipId, companyGroupId: session.companyGroupId },
+      select: { id: true, role: true, userId: true },
     })
-    if (owners <= 1) throw new Error('Cannot demote the last owner.')
-  }
+    if (!membership) return { ok: false, error: 'Member not found' }
+    if (membership.role === parsed.data) return { ok: true }
 
-  await prisma.membership.update({
-    where: { id: membership.id },
-    data: { role: parsed.data },
-  })
-  revalidatePath('/settings/members')
+    if (membership.userId === session.userId) {
+      return { ok: false, error: 'You cannot change your own role — ask another owner or admin.' }
+    }
+    if (parsed.data === 'OWNER' && session.role !== 'OWNER') {
+      return { ok: false, error: 'Only an owner can make someone else an owner.' }
+    }
+    if (membership.role === 'OWNER') {
+      const owners = await prisma.membership.count({
+        where: { companyGroupId: session.companyGroupId, role: 'OWNER', isActive: true },
+      })
+      if (owners <= 1) return { ok: false, error: 'Cannot demote the last owner.' }
+    }
+
+    await prisma.membership.update({
+      where: { id: membership.id },
+      data: { role: parsed.data },
+    })
+    revalidatePath('/settings/members')
+    return { ok: true }
+  } catch (err) {
+    return fault(err)
+  }
 }
 
 /**
@@ -433,45 +459,69 @@ export async function setReturnedBillsRole(role: string) {
  * segregated one, which no non-administrator ever sees) and wrong for an approver — so
  * the screen says so rather than letting an empty box look like a configured one.
  */
-export async function setMemberEntityScope(membershipId: string, entityIds: string[]) {
-  const session = await requireAdmin()
+export async function setMemberEntityScope(
+  membershipId: string,
+  entityIds: string[],
+): Promise<Saved> {
+  try {
+    const session = await requireAdmin()
 
-  const membership = await prisma.membership.findFirst({
-    where: { id: membershipId, companyGroupId: session.companyGroupId },
-    select: { id: true, role: true, entityScope: true },
-  })
-  if (!membership) throw new Error('Member not found')
+    const membership = await prisma.membership.findFirst({
+      where: { id: membershipId, companyGroupId: session.companyGroupId },
+      select: { id: true, role: true, entityScope: true },
+    })
+    if (!membership) return { ok: false, error: 'Member not found' }
 
-  // Only ids that are real companies in this group, so a stale checkbox cannot park an
-  // id that silently matches nothing later.
-  const valid = await prisma.entity.findMany({
-    where: { companyGroupId: session.companyGroupId, id: { in: entityIds } },
-    select: { id: true },
-  })
+    // Only ids that are real companies in this group, so a stale checkbox cannot park an
+    // id that silently matches nothing later.
+    const valid = await prisma.entity.findMany({
+      where: { companyGroupId: session.companyGroupId, id: { in: entityIds } },
+      select: { id: true },
+    })
 
-  /*
-   * An approver must say which companies.
-   *
-   * Everywhere else an empty scope means "all", which is the sensible default for an
-   * operator who files everyone's mail. For an approver it is the opposite of sensible:
-   * it silently grants the power to clear payments for every company in the group,
-   * including ones nobody meant to give them — and it does it by omission, which is the
-   * worst way to grant anything. Eric approves for MMT; that has to be a thing somebody
-   * chose, not a box nobody ticked.
-   */
-  if (membership.role === 'APPROVER' && valid.length === 0) {
-    throw new Error(
-      'An approver needs at least one company. Leaving this empty would let them approve ' +
-        'bills for every company, which is almost never what is meant.',
-    )
+    /*
+     * An approver must say which companies.
+     *
+     * Everywhere else an empty scope means "all", which is the sensible default for an
+     * operator who files everyone's mail. For an approver it is the opposite of sensible:
+     * it silently grants the power to clear payments for every company in the group,
+     * including ones nobody meant to give them — and it does it by omission, which is the
+     * worst way to grant anything. Eric approves for MMT; that has to be a thing somebody
+     * chose, not a box nobody ticked.
+     */
+    if (membership.role === 'APPROVER' && valid.length === 0) {
+      return {
+        ok: false,
+        error:
+          'An approver needs at least one company. Leaving this empty would let them approve ' +
+          'bills for every company, which is almost never what is meant.',
+      }
+    }
+
+    /*
+     * Ticked something real, and none of it survived.
+     *
+     * Silence here is how a scope ends up empty while the screen shows a tick: the boxes
+     * are drawn from one list and checked against another, and if those ever disagree the
+     * save writes nothing and reports success. Say so instead.
+     */
+    if (entityIds.length > 0 && valid.length === 0) {
+      return {
+        ok: false,
+        error: 'None of those companies belong to this group, so nothing was saved.',
+      }
+    }
+
+    await prisma.membership.update({
+      where: { id: membership.id },
+      data: { entityScope: valid.map((e) => e.id) },
+    })
+
+    revalidatePath('/', 'layout')
+    return { ok: true }
+  } catch (err) {
+    return fault(err)
   }
-
-  await prisma.membership.update({
-    where: { id: membership.id },
-    data: { entityScope: valid.map((e) => e.id) },
-  })
-
-  revalidatePath('/', 'layout')
 }
 
 const categorySchema = z.object({

@@ -52,11 +52,13 @@ export function MemberEntities({
     setChosen(next)
     setError(null)
     startTransition(async () => {
-      try {
-        await setMemberEntityScope(membershipId, next)
-      } catch (err) {
+      // Returned, not thrown: see the note on Saved in the action. A thrown refusal is
+      // invisible in a production build, which is how this screen spent weeks showing
+      // "#441" where it had a sentence ready.
+      const res = await setMemberEntityScope(membershipId, next)
+      if (!res.ok) {
         setChosen(chosen)
-        setError(err instanceof Error ? err.message : 'Could not save that.')
+        setError(res.error)
       }
     })
   }
