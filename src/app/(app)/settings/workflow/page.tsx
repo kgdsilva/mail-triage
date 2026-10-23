@@ -1,6 +1,8 @@
 import { ArrowLeftRight, Gauge } from 'lucide-react'
 import { setAutopayCeiling, setReturnedBillsRole } from '@/server/actions/settings'
 import { autopayCeiling } from '@/server/action-filter'
+import { emailMode } from '@/server/email'
+import { NotifyPanel } from '@/components/notify-panel'
 import { prisma } from '@/server/db/client'
 import { DEFAULT_RETURN_ROLE, configuredReturnRole, type ReturnRole } from '@/server/returns'
 import { requireAdmin } from '@/server/session'
@@ -138,6 +140,9 @@ export default async function WorkflowPage() {
           under “Nobody yet”.
         </p>
       </div>
+
+      {/* Nothing on this screen matters if nobody is told it happened. */}
+      <NotifyPanel {...emailMode()} />
 
       {/*
         The second question this screen answers: not who gets a bill back, but which
