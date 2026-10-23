@@ -1,5 +1,6 @@
-import { ArrowLeftRight } from 'lucide-react'
-import { setReturnedBillsRole } from '@/server/actions/settings'
+import { ArrowLeftRight, Gauge } from 'lucide-react'
+import { setAutopayCeiling, setReturnedBillsRole } from '@/server/actions/settings'
+import { autopayCeiling } from '@/server/action-filter'
 import { prisma } from '@/server/db/client'
 import { DEFAULT_RETURN_ROLE, configuredReturnRole, type ReturnRole } from '@/server/returns'
 import { requireAdmin } from '@/server/session'
@@ -41,6 +42,7 @@ export default async function WorkflowPage() {
     select: { settings: true },
   })
   const current = configuredReturnRole(group.settings)
+  const ceiling = await autopayCeiling(session.companyGroupId)
 
   // Who currently holds each role, so the choice shows its consequence rather than
   // making somebody go and look it up on another screen.
@@ -134,6 +136,50 @@ export default async function WorkflowPage() {
           changes hands. Within the role it goes to the longest-standing member, and if
           nobody at all holds any of these the bill comes back unassigned — still visible,
           under “Nobody yet”.
+        </p>
+      </div>
+
+      {/*
+        The second question this screen answers: not who gets a bill back, but which
+        bills need anybody at all.
+      */}
+      <div className="rounded-xl border border-line bg-surface p-5">
+        <h2 className="flex items-center gap-2 text-[15px] font-bold text-navy-900">
+          <Gauge className="size-4 text-navy-500" aria-hidden />
+          Autopay still needs approval above
+        </h2>
+        <p className="mt-1 text-[13px] text-muted">
+          A bill from a vendor on confirmed autopay is logged and filed without reaching an
+          approver — that is the point of the autopay list. Above this amount it goes for
+          approval anyway. The payment itself is automatic either way; this only decides
+          whether somebody sees it first.
+        </p>
+
+        <form action={setAutopayCeiling} className="mt-4 flex flex-wrap items-end gap-2">
+          <label className="block">
+            <span className="block text-[12px] font-semibold text-navy-900">Ceiling (USD)</span>
+            <input
+              name="ceiling"
+              defaultValue={ceiling === null ? '' : String(ceiling)}
+              placeholder="1000"
+              inputMode="decimal"
+              className="mt-1 w-40 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[13px] outline-none focus:border-navy-500"
+            />
+          </label>
+          <button className={BTN.primary}>Save</button>
+        </form>
+
+        <p className="mt-2 text-[12px] text-subtle">
+          {ceiling === null
+            ? 'Off — autopay settles any amount without an approver.'
+            : `Now: anything over ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(ceiling)} goes for approval even on autopay.`}{' '}
+          Leave it empty to turn the ceiling off. A single arrangement can be given its own
+          ceiling on its autopay rule, which wins over this one.
+        </p>
+
+        <p className="mt-3 border-t border-line-soft pt-3 text-[12px] text-subtle">
+          Partial autopay is never affected: an arrangement that settles only part of a
+          balance always reaches a person, whatever the amount.
         </p>
       </div>
 

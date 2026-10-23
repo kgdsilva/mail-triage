@@ -1,3 +1,4 @@
+import type { Prisma } from '@/generated/prisma/client'
 import type { Disposition, DispositionReason } from '@/generated/prisma/enums'
 import { prisma } from '@/server/db/client'
 
@@ -41,6 +42,16 @@ export type FilterInput = {
    * is automatic. Without this the autopay list is never consulted for it.
    */
   owesMoney?: boolean
+  /**
+   * What the page says is due, when it says anything.
+   *
+   * Needed because confirmed autopay and a large amount are different questions. An
+   * arrangement says "this will be paid without anybody doing it"; it does not say "and
+   * nobody needs to see it". Eric wants an approval on a five-thousand-dollar payment
+   * and none on a fifteen-dollar subscription, and the amount is the only thing that
+   * tells those apart.
+   */
+  amount?: number | null
 }
 
 /**
@@ -186,6 +197,30 @@ export async function suggestDisposition(input: FilterInput): Promise<FilterVerd
       }
     }
 
+    /*
+     * Big enough that somebody should still see it.
+     *
+     * The rule's own ceiling wins when it has one — an arrangement whose amounts are
+     * known to be large and routine can be allowed to run higher, and one that should
+     * never pass unseen can be held lower. Otherwise the group's ceiling applies.
+     *
+     * A bill with no amount is not held back: there is nothing to compare, and holding
+     * every unpriced autopay document would reinstate exactly the approval queue this
+     * exists to empty.
+     */
+    const ceiling = await autopayCeiling(input.companyGroupId, rule.ceiling)
+    if (ceiling !== null && input.amount !== null && input.amount !== undefined && input.amount > ceiling) {
+      return {
+        disposition: 'ACTION',
+        reason: 'MANUAL_INVOICE',
+        rationale:
+          `${vendor.name} is on confirmed autopay for ${rule.entity.code}, but ` +
+          `${money(input.amount)} is over the ${money(ceiling)} ceiling — it still needs an ` +
+          `approver. The payment itself is automatic either way.`,
+        ambiguous: false,
+      }
+    }
+
     return {
       disposition: 'ARCHIVE',
       reason: 'AUTOPAY',
@@ -213,4 +248,35 @@ export async function suggestDisposition(input: FilterInput): Promise<FilterVerd
     rationale: `${vendor.name} is not on the autopay list for this entity.`,
     ambiguous: false,
   }
+}
+
+/** US dollars, for a sentence a person reads. */
+function money(n: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(n)
+}
+
+/** The group's default, which a rule may override. Null disables the ceiling entirely. */
+export const DEFAULT_AUTOPAY_CEILING = 1000
+
+export async function autopayCeiling(
+  companyGroupId: string,
+  ruleCeiling?: Prisma.Decimal | null,
+): Promise<number | null> {
+  if (ruleCeiling !== null && ruleCeiling !== undefined) return Number(ruleCeiling.toString())
+
+  const group = await prisma.companyGroup.findUnique({
+    where: { id: companyGroupId },
+    select: { settings: true },
+  })
+  const settings = (group?.settings ?? {}) as Record<string, unknown>
+  const raw = settings.autopayCeiling
+
+  // Explicitly off, rather than unset: somebody chose to let autopay settle anything.
+  if (raw === null) return null
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw
+  return DEFAULT_AUTOPAY_CEILING
 }

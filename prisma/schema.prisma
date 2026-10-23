@@ -392,6 +392,13 @@ model AutopayRule {
   /// these instead, quoting the caveat.
   coversFullBalance Boolean @default(true) @map("covers_full_balance")
 
+  /// Above this, the bill goes for approval even though autopay is confirmed.
+  ///
+  /// Null means the group's own ceiling applies, which is the usual case — this is the
+  /// exception for an arrangement whose amounts are known to be large and routine, or
+  /// one that should never pass unseen whatever the group allows.
+  ceiling Decimal? @db.Decimal(12, 2)
+
   effectiveFrom DateTime  @map("effective_from") @db.Date
   effectiveTo   DateTime? @map("effective_to") @db.Date
 

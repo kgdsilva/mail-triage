@@ -34,12 +34,18 @@ export async function getSuggestion(input: {
   const docDate = input.documentDate ? new Date(`${input.documentDate}T00:00:00Z`) : null
   const validDate = docDate && !Number.isNaN(docDate.getTime()) ? docDate : null
 
+  // Parsed before the filter runs, because the autopay ceiling is decided on it.
+  const typedAmount = input.amount ? Number(input.amount.replace(/[$,]/g, '')) : null
+  const amount = typedAmount !== null && Number.isFinite(typedAmount) ? typedAmount : null
+
   const verdict = await suggestDisposition({
     companyGroupId: session.companyGroupId,
     entityId: input.entityId,
     documentTypeId: input.documentTypeId,
     vendorId: input.vendorId,
     onDate: validDate ?? undefined,
+    owesMoney: amount !== null && amount > 0,
+    amount,
   })
 
   const [group, entity, type, vendor, category] = await Promise.all([
@@ -64,7 +70,7 @@ export async function getSuggestion(input: {
       : null,
   ])
 
-  const rawAmount = input.amount ? Number(input.amount.replace(/[$,]/g, '')) : null
+  const rawAmount = amount
 
   const filename = suggestFilename(
     {

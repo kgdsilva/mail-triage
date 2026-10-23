@@ -661,3 +661,51 @@ export async function setAutoApply(enabled: boolean) {
   revalidatePath('/settings')
   revalidatePath('/review')
 }
+
+/**
+ * How much autopay may settle before an approver still has to see it.
+ *
+ * Confirmed autopay answers "will this be paid without anybody doing it". It does not
+ * answer "and may it pass unseen" — those came apart in the meeting, from both ends of
+ * the same sentence: an approval is wanted on a five-thousand-dollar payment and
+ * emphatically not on a fifteen-dollar subscription. The ceiling is where one becomes
+ * the other, and it belongs here rather than in the code because the number is a
+ * business judgement that will move.
+ *
+ * Empty turns it off: autopay then settles anything, which is a choice somebody can
+ * make deliberately and should never arrive at by leaving a box blank.
+ */
+export async function setAutopayCeiling(formData: FormData) {
+  const session = await requireAdmin()
+
+  const raw = String(formData.get('ceiling') ?? '').replace(/[$,\s]/g, '')
+  let value: number | null
+
+  if (raw === '') {
+    value = null
+  } else {
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error('Enter an amount above zero, or leave it empty to turn the ceiling off.')
+    }
+    value = parsed
+  }
+
+  const group = await prisma.companyGroup.findUniqueOrThrow({
+    where: { id: session.companyGroupId },
+    select: { settings: true },
+  })
+
+  await prisma.companyGroup.update({
+    where: { id: session.companyGroupId },
+    data: {
+      settings: {
+        ...((group.settings as Record<string, unknown> | null) ?? {}),
+        autopayCeiling: value,
+      } as Prisma.InputJsonValue,
+    },
+  })
+
+  revalidatePath('/settings/workflow')
+  revalidatePath('/', 'layout')
+}

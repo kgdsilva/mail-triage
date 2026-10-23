@@ -226,6 +226,8 @@ export async function buildSuggestion(
     vendorId: vendor?.id ?? null,
     onDate: documentDate ?? undefined,
     owesMoney: x.moneyDirection === 'owed_by_us' && x.amount !== null,
+    // So a large autopay bill is still shown to an approver.
+    amount: x.amount,
   })
 
   const merged = mergeVerdict(verdict, x)
