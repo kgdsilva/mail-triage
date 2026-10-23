@@ -122,44 +122,28 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               },
             ],
           },
+          /*
+            One place for money, and it is Accounting.
+            The Money menu held three entries that led to slices of Accounting's own
+            lists — Bills to pay is its Ready to pay, Bills paid is its Paid — plus
+            Accounting itself, which contained both. Three doors into one room, and the
+            room was one of the doors. Those two screens still exist at their URLs so a
+            saved link keeps working; they are no longer somewhere to get lost in.
+
+            Cheques moved *into* Accounting as a tab rather than out of the bar: money
+            arriving is the accountant's business, and it was only ever here because
+            there was a Money menu to put it in.
+          */
           {
-            label: 'Money',
+            label: 'Accounting',
             items: [
-              {
-                href: '/bills',
-                label: 'Bills to pay',
-                blurb: 'Everything open with money to send out, grouped by how soon it is due.',
-                icon: 'bills' as const,
-              },
-              {
-                href: '/paid',
-                label: 'Bills paid',
-                blurb: 'The history of what went out, each with its receipt attached.',
-                icon: 'paid' as const,
-              },
               {
                 href: '/accounting',
                 label: 'Accounting',
-                blurb: 'What is cleared to pay, what is waiting on an approver, what is paid.',
+                blurb:
+                  'Is it a bill, what is cleared to pay, what is waiting, what is paid, and cheques in.',
                 icon: 'accounting' as const,
               },
-              /*
-                Bills to approve is deliberately not here. It has its own place in the
-                bar for everyone who can open it — the page requires an approver — so
-                listing it under Money put the same screen in two places for an admin
-                and offered a locked door to an operator.
-              */
-              ...(wholeLog
-                ? [
-                    {
-                      href: '/checks',
-                      label: 'Checks received',
-                      blurb:
-                        'Money coming in from title companies and closing agents, for reconciling.',
-                      icon: 'checks' as const,
-                    },
-                  ]
-                : []),
             ],
           },
         ]
@@ -181,8 +165,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           ? [
               {
                 href: '/review',
-                label: 'Review',
-                blurb: 'Decide what each new document is. One list, three buttons.',
+                label: 'New mail',
+                blurb: 'What just arrived, waiting to be read and named. One list, three buttons.',
                 icon: 'review' as const,
                 badge: pending || undefined,
               },

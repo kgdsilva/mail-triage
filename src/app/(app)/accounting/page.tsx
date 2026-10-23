@@ -9,6 +9,8 @@ import { countToDecide, handoff, listToDecide } from '@/server/to-decide'
 import { canTriagePayments } from '@/server/session'
 import { AccountingTable, type AccountingBill } from '@/components/accounting-table'
 import { ToDecideList } from '@/components/to-decide-list'
+import { ChecksTable } from '@/components/checks-table'
+import { listChecks } from '@/server/documents'
 import { ApprovalsTable, type ApprovalBill } from '@/components/approvals-table'
 import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
@@ -24,7 +26,7 @@ export const dynamic = 'force-dynamic'
  * separation this workflow exists to keep.
  */
 
-const TABS = ['decide', 'ready', 'waiting', 'denied', 'paid'] as const
+const TABS = ['decide', 'ready', 'waiting', 'denied', 'paid', 'checks'] as const
 type Tab = (typeof TABS)[number]
 
 /*
@@ -33,12 +35,18 @@ type Tab = (typeof TABS)[number]
  * appear in none of these tabs at all. It simply left "Waiting on approval" and was
  * gone, so from here a refusal and a bill nobody had decided yet looked identical.
  */
+/*
+ * "Is it a bill?" rather than "To decide", because the board is already called "Needs a
+ * decision" and two screens whose names both mean "somebody must decide" is the thing
+ * that made this confusing. The tab is named after the question it answers.
+ */
 const LABELS: Record<Tab, string> = {
-  decide: 'To decide',
+  decide: 'Is it a bill?',
   ready: 'Ready to pay',
   waiting: 'Waiting on approval',
   denied: 'Denied',
   paid: 'Paid',
+  checks: 'Checks received',
 }
 
 /** Whole days since a date, for "waiting 5 days". */
@@ -82,7 +90,8 @@ export default async function AccountingPage({
     visibleEntities(session),
   ])
 
-  const [decideRows, decideCount, handoverPeople] = await Promise.all([
+  const [checkRows, decideRows, decideCount, handoverPeople] = await Promise.all([
+    active === 'checks' ? listChecks(session.companyGroupId, chosen) : Promise.resolve([]),
     active === 'decide' ? listToDecide(session, chosen) : Promise.resolve([]),
     countToDecide(session, chosen),
     canTriagePayments(session.role)
@@ -105,6 +114,7 @@ export default async function AccountingPage({
     waiting: counts.pending + counts.needsReview,
     denied: counts.denied,
     paid: counts.paid,
+    checks: checkRows.length,
   }
 
   const readyTotal = bills.reduce((sum, b) => sum + Number(b.amount ?? 0), 0)
@@ -222,7 +232,9 @@ export default async function AccountingPage({
         )}
       </div>
 
-      {active === 'decide' ? (
+      {active === 'checks' ? (
+        <ChecksTable rows={checkRows} />
+      ) : active === 'decide' ? (
         <ToDecideList
           rows={decideRows.map((d) => ({
             id: d.id,

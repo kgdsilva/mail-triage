@@ -7,6 +7,8 @@ import {
   Banknote,
   ChevronDown,
   BadgeCheck,
+  Menu as MenuIcon,
+  X,
   Calculator,
   DatabaseBackup,
   Inbox,
@@ -19,6 +21,9 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useDismiss } from '@/components/use-dismiss'
+
+/** The phone menu lives in the same "one open at a time" slot as the desktop ones. */
+const MOBILE = '\u0000mobile'
 
 const ICONS: Record<string, LucideIcon> = {
   queue: Inbox,
@@ -102,12 +107,28 @@ export function NavMenu({ groups }: { groups: NavGroup[] }) {
       a dead button rather than a layout fault. Wrapping costs a second row on a phone
       and clips nothing.
     */
-    <nav ref={bar} className="ml-auto flex min-w-0 flex-wrap items-stretch justify-end gap-0.5">
+    <nav ref={bar} className="ml-auto flex min-w-0 items-stretch justify-end gap-0.5">
+      {/*
+        One button on a phone, the whole bar on a desktop.
+
+        Wrapping was the honest fix for a bar that would not fit, and it worked — but
+        with five entries it took four rows and 200px of the screen before any content.
+        A phone gets a single door instead: same items, same blurbs, one panel, and the
+        header stays one line tall.
+      */}
+      <MobileMenu
+        groups={groups.filter((g) => g.items.length > 0)}
+        open={open === MOBILE}
+        onToggle={() => setOpen((v) => (v === MOBILE ? null : MOBILE))}
+        onClose={() => setOpen(null)}
+      />
+
       {/*
         A group whose every item was filtered out by role is dropped here rather than in
         each caller. An approver has no mail screens at all, and the "Mail" menu was
         still in the bar for them — opening onto nothing.
       */}
+      <span className="hidden items-stretch gap-0.5 md:flex">
       {groups
         .filter((group) => group.items.length > 0)
         .map((group) =>
@@ -125,6 +146,7 @@ export function NavMenu({ groups }: { groups: NavGroup[] }) {
           />
           ),
         )}
+      </span>
     </nav>
   )
 }
@@ -269,5 +291,66 @@ function Badge({ count, tone = 'bar' }: { count?: number; tone?: 'bar' | 'page' 
     >
       {count}
     </span>
+  )
+}
+
+
+/**
+ * The whole bar behind one button, for a screen too narrow to hold it.
+ *
+ * Flat rather than nested: a menu inside a menu on a phone is two taps to find out
+ * where you are, and the groups are only there to keep a wide bar short. The headings
+ * stay as labels so the shape is recognisable to somebody who also uses the desktop.
+ */
+function MobileMenu({
+  groups,
+  open,
+  onToggle,
+  onClose,
+}: {
+  groups: NavGroup[]
+  open: boolean
+  onToggle: () => void
+  onClose: () => void
+}) {
+  const total = groups.reduce(
+    (sum, g) => sum + g.items.reduce((n, i) => n + (i.badge ?? 0), 0),
+    0,
+  )
+
+  return (
+    <div className="relative flex md:hidden">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={onToggle}
+        className="flex items-center gap-1.5 px-3 py-3.5 text-[13.5px] font-semibold text-white"
+      >
+        {open ? <X className="size-4" aria-hidden /> : <MenuIcon className="size-4" aria-hidden />}
+        Menu
+        <Badge count={total} />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="fixed inset-x-2 top-[52px] z-30 max-h-[80vh] overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-[0_8px_24px_rgba(18,40,74,0.18)]"
+        >
+          {groups.map((group) => (
+            <div key={group.label} className="border-b border-line-soft last:border-0">
+              {group.items.length > 1 && (
+                <p className="px-3 pb-0.5 pt-2 text-[11px] font-bold uppercase tracking-wide text-subtle">
+                  {group.label}
+                </p>
+              )}
+              {group.items.map((item) => (
+                <MenuItem key={item.href} item={item} onNavigate={onClose} />
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
