@@ -117,7 +117,13 @@ ${categoryLines}
 
 How to read these:
 
-Type and category are not the same thing and must not be confused. An insurance premium invoice is type INVOICE, category Insurance. A letter from the insurer about a claim is type NOTICE, same category. A payroll tax notice is type NOTICE, category Payroll. Pick the category from the list above or report null — never invent one, and never put a category in the type field.
+Type and category are not the same thing and must not be confused. An insurance premium invoice is type INVOICE, category Insurance. A letter from the insurer about a claim is type NOTICE, same category. Pick the category from the list above or report null — never invent one, and never put a category in the type field.
+
+Two boundaries decide most of these, and both are about what the page does rather than what it calls itself.
+
+INVOICE or STATEMENT: if an amount is owed now, it is an INVOICE — whatever the page is headed. A document headed "billing statement" that shows a premium due is an invoice, because somebody has to pay it. STATEMENT is for a periodic summary where nothing is being asked for: a bank statement, a card statement settled in full, an account summary with a zero balance.
+
+Tax or Payroll: anything sent BY a tax authority is category Tax — income tax, payroll tax, sales tax, a penalty, a lien. An IRS notice about Form 941 is Tax, not Payroll, even though 941 is a payroll return: it came from the IRS and it is about tax. Payroll is for the payroll paperwork itself — W-2 and 1099 forms, a wage garnishment order, a report from the payroll processor.
 
 Amount means what is owed now, or the face value of an incoming check. Statements often show a previous balance, a payment received and a new balance; report the amount actually due. If the document asks for nothing, the amount is null.
 
