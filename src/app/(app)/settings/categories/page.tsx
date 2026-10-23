@@ -3,6 +3,8 @@ import { saveCategory, toggleCategoryActive } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
 import { requireAdmin } from '@/server/session'
 import { BTN, INPUT } from '@/lib/theme'
+import { categoryProgress } from '@/server/categorise'
+import { CategoriseRunner } from '@/components/categorise-runner'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,7 +24,22 @@ export default async function CategoriesPage() {
     include: { _count: { select: { documents: true } } },
   })
 
+  const progress = await categoryProgress(session.companyGroupId)
+
   return (
+    <div className="space-y-5">
+      {/*
+        The categories are no use empty, and until this they were: seven existed and not
+        one document used any of them. This is the only way to fill the backlog, because
+        nothing already stored implies a category.
+      */}
+      <CategoriseRunner
+        remaining={progress.remaining}
+        filled={progress.filled}
+        noFile={progress.noFile}
+        estimate={`$${progress.estimate.toFixed(2)}`}
+      />
+
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="overflow-hidden rounded-xl border border-line bg-surface">
         <table className="w-full text-sm">
@@ -101,6 +118,7 @@ export default async function CategoriesPage() {
         </label>
         <button className={BTN.primary}>Add category</button>
       </form>
+    </div>
     </div>
   )
 }
