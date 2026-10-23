@@ -5,7 +5,7 @@ import { z } from 'zod'
 import type { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/server/db/client'
 import { normalizeEmail } from '@/auth'
-import { requireAdmin } from '@/server/session'
+import { ROLES, requireAdmin } from '@/server/session'
 import { hashPassword, validatePassword } from '@/server/password'
 
 /**
@@ -204,7 +204,7 @@ export async function saveDocumentType(formData: FormData) {
 const memberSchema = z.object({
   email: z.string().trim().email(),
   name: z.string().trim().optional(),
-  role: z.enum(['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'VIEWER', 'UPLOADER']),
+  role: z.enum(ROLES),
   /// Blank means Google-only: the person signs in with Google and never has a password.
   password: z.string().optional(),
 })
@@ -355,10 +355,8 @@ export async function setMemberActive(membershipId: string, isActive: boolean) {
 export async function setMemberRole(membershipId: string, role: string) {
   const session = await requireAdmin()
 
-  const parsed = z
-    .enum(['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'VIEWER', 'UPLOADER'])
-    .safeParse(role)
-  if (!parsed.success) throw new Error('Unknown role.')
+  const parsed = z.enum(ROLES).safeParse(role)
+  if (!parsed.success) throw new Error(`Unknown role: ${role}`)
 
   const membership = await prisma.membership.findFirst({
     where: { id: membershipId, companyGroupId: session.companyGroupId },

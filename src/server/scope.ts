@@ -24,6 +24,23 @@ import { canConfigure, type Session } from '@/server/session'
 export async function visibleEntityIds(session: Session): Promise<string[] | null> {
   if (canConfigure(session.role)) return null
 
+  /*
+   * An approver with no companies approves nothing, not everything.
+   *
+   * Everywhere else an empty scope means "all", which is the sensible default for an
+   * operator who files everyone's mail. For an approver it is the opposite: it hands
+   * out the power to clear payments for every company in the group, by omission, which
+   * is the worst way to grant anything.
+   *
+   * Saving an empty scope is already refused — but a role can be changed *to* approver
+   * on a membership whose scope was always empty, which is precisely how it happened
+   * the first time this was tested. Refusing that change instead would make an approver
+   * impossible to create at all, so the rule lives here, where the consequence is: an
+   * empty scope shows them nothing, the Members screen says why, and their own screen
+   * says who to ask.
+   */
+  if (session.role === 'APPROVER' && session.entityScope.length === 0) return []
+
   const entities = await prisma.entity.findMany({
     where: {
       companyGroupId: session.companyGroupId,

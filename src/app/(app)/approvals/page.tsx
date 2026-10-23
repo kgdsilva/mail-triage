@@ -96,6 +96,18 @@ export default async function ApprovalsPage({
             upload button. Adding is not approving — the history records who did which.
           */}
           {canAddBill(session.role) && <AddBill entities={entities} />}
+          {/*
+            Said here as well as on the Members screen, because this is where somebody
+            finds out — an approver with no companies sees an empty list, and an empty
+            list is indistinguishable from "nothing to do" unless it says otherwise.
+          */}
+          {session.role === 'APPROVER' && session.entityScope.length === 0 && (
+            <p className="w-full rounded-xl border border-gold-500 bg-gold-50 px-4 py-2.5 text-[12.5px] text-navy-900">
+              <span className="font-bold">No companies are assigned to you yet</span>, so nothing
+              can reach you here. Ask an administrator to tick your companies in Settings →
+              Members.
+            </p>
+          )}
         </div>
         <p className="mt-1 text-sm text-muted">
           {entities.length === 1

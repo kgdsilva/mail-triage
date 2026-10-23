@@ -76,6 +76,32 @@ export const requireSession = cache(async (): Promise<Session> => {
  */
 
 /** Companies, document types, vendors, autopay, members. The dangerous screens. */
+/**
+ * Every role somebody can hold, in one place.
+ *
+ * It was in three places, and they drifted: the Members screen offered APPROVER and
+ * ACCOUNTANT while the two actions that write a role validated against a list that
+ * predated both. Picking either threw on the server, which in production surfaces as an
+ * unexplained React error — so for as long as the approval workflow has existed, it has
+ * been impossible to create an approver or an accountant. Nobody could have known from
+ * the screen; it looked like a choice.
+ *
+ * Anything that accepts a role now reads this, and the Members screen is typed so that
+ * forgetting to describe a new one fails the build rather than the click.
+ */
+export const ROLES = [
+  'OWNER',
+  'ADMIN',
+  'OPERATOR',
+  'MEMBER',
+  'VIEWER',
+  'UPLOADER',
+  'APPROVER',
+  'ACCOUNTANT',
+] as const
+
+export type Role = (typeof ROLES)[number]
+
 const CONFIGURE_ROLES = ['OWNER', 'ADMIN'] as const
 
 /** Uploading, reading with the AI, classifying, importing history. */

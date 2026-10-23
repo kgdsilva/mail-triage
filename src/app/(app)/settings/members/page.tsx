@@ -1,7 +1,7 @@
 import { CircleSlash, Info, RotateCcw } from 'lucide-react'
 import { setMemberActive } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
-import { requireAdmin } from '@/server/session'
+import { ROLES as ALL_ROLES, requireAdmin, type Role } from '@/server/session'
 import { AddMemberForm } from '@/components/add-member-form'
 import { MemberPassword } from '@/components/member-password'
 import { MemberEntities } from '@/components/member-entities'
@@ -14,20 +14,24 @@ export const dynamic = 'force-dynamic'
  * Access roles only. Who pays or confirms a given document is decided per document on
  * the classify screen, not here — the same person may confirm one item and pay the next.
  */
-const ROLES = [
-  { role: 'OWNER', help: 'Everything, including members and ownership' },
-  { role: 'ADMIN', help: 'Everything except ownership transfer' },
-  { role: 'OPERATOR', help: 'Uploads, reads and classifies; sees the whole log' },
-  { role: 'MEMBER', help: 'Works the documents routed to them' },
-  { role: 'VIEWER', help: 'Read-only across the whole log' },
-  { role: 'UPLOADER', help: 'Puts scans in. One screen, and nothing else' },
-  { role: 'APPROVER', help: 'Approves bills for their companies, and nothing else' },
-  { role: 'ACCOUNTANT', help: 'Pays what has been approved; cannot approve' },
-] as const
+/*
+ * Described as a record keyed by the role union, so adding a role to the system without
+ * writing a line about it here fails the build. The previous arrangement had this screen
+ * offering two roles the server would not accept, and nothing said so until somebody
+ * clicked — which is the kind of gap a type is for.
+ */
+const ROLE_HELP: Record<Role, string> = {
+  OWNER: 'Everything, including members and ownership',
+  ADMIN: 'Everything except ownership transfer',
+  OPERATOR: 'Uploads, reads and classifies; sees the whole log',
+  MEMBER: 'Works the documents routed to them',
+  VIEWER: 'Read-only across the whole log',
+  UPLOADER: 'Puts scans in. One screen, and nothing else',
+  APPROVER: 'Approves bills for their companies, and nothing else',
+  ACCOUNTANT: 'Pays what has been approved; cannot approve',
+}
 
-const ROLE_HELP: Record<string, string> = Object.fromEntries(
-  ROLES.map((r) => [r.role, r.help]),
-)
+const ROLES = ALL_ROLES.map((role) => ({ role, help: ROLE_HELP[role] }))
 
 /** Colour by how much the role can do, so the list reads by weight before by word. */
 const ROLE_TONE: Record<string, string> = {
