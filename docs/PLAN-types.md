@@ -99,7 +99,7 @@ largest group in the log would land in "Other".
 | `INSURANCE` | 28 | **unchanged** | **Insurance** | see §5 |
 | *(no type)* | 90 | **unchanged** | *(left empty)* | see §5 |
 
-**Documents whose type changes: 164.** Documents that gain a category: **107**
+**Documents whose type changes: 122.** Documents that gain a category: **107**
 (76 Tax, 8 Payroll, 28 Insurance — the last gaining only the category).
 
 Everything else keeps the type it has.

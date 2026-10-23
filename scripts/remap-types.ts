@@ -67,6 +67,19 @@ const MAP: { from: string; type: string | null; category: string | null; why: st
   },
 ]
 
+/**
+ * The set this works on, in one place.
+ *
+ * Demo rows are excluded everywhere — including from the counts, which is what caught
+ * this: the BEFORE table excluded them and the plan did not, so BILL printed as 35 above
+ * and 47 below on the same screen. A report that contradicts itself is worse than no
+ * report, and production has no demo rows at all, so excluding them is also what makes
+ * this rehearsal predict production.
+ */
+function scope(companyGroupId: string) {
+  return { companyGroupId, deletedAt: null, isDemo: false } as const
+}
+
 /** Types nobody should be able to pick again. Never deleted — documents point at them. */
 const RETIRE = ['BILL', 'IRS_NOTICE', 'TAX_NOTICE', 'TAX_PR_NOTICE', 'PAYROLL', 'SPAM']
 
@@ -105,7 +118,7 @@ async function main() {
       continue
     }
     const n = await prisma.document.count({
-      where: { companyGroupId: group.id, deletedAt: null, documentTypeId: fromId },
+      where: { ...scope(group.id), documentTypeId: fromId },
     })
     if (rule.type) willChange += n
     if (rule.category) willCategorise += n
@@ -156,7 +169,7 @@ async function main() {
     if (!fromId) continue
 
     const docs = await prisma.document.findMany({
-      where: { companyGroupId: group.id, deletedAt: null, documentTypeId: fromId },
+      where: { ...scope(group.id), documentTypeId: fromId },
       select: { id: true, categoryId: true },
     })
 
