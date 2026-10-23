@@ -2,7 +2,8 @@ import Link from 'next/link'
 import type { ApprovalStatus } from '@/generated/prisma/enums'
 import { billCounts, listBills } from '@/server/approvals'
 import { narrowEntityChoice, visibleEntities, visibleEntityIds } from '@/server/scope'
-import { canApprove, canConfigure, requireApprover } from '@/server/session'
+import { canAddBill, canApprove, canConfigure, requireApprover } from '@/server/session'
+import { AddBill } from '@/components/add-bill'
 import { ApprovalsBoard, ShortcutHint, type BoardBill } from '@/components/approvals-board'
 import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
@@ -89,6 +90,12 @@ export default async function ApprovalsPage({
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-[26px] font-bold tracking-tight text-navy-900">Bills to approve</h1>
           <ShortcutHint />
+          {/*
+            The approver's own way in. Eric gets invoices by email that never touch the
+            post; before this his only route was forwarding them to somebody with an
+            upload button. Adding is not approving — the history records who did which.
+          */}
+          {canAddBill(session.role) && <AddBill entities={entities} />}
         </div>
         <p className="mt-1 text-sm text-muted">
           {entities.length === 1

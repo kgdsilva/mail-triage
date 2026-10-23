@@ -6,7 +6,8 @@ import { narrowEntityChoice, visibleEntities, visibleEntityIds } from '@/server/
 import { canApprove, canSettle, requireSettler } from '@/server/session'
 import { prisma } from '@/server/db/client'
 import { countToDecide, handoff, listToDecide } from '@/server/to-decide'
-import { canTriagePayments } from '@/server/session'
+import { canAddBill, canTriagePayments } from '@/server/session'
+import { AddBill } from '@/components/add-bill'
 import { AccountingTable, type AccountingBill } from '@/components/accounting-table'
 import { ToDecideList } from '@/components/to-decide-list'
 import { ChecksTable } from '@/components/checks-table'
@@ -231,6 +232,9 @@ export default async function AccountingPage({
           </span>
         )}
       </div>
+
+      {/* The way in for a bill that did not arrive as post. */}
+      {canAddBill(session.role) && <AddBill entities={entities} />}
 
       {active === 'checks' ? (
         <ChecksTable rows={checkRows} />

@@ -120,6 +120,25 @@ export function canApprove(role: string) {
  */
 const PAYMENT_TRIAGE_ROLES = ['OWNER', 'ADMIN', 'ACCOUNTANT'] as const
 
+/**
+ * Putting a bill into the system by hand.
+ *
+ * Not every bill arrives as post that somebody scanned. A vendor emails an invoice to
+ * the approver; a subscription renews and the receipt is a web page; the accountant is
+ * sent a statement directly. Until now none of those had a way in: uploading belongs to
+ * the people who process the post, so the approver and the accountant — the two whose
+ * whole job is bills — could not add one. Their only route was to forward it to
+ * somebody with an upload button and wait.
+ *
+ * Wider than UPLOAD_ROLES because it is a different act: this is not "process the day's
+ * post", it is "here is one bill I already know about".
+ */
+const ADD_BILL_ROLES = ['OWNER', 'ADMIN', 'OPERATOR', 'APPROVER', 'ACCOUNTANT'] as const
+
+export function canAddBill(role: string) {
+  return (ADD_BILL_ROLES as readonly string[]).includes(role)
+}
+
 export function canTriagePayments(role: string) {
   return (PAYMENT_TRIAGE_ROLES as readonly string[]).includes(role)
 }
@@ -220,6 +239,12 @@ export async function requireTriage(): Promise<Session> {
 }
 
 /** Acting on an item that is already on the board. */
+export async function requireBillAdder(): Promise<Session> {
+  const session = await requireSession()
+  if (!canAddBill(session.role)) redirect(homeFor(session.role))
+  return session
+}
+
 /** The accountant's inbox, and nothing else. */
 export async function requirePaymentTriage(): Promise<Session> {
   const session = await requireSession()
