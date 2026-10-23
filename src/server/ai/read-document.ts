@@ -62,7 +62,7 @@ export type ReadResult =
  * "Marsh & Munar Team LLC" or shows an EIN, not "MMT".
  */
 async function groupContext(companyGroupId: string) {
-  const [entities, types] = await Promise.all([
+  const [entities, types, categories] = await Promise.all([
     prisma.entity.findMany({
       where: { companyGroupId, isActive: true },
       orderBy: { sortOrder: 'asc' },
@@ -72,6 +72,11 @@ async function groupContext(companyGroupId: string) {
       where: { companyGroupId, isActive: true },
       orderBy: { sortOrder: 'asc' },
       select: { code: true, label: true },
+    }),
+    prisma.category.findMany({
+      where: { companyGroupId, isActive: true },
+      orderBy: { name: 'asc' },
+      select: { name: true },
     }),
   ])
 
@@ -90,19 +95,29 @@ async function groupContext(companyGroupId: string) {
   })
 
   const typeLines = types.map((t) => `- ${t.code} = ${t.label}`)
-  return { entityLines: entityLines.join('\n'), typeLines: typeLines.join('\n') }
+  const categoryLines = categories.map((c) => `- ${c.name}`)
+  return {
+    entityLines: entityLines.join('\n'),
+    typeLines: typeLines.join('\n'),
+    categoryLines: categoryLines.join('\n'),
+  }
 }
 
-function systemPrompt(entityLines: string, typeLines: string) {
+function systemPrompt(entityLines: string, typeLines: string, categoryLines: string) {
   return `You read scanned business mail for a group of related companies and report what each document says.
 
 Entities in this group. Match on the ADDRESSEE — who the mail is written to — never on the sender:
 ${entityLines}
 
-Document types:
+Document types — what KIND of document it is:
 ${typeLines}
 
+Categories — what the document is ABOUT. These are a different question from the type, and a document usually has both:
+${categoryLines}
+
 How to read these:
+
+Type and category are not the same thing and must not be confused. An insurance premium invoice is type INVOICE, category Insurance. A letter from the insurer about a claim is type NOTICE, same category. A payroll tax notice is type NOTICE, category Payroll. Pick the category from the list above or report null — never invent one, and never put a category in the type field.
 
 Amount means what is owed now, or the face value of an incoming check. Statements often show a previous balance, a payment received and a new balance; report the amount actually due. If the document asks for nothing, the amount is null.
 
@@ -139,7 +154,7 @@ export async function readDocument(
     return { ok: false, error: 'Could not read the stored file', cause: 'document' }
   }
 
-  const { entityLines, typeLines } = await groupContext(companyGroupId)
+  const { entityLines, typeLines, categoryLines } = await groupContext(companyGroupId)
   const isPdf = (doc.mimeType ?? 'application/pdf') === 'application/pdf'
   const client = new Anthropic()
 
@@ -157,7 +172,7 @@ export async function readDocument(
       system: [
         {
           type: 'text',
-          text: systemPrompt(entityLines, typeLines),
+          text: systemPrompt(entityLines, typeLines, categoryLines),
           // Identical for every document in the group, so it is read from cache after
           // the first call rather than paid for on all of them.
           cache_control: { type: 'ephemeral' },

@@ -15,6 +15,7 @@ export const EXTRACTION_SCHEMA = {
     'entityCode',
     'addresseeName',
     'documentTypeCode',
+    'categoryName',
     'vendorName',
     'amount',
     'documentDate',
@@ -45,6 +46,11 @@ export const EXTRACTION_SCHEMA = {
     documentTypeCode: {
       type: ['string', 'null'],
       description: 'Document type code from the provided list. Null if none fits.',
+    },
+    categoryName: {
+      type: ['string', 'null'],
+      description:
+        'What the document is ABOUT, from the provided category list — not what kind of document it is. An insurance premium invoice is type invoice, category Insurance. Null if none of them fits; never invent one.',
     },
     vendorName: {
       type: ['string', 'null'],
@@ -112,6 +118,7 @@ export const EXTRACTION_SCHEMA = {
 export type Extraction = {
   entityCode: string | null
   addresseeName: string | null
+  categoryName: string | null
   moneyDirection: 'owed_by_us' | 'received_by_us' | 'neither'
   documentTypeCode: string | null
   vendorName: string | null

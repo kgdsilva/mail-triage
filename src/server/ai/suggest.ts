@@ -27,6 +27,8 @@ import type { Extraction } from '@/server/ai/schema'
 
 export type AiSuggestion = {
   entityId: string | null
+  /** What it is about, matched to the group's own list. Null when none fits. */
+  categoryId?: string | null
   documentTypeId: string | null
   vendorId: string | null
   vendorName: string | null
@@ -198,7 +200,7 @@ export async function buildSuggestion(
   companyGroupId: string,
   x: Extraction,
 ): Promise<AiSuggestion> {
-  const [entity, documentType, vendor] = await Promise.all([
+  const [entity, documentType, vendor, category] = await Promise.all([
     x.entityCode
       ? prisma.entity.findFirst({
           where: { companyGroupId, code: x.entityCode, isActive: true },
@@ -212,6 +214,23 @@ export async function buildSuggestion(
         })
       : null,
     resolveVendor(companyGroupId, x.vendorName),
+    /*
+     * Matched against the list the reader was given, never created.
+     *
+     * The category list is a decision Eric and Chris made about how the log is
+     * organised; a model inventing an eighth one would quietly undo that, and the
+     * mismatch would only show up as a filter that misses documents.
+     */
+    x.categoryName
+      ? prisma.category.findFirst({
+          where: {
+            companyGroupId,
+            isActive: true,
+            name: { equals: x.categoryName, mode: 'insensitive' },
+          },
+          select: { id: true },
+        })
+      : null,
   ])
 
   const documentDate = parseDate(x.documentDate)
@@ -235,6 +254,7 @@ export async function buildSuggestion(
   return {
     entityId: entity?.id ?? null,
     documentTypeId: documentType?.id ?? null,
+    categoryId: category?.id ?? null,
     vendorId: vendor?.id ?? null,
     vendorName: vendor?.name ?? x.vendorName,
     amount: x.amount,
@@ -534,6 +554,9 @@ async function applyDecision(
       data: {
         entityId: suggestion.entityId,
         documentTypeId: suggestion.documentTypeId,
+        // Only when the reader found one in the list; it never clears a category a
+        // person chose.
+        ...(suggestion.categoryId ? { categoryId: suggestion.categoryId } : {}),
         vendorId: suggestion.vendorId,
         documentDate,
         dueDate,
