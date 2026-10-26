@@ -282,10 +282,43 @@ export async function receive(arrival: Arrival): Promise<Outcome & { groupName?:
         reason: result.reason,
         documentsCreated: result.documentsCreated,
       },
-      // A retry of something already recorded changes nothing: the documents exist.
-      update: {},
+      /*
+       * A replay overwrites the outcome, and that is the point of replaying.
+       *
+       * This was `update: {}`, meant to stop a retried webhook becoming two documents.
+       * It did not do that — the sha256 check does — and it had a cost nobody would
+       * guess from reading it: after fixing the cause and pressing Replay, the screen
+       * went on showing the original refusal, so a fix that worked looked like a fix
+       * that changed nothing. The screen lied in the one moment it was being trusted.
+       */
+      update: {
+        outcome: result.outcome,
+        reason: result.reason,
+        documentsCreated: result.documentsCreated,
+        receivedAt: new Date(),
+      },
     })
     return { ...result, groupName: group.name }
+  }
+
+  /*
+   * Already taken, so don't take it twice.
+   *
+   * The real guard against a retry, now stated where it belongs rather than left to the
+   * sha256 check further down to catch by accident. An email that was accepted is
+   * finished; replaying it should report what happened, not do it again.
+   */
+  const already = await prisma.inboundEmail.findUnique({
+    where: { providerId: arrival.providerId },
+    select: { outcome: true, reason: true, documentsCreated: true },
+  })
+  if (already?.outcome === 'accepted') {
+    return {
+      outcome: 'accepted',
+      reason: already.reason,
+      documentsCreated: already.documentsCreated,
+      groupName: group.name,
+    }
   }
 
   const sender = await senderAllowed(group.id, arrival.from)
