@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { PageHelp } from '@/components/page-help'
 import { ArrowRight, CircleAlert, Inbox, Wallet } from 'lucide-react'
 import { prisma } from '@/server/db/client'
 import { boardCounts, listBoard, type BoardScope } from '@/server/board'
@@ -101,6 +102,8 @@ export default async function Board({
           can act on it.
         </p>
       </header>
+
+      <PageHelp topic="board" />
 
       <BoardFilters
         scope={scope}

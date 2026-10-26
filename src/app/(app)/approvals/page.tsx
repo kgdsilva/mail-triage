@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { PageHelp } from '@/components/page-help'
 import type { ApprovalStatus } from '@/generated/prisma/enums'
 import { billCounts, listBills } from '@/server/approvals'
 import { narrowEntityChoice, visibleEntities, visibleEntityIds } from '@/server/scope'
@@ -116,6 +117,8 @@ export default async function ApprovalsPage({
           Open the invoice, then approve, deny or send it back with a question.
         </p>
       </header>
+
+      <PageHelp topic="approvals" />
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1 rounded-xl border border-line bg-surface p-1">

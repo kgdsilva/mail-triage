@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { PageHelp } from '@/components/page-help'
 import { Clock } from 'lucide-react'
 import type { ApprovalStatus } from '@/generated/prisma/enums'
 import { billCounts, listBills } from '@/server/approvals'
@@ -226,6 +227,9 @@ export default async function AccountingPage({
           them.
         </p>
       </header>
+
+      {/* One per tab: the six answer six different questions. */}
+      <PageHelp topic={`accounting.${active}`} />
 
       {/* Above the tabs, so it is read on the way to whatever the accountant came for:
           these are the only bills that nothing in the post will ever remind anyone of. */}

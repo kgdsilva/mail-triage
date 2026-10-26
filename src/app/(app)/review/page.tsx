@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { PageHelp } from '@/components/page-help'
 import { prisma } from '@/server/db/client'
 import { countNotFiled, countUnreviewed, listForReview } from '@/server/documents'
 import { countUnread } from '@/server/actions/ai'
@@ -105,6 +106,8 @@ export default async function ReviewPage({
           </div>
         )}
       </header>
+
+      <PageHelp topic="review" />
 
       {/*
         Silent while the key looks right. It speaks only when the shape of the value is

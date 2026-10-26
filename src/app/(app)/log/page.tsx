@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { PageHelp } from '@/components/page-help'
 import { ChevronRight, Copy, FileQuestion, Search, Trash2, Undo2 } from 'lucide-react'
 import { DispositionBadge, DueBadge, EntityBadge, StatusBadge, formatDate, formatMoney } from '@/components/badges'
 import { documentTypeIcon, documentTypeInk } from '@/lib/theme'
@@ -197,6 +198,8 @@ export default async function LogPage({
               : 'Every document routed to you, open or resolved.'}
         </p>
       </header>
+
+      <PageHelp topic="log" />
 
       {showingDeleted && (
         <div className="flex items-center gap-3 rounded-xl border border-line bg-gold-50 px-4 py-2.5 text-[13px] text-gold-800">

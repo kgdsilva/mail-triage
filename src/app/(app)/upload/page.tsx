@@ -1,4 +1,5 @@
 import { UploadForm } from '@/components/upload-form'
+import { PageHelp } from '@/components/page-help'
 import { canTriage, requireUpload } from '@/server/session'
 
 export const dynamic = 'force-dynamic'
@@ -20,6 +21,16 @@ export default async function UploadPage() {
             ? 'One PDF per document, named however they arrive. Files are stored here — this platform is the source of truth, not Box or Drive. Nothing is read by the AI until you ask for it on Review, so you can drop a whole batch in first.'
             : 'One PDF per document, named however they arrive — no renaming, no sorting, no folders. Drop the whole scan in and you are done: the rest is picked up from here.'}
         </p>
+        {/*
+          Only for somebody who has the screens it mentions. The scanner's version of
+          this page is deliberately four lines, and explaining Review to a person who
+          cannot open Review is how they decide the tool is not for them.
+        */}
+        {canTriage(session.role) && (
+          <div className="mt-2">
+            <PageHelp topic="upload" />
+          </div>
+        )}
       </div>
       <UploadForm canClassify={canTriage(session.role)} />
     </div>
