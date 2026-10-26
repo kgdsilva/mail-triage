@@ -112,9 +112,22 @@ type Payload = {
  * with other companies' branding.
  */
 function isRealAttachment(a: { contentDisposition: string | null; contentId: string | null }) {
-  if (a.contentDisposition && a.contentDisposition.toLowerCase() === 'inline') return false
-  if (a.contentId) return false
-  return true
+  const disposition = a.contentDisposition?.toLowerCase() ?? null
+
+  // What the sending client said it is, which is the only field that actually means it.
+  if (disposition === 'inline') return false
+  if (disposition === 'attachment') return true
+
+  /*
+   * No disposition, so guess from the content id — but only then.
+   *
+   * This started as "a content id means inline", and that threw away real attachments:
+   * Gmail stamps a content id on ordinary ones too. The first forwarded invoice arrived
+   * as content_disposition "attachment" *with* a content id, so the rule meant to skip
+   * signature logos would have skipped the invoice, and the screen would have said "no
+   * attachment" about an email that plainly had one.
+   */
+  return !a.contentId
 }
 
 /**
@@ -227,9 +240,11 @@ export async function POST(request: Request) {
    * them, a failed fetch and an email with nothing attached look identical — and they
    * have opposite remedies.
    */
-  const announced = (data.attachments ?? []).filter(
-    (a) =>
-      (a.content_disposition ?? '').toLowerCase() !== 'inline' && !a.content_id,
+  const announced = (data.attachments ?? []).filter((a) =>
+    isRealAttachment({
+      contentDisposition: a.content_disposition ?? null,
+      contentId: a.content_id ?? null,
+    }),
   ).length
 
   const outcome = await receive({
