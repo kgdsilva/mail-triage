@@ -44,6 +44,7 @@ model CompanyGroup {
   folders       StorageFolder[]
   vendors       Vendor[]
   autopayRules  AutopayRule[]
+  recurring     RecurringPayment[]
   routingRules  RoutingRule[]
   batches       Batch[]
   documents     Document[]
@@ -55,11 +56,11 @@ model CompanyGroup {
 
 /// Global identity. A user can belong to several company groups.
 model User {
-  id          String    @id @default(cuid())
-  email       String    @unique
-  name        String?
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
   // Named `image` because the Auth.js Prisma adapter writes to that exact field.
-  image       String?   @map("avatar_url")
+  image         String?   @map("avatar_url")
   emailVerified DateTime? @map("email_verified")
 
   /// scrypt hash for password sign-in, in the format written by src/server/password.ts.
@@ -88,12 +89,13 @@ model User {
   memberships       Membership[]
   accounts          Account[]
   sessions          Session[]
-  uploadedBatches   Batch[]           @relation("BatchUploader")
-  assignedDocuments Document[]        @relation("DocumentAssignee")
-  recordedPayments  Payment[]         @relation("PaymentRecorder")
-  approvalDecisions Document[]        @relation("ApprovalDecider")
-  reviewedDocuments Document[]        @relation("DocumentReviewer")
+  uploadedBatches   Batch[]            @relation("BatchUploader")
+  assignedDocuments Document[]         @relation("DocumentAssignee")
+  recordedPayments  Payment[]          @relation("PaymentRecorder")
+  approvalDecisions Document[]         @relation("ApprovalDecider")
+  reviewedDocuments Document[]         @relation("DocumentReviewer")
   confirmedAutopay  AutopayRule[]
+  createdRecurring  RecurringPayment[]
   routedTo          RoutingRule[]
   createdLinks      DocumentLink[]
   events            DocumentEvent[]
@@ -206,6 +208,7 @@ model Entity {
   aliases      EntityAlias[]
   folders      StorageFolder[]
   autopayRules AutopayRule[]
+  recurring    RecurringPayment[]
   documents    Document[]
   payments     Payment[]
 
@@ -354,6 +357,7 @@ model Vendor {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   autopayRules AutopayRule[]
+  recurring    RecurringPayment[]
   documents    Document[]
   payments     Payment[]
 
@@ -413,6 +417,67 @@ model AutopayRule {
   @@map("autopay_rule")
 }
 
+/// Money this office owes on a schedule that nobody drafts automatically.
+///
+/// The opposite of AutopayRule, which is the confusion worth naming out loud: an autopay
+/// rule says the vendor takes the money by itself, and exists so a bill can be archived
+/// without anybody deciding. This says the money leaves only if somebody remembers — two
+/// lawyers on monthly retainer were the case it was written for. One makes work
+/// disappear and the other makes work appear, and reading them as the same thing is how
+/// a retainer goes six weeks unpaid while everyone assumes it is handled.
+///
+/// There is no invoice to wait for and no scan to triage. The obligation is known in
+/// advance, which is exactly why it is easy to forget: nothing arrives to remind anyone.
+model RecurringPayment {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  entityId String @map("entity_id")
+  entity   Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  /// Who is paid. Nullable, like Payment's, so a retainer can be recorded before the
+  /// payee exists as a vendor — the name is the point, not the record.
+  vendorId String? @map("vendor_id")
+  vendor   Vendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  /// Shown when there is no vendor row, and the label everywhere either way.
+  payeeName String @map("payee_name")
+
+  /// What it usually is. Nullable because some retainers vary, and a wrong number on
+  /// screen is worse than none — it is the figure somebody would pay without checking.
+  amount Decimal? @db.Decimal(12, 2)
+
+  /// Day of the month it is due. 29, 30 and 31 fall back to the last day of a short
+  /// month rather than being skipped.
+  dayOfMonth Int @map("day_of_month")
+
+  method String?
+  notes  String?
+
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+
+  /// The last month a reminder went out for, as YYYY-MM.
+  ///
+  /// Held here rather than in `notification`, which can only point at a document, and a
+  /// standing obligation is not one. The consequence is that this is per obligation and
+  /// not per person: one reminder covers every accountant in the group. That is the
+  /// right granularity for the only people who receive it, who share both the job and
+  /// the question it answers.
+  lastRemindedPeriod String? @map("last_reminded_period")
+
+  createdByUserId String   @map("created_by_user_id")
+  createdBy       User     @relation(fields: [createdByUserId], references: [id])
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  payments Payment[]
+
+  @@index([companyGroupId, entityId])
+  @@map("recurring_payment")
+}
+
 /// A bill that was paid, and the proof.
 ///
 /// Its own table rather than a state on Document, for two reasons. A payment is not a
@@ -468,12 +533,31 @@ model Payment {
   receiptMimeType      String? @map("receipt_mime_type")
   receiptByteSize      Int?    @map("receipt_byte_size")
 
+  /// The standing obligation this settles, when it settles one.
+  ///
+  /// Null for every ordinary payment, which is nearly all of them. A recurring payment
+  /// is not a different kind of money — the lawyers' retainer leaves the account the
+  /// same way a utility bill does, and it belongs in the same ledger, the same Paid tab
+  /// and the same totals. All this says is which standing arrangement it answers, so a
+  /// month can be shown as settled without a parallel record of payments that are not
+  /// quite payments.
+  recurringPaymentId String?           @map("recurring_payment_id")
+  recurring          RecurringPayment? @relation(fields: [recurringPaymentId], references: [id], onDelete: SetNull)
+
+  /// Which month it answers, as YYYY-MM.
+  ///
+  /// Not derived from `paidOn`: October's retainer paid on the 3rd of November is still
+  /// October's, and deriving it would silently mark November done and leave October
+  /// owing forever. Paying late is the normal case here, not the exception.
+  recurringPeriod String? @map("recurring_period")
+
   recordedByUserId String @map("recorded_by_user_id")
   recordedBy       User   @relation("PaymentRecorder", fields: [recordedByUserId], references: [id])
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([recurringPaymentId, recurringPeriod])
   @@index([companyGroupId, paidOn])
   @@index([companyGroupId, entityId])
   @@index([documentId])
@@ -493,8 +577,8 @@ model RoutingRule {
   match Json @default("{}")
 
   routeToActionKind ActionKind? @map("route_to_action_kind")
-  routeToUserId String? @map("route_to_user_id")
-  routeToUser   User?   @relation(fields: [routeToUserId], references: [id], onDelete: SetNull)
+  routeToUserId     String?     @map("route_to_user_id")
+  routeToUser       User?       @relation(fields: [routeToUserId], references: [id], onDelete: SetNull)
 
   alsoNotifyUserIds String[] @map("also_notify_user_ids")
 
@@ -816,8 +900,8 @@ model Notification {
 
   channel NotificationChannel @default(EMAIL)
 
-  sentAt DateTime? @map("sent_at")
-  readAt DateTime? @map("read_at")
+  sentAt  DateTime? @map("sent_at")
+  readAt  DateTime? @map("read_at")
   actedAt DateTime? @map("acted_at")
 
   createdAt DateTime @default(now()) @map("created_at")

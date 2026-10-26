@@ -173,7 +173,7 @@ export async function sweep(
     if (sent.ok) {
       // Recorded only on success: a send that failed has told nobody, and marking it
       // would silence the next sweep about the very items nobody heard of.
-      await markTold(member, fresh)
+      await markTold(member, fresh, { markShared: !opts.onlyUserId })
       result.emailed += 1
       result.detail.push({
         who: member.userEmail,

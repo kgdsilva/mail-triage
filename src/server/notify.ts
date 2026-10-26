@@ -27,13 +27,23 @@
 import { prisma } from '@/server/db/client'
 import { listBills } from '@/server/approvals'
 import { toDecideWhere } from '@/server/to-decide'
+import { recurringOwed } from '@/server/recurring'
 import { canApprove, canTriagePayments, canWork, type Session } from '@/server/session'
 
 /** A person, in the shape the queries want, built from their membership. */
 export type Member = Session & { membershipId: string }
 
 export type WaitingItem = {
-  documentId: string
+  /**
+   * What this item is, for the "have I said this already" check.
+   *
+   * A document id for almost everything. A standing monthly payment has no document —
+   * nothing arrives in the post for a retainer, which is the whole reason it needs
+   * chasing — so it carries `recurring` instead and is tracked on its own row rather
+   * than in `notification`, which can only point at a document.
+   */
+  documentId: string | null
+  recurring?: { id: string; period: string }
   /** What the person is being asked to do, in their words not the schema's. */
   what: string
   title: string
@@ -167,6 +177,29 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
     }
   }
 
+  /*
+   * --- money nothing will ever remind anyone of ---------------------------------------
+   *
+   * Last in the list and first in importance. Every other item here exists because a
+   * piece of paper arrived; this one exists because none did. A retainer has no invoice,
+   * no scan and no queue — if this email does not mention it, nothing does.
+   */
+  if (canTriagePayments(member.role)) {
+    const owed = await recurringOwed(member.companyGroupId, member.entityScope.length > 0 ? member.entityScope : null)
+    for (const r of owed.slice(0, limit)) {
+      items.push({
+        documentId: null,
+        recurring: { id: r.id, period: r.period },
+        what: 'monthly payment, nothing will invoice you for it',
+        title: r.payeeName,
+        entityCode: r.entityCode,
+        amount: r.amount === null ? null : money(r.amount),
+        dueDate: day(r.dueDate),
+        href: '/accounting',
+      })
+    }
+  }
+
   // --- anything handed to this person by name ---------------------------------------
   if (canWork(member.role)) {
     const mine = await prisma.document.findMany({
@@ -226,27 +259,80 @@ export async function unTold(
 ): Promise<WaitingItem[]> {
   if (items.length === 0) return []
 
-  const told = await prisma.notification.findMany({
-    where: {
-      userId: member.userId,
-      documentId: { in: items.map((i) => i.documentId) },
-      sentAt: { not: null },
-    },
-    select: { documentId: true, sentAt: true },
-  })
+  const documentIds = items
+    .map((i) => i.documentId)
+    .filter((id): id is string => id !== null)
+
+  const told = documentIds.length === 0
+    ? []
+    : await prisma.notification.findMany({
+        where: {
+          userId: member.userId,
+          documentId: { in: documentIds },
+          sentAt: { not: null },
+        },
+        select: { documentId: true, sentAt: true },
+      })
 
   const cutoff = Date.now() - remindAfterDays * 86_400_000
   const recent = new Set(
     told.filter((t) => t.sentAt !== null && t.sentAt.getTime() > cutoff).map((t) => t.documentId),
   )
 
-  return items.filter((i) => !recent.has(i.documentId))
+  /*
+   * A monthly payment is mentioned once for its month, not once a week.
+   *
+   * Weekly would be wrong in both directions: four emails for one retainer, and the
+   * second one arriving before anybody has had a chance to act on the first. Once the
+   * month is paid the item is gone from `waitingFor` anyway, so the mark is only ever
+   * read while it is still owed.
+   */
+  const remindedPeriods = new Map<string, string | null>(
+    (
+      await prisma.recurringPayment.findMany({
+        where: {
+          id: { in: items.flatMap((i) => (i.recurring ? [i.recurring.id] : [])) },
+        },
+        select: { id: true, lastRemindedPeriod: true },
+      })
+    ).map((r) => [r.id, r.lastRemindedPeriod]),
+  )
+
+  return items.filter((i) => {
+    if (i.recurring) return remindedPeriods.get(i.recurring.id) !== i.recurring.period
+    return i.documentId !== null && !recent.has(i.documentId)
+  })
 }
 
-/** Records that these were sent, so the next sweep does not repeat them. */
-export async function markTold(member: Member, items: WaitingItem[]) {
+/**
+ * Records that these were sent, so the next sweep does not repeat them.
+ *
+ * `markShared` is false for a one-person run — the "send mine now" button. A monthly
+ * payment's mark is shared by everybody who would be told about it, so marking it from
+ * a test would mean somebody checking that email works thereby cancels this month's
+ * reminder for the accountant. Per-person marks are safe either way and still written.
+ */
+export async function markTold(
+  member: Member,
+  items: WaitingItem[],
+  { markShared = true }: { markShared?: boolean } = {},
+) {
   const now = new Date()
   for (const item of items) {
+    if (item.recurring) {
+      if (!markShared) continue
+      /*
+       * Marked on the obligation, not against this person — `notification` has nowhere
+       * to put something that is not a document. The consequence is honest and small:
+       * one reminder covers every accountant, who share the job and the answer.
+       */
+      await prisma.recurringPayment.update({
+        where: { id: item.recurring.id },
+        data: { lastRemindedPeriod: item.recurring.period },
+      })
+      continue
+    }
+    if (item.documentId === null) continue
     await prisma.notification.create({
       data: {
         userId: member.userId,

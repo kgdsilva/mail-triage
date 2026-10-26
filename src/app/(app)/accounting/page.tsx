@@ -15,6 +15,8 @@ import { listChecks } from '@/server/documents'
 import { ApprovalsTable, type ApprovalBill } from '@/components/approvals-table'
 import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
+import { RecurringLine, type Row as RecurringRow } from '@/components/recurring-line'
+import { periodOf, previousPeriod, recurringFor } from '@/server/recurring'
 
 export const dynamic = 'force-dynamic'
 
@@ -91,7 +93,8 @@ export default async function AccountingPage({
     visibleEntities(session),
   ])
 
-  const [checkRows, decideRows, decideCount, handoverPeople] = await Promise.all([
+  const thisPeriod = periodOf(new Date())
+  const [checkRows, decideRows, decideCount, handoverPeople, recurring] = await Promise.all([
     active === 'checks' ? listChecks(session.companyGroupId, chosen) : Promise.resolve([]),
     active === 'decide' ? listToDecide(session, chosen) : Promise.resolve([]),
     countToDecide(session, chosen),
@@ -107,6 +110,11 @@ export default async function AccountingPage({
           select: { user: { select: { id: true, name: true, email: true } } },
         })
       : Promise.resolve([]),
+    /*
+     * Two months, not one. A retainer missed in September is still owed in October, and
+     * a list that resets on the 1st is how a missed month stops existing.
+     */
+    recurringFor(session.companyGroupId, [previousPeriod(thisPeriod), thisPeriod], scope),
   ])
 
   const count: Record<Tab, number> = {
@@ -181,6 +189,33 @@ export default async function AccountingPage({
     hasFile: Boolean(d.storageKey),
   }))
 
+  const monthName = (period: string) =>
+    new Date(`${period}-01T00:00:00Z`).toLocaleDateString('en-US', {
+      month: 'long',
+      timeZone: 'UTC',
+    })
+
+  const recurringRows: RecurringRow[] = recurring.map((r) => ({
+    id: r.id,
+    payeeName: r.payeeName,
+    entityCode: r.entityCode,
+    amount: r.amount === null ? null : formatMoney(r.amount),
+    // Blank when the amount varies, so the form asks rather than suggesting a figure
+    // somebody would accept without checking.
+    rawAmount: r.amount === null ? '' : Number(r.amount.toString()).toFixed(2),
+    period: r.period,
+    periodLabel: monthName(r.period),
+    dueLabel: `due ${r.dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`,
+    daysLate: r.daysLate,
+    paid: r.paid
+      ? {
+          amount: formatMoney(r.paid.amount),
+          paidOn: r.paid.paidOn.toLocaleDateString('en-US', { timeZone: 'UTC' }),
+          recordedBy: r.paid.recordedBy,
+        }
+      : null,
+  }))
+
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       <header>
@@ -191,6 +226,10 @@ export default async function AccountingPage({
           them.
         </p>
       </header>
+
+      {/* Above the tabs, so it is read on the way to whatever the accountant came for:
+          these are the only bills that nothing in the post will ever remind anyone of. */}
+      <RecurringLine rows={recurringRows} canSettle={canSettle(session.role)} />
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1 rounded-xl border border-line bg-surface p-1">
