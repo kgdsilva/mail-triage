@@ -73,6 +73,16 @@ export type Arrival = {
   to: string[]
   subject: string | null
   attachments: Attachment[]
+  /**
+   * Set when the email had attachments this side could not get hold of.
+   *
+   * Kept apart from an empty list on purpose. "Nothing was attached" is the sender's
+   * problem and "we could not fetch it" is ours, and the first version of this reported
+   * the second as the first — telling somebody to attach the invoice they had attached.
+   * A wrong diagnosis costs more than no diagnosis: it sends the only person who can
+   * fix it to look in the wrong place.
+   */
+  fetchError?: string | null
 }
 
 export type Outcome = {
@@ -281,6 +291,15 @@ export async function receive(arrival: Arrival): Promise<Outcome & { groupName?:
   const sender = await senderAllowed(group.id, arrival.from)
   if (!sender.allowed) {
     return record({ outcome: 'refused', reason: sender.why, documentsCreated: 0 })
+  }
+
+  if (arrival.fetchError) {
+    /*
+     * Ours, and said as ours. Refused rather than ignored, because somebody has to act:
+     * ignored reads as "there was nothing to do", and there was something to do and this
+     * side failed at it.
+     */
+    return record({ outcome: 'refused', reason: arrival.fetchError, documentsCreated: 0 })
   }
 
   if (arrival.attachments.length === 0) {

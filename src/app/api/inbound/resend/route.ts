@@ -117,15 +117,40 @@ function isRealAttachment(a: { contentDisposition: string | null; contentId: str
   return true
 }
 
-/** The bytes live behind a second call; this is it. */
-async function fetchAttachments(emailId: string): Promise<Attachment[]> {
+/**
+ * The bytes live behind a second call; this is it.
+ *
+ * It returns why it failed rather than an empty list. Returning `[]` on failure was the
+ * first version and it was wrong in the way that costs the most time: an email whose
+ * attachment could not be fetched became indistinguishable from an email with no
+ * attachment, and the screen told the sender to "forward the email with the invoice
+ * attached" when the invoice was attached and the fault was ours. A key without read
+ * access produced a message blaming the user.
+ */
+async function fetchAttachments(
+  emailId: string,
+): Promise<{ attachments: Attachment[]; error: string | null }> {
   const key = process.env.RESEND_API_KEY?.trim()
-  if (!key) return []
+  if (!key) return { attachments: [], error: 'RESEND_API_KEY is not set, so the attachment could not be fetched.' }
 
   const res = await fetch(`${RESEND_API}/emails/receiving/${emailId}/attachments`, {
     headers: { Authorization: `Bearer ${key}` },
   })
-  if (!res.ok) return []
+  if (!res.ok) {
+    /*
+     * 401 and 403 here almost always mean the API key is sending-only. Reading an
+     * attachment is not sending, and the two permissions are separate — so the message
+     * names the likely cause instead of the status code alone.
+     */
+    const hint =
+      res.status === 401 || res.status === 403
+        ? ' — the API key may be sending-only; reading attachments needs read access.'
+        : ''
+    return {
+      attachments: [],
+      error: `The provider refused the attachment list (${res.status})${hint}`,
+    }
+  }
 
   const body = (await res.json()) as {
     data?: {
@@ -141,7 +166,7 @@ async function fetchAttachments(emailId: string): Promise<Attachment[]> {
 
   // Filtered before it becomes an Attachment, so the two provider-only fields that
   // decide it never travel further than this function.
-  return (body.data ?? [])
+  const attachments = (body.data ?? [])
     .filter((a) =>
       isRealAttachment({
         contentDisposition: a.content_disposition ?? null,
@@ -155,6 +180,8 @@ async function fetchAttachments(emailId: string): Promise<Attachment[]> {
       downloadUrl: a.download_url ?? null,
       size: typeof a.size === 'number' ? a.size : null,
     }))
+
+  return { attachments, error: null }
 }
 
 export async function POST(request: Request) {
@@ -190,12 +217,32 @@ export async function POST(request: Request) {
    * storage down, database unreachable — and those throw, which Next answers with a 500
    * and the provider does retry. The unique provider_id is what makes that retry safe.
    */
+  const fetched = await fetchAttachments(data.email_id)
+
+  /*
+   * What the email said it had, against what we managed to get.
+   *
+   * The webhook lists the attachments even though it carries none of their content, so
+   * these two numbers disagreeing is proof the fault is on this side. Without comparing
+   * them, a failed fetch and an email with nothing attached look identical — and they
+   * have opposite remedies.
+   */
+  const announced = (data.attachments ?? []).filter(
+    (a) =>
+      (a.content_disposition ?? '').toLowerCase() !== 'inline' && !a.content_id,
+  ).length
+
   const outcome = await receive({
     providerId: data.email_id,
     from: data.from,
     to: data.to,
     subject: data.subject ?? null,
-    attachments: await fetchAttachments(data.email_id),
+    attachments: fetched.attachments,
+    fetchError:
+      fetched.error ??
+      (announced > 0 && fetched.attachments.length === 0
+        ? `The email carried ${announced} attachment${announced === 1 ? '' : 's'} that could not be fetched from the provider.`
+        : null),
   })
 
   return NextResponse.json({
