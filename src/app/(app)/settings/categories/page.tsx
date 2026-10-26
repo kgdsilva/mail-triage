@@ -5,6 +5,8 @@ import { requireAdmin } from '@/server/session'
 import { BTN, INPUT } from '@/lib/theme'
 import { categoryProgress, rereadProgress } from '@/server/categorise'
 import { CategoriseRunner } from '@/components/categorise-runner'
+import { PlacementPanel } from '@/components/placement-panel'
+import { placementDryRun } from '@/server/categorise-free'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,9 +26,10 @@ export default async function CategoriesPage() {
     include: { _count: { select: { documents: true } } },
   })
 
-  const [progress, reread] = await Promise.all([
+  const [progress, reread, placements] = await Promise.all([
     categoryProgress(session.companyGroupId),
     rereadProgress(session.companyGroupId),
+    placementDryRun(session.companyGroupId),
   ])
 
   return (
@@ -42,6 +45,9 @@ export default async function CategoriesPage() {
         noFile={progress.noFile}
         estimate={`$${progress.estimate.toFixed(2)}`}
       />
+
+      {/* The free half of the repair, above the paid half because it is free. */}
+      <PlacementPanel initial={placements} />
 
       {/*
         The second pass, shown only while there is something to re-read. The first one
