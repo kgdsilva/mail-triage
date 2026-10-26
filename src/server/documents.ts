@@ -148,6 +148,10 @@ export const LOG_INCLUDE = {
   batch: { select: { label: true } },
   documentType: { select: { label: true, code: true } },
   vendor: { select: { name: true } },
+  // Shown in the log and editable there: for a backlog of a hundred wrong categories,
+  // opening each document to fix one field is the difference between a job somebody
+  // does and a job nobody does.
+  category: { select: { id: true, name: true } },
   storageFolder: { select: { pathCache: true } },
   assignedTo: { select: { name: true, email: true } },
 } satisfies Prisma.DocumentInclude

@@ -8,9 +8,10 @@ import { prisma } from '@/server/db/client'
 import { countByEntity, countByType, listDocuments } from '@/server/documents'
 import { deleteDocument, restoreDocument } from '@/server/actions/documents'
 import { redirect } from 'next/navigation'
-import { canSearchArchive, canSeeWholeLog, homeFor, requireSession } from '@/server/session'
+import { canSearchArchive, canSeeWholeLog, canTriage, homeFor, requireSession } from '@/server/session'
 import { visibleEntityIds } from '@/server/scope'
 import { PeekRow } from '@/components/pdf-peek'
+import { CategoryCell } from '@/components/category-cell'
 import { BackLink } from '@/components/back'
 import { BTN } from '@/lib/theme'
 
@@ -20,7 +21,7 @@ export const dynamic = 'force-dynamic'
  * The nine facts, the remove button, and the chevron that opens the document.
  * `PeekRow` spans this many cells when it expands.
  */
-const COLUMNS = 11
+const COLUMNS = 12
 
 export default async function LogPage({
   searchParams,
@@ -137,6 +138,14 @@ export default async function LogPage({
       select: { id: true, name: true },
     }),
   ])
+
+  /*
+   * Who may correct a category: whoever may triage. The question "what was this money
+   * for" belongs to the same people who decide what the paper is, and gating it tighter
+   * would leave a hundred wrong categories with nobody allowed to touch them.
+   */
+  const canEdit = canTriage(session.role)
+  const categoryOptions = categories
 
   /*
    * The companies kept in their own view name the tab that holds them, rather than the
@@ -386,6 +395,7 @@ export default async function LogPage({
                   <th className="px-4 py-3 font-bold">Document</th>
                   <th className="px-4 py-3 font-bold">Type</th>
                   <th className="px-4 py-3 font-bold">Vendor</th>
+                  <th className="px-4 py-3 font-bold">Category</th>
                   <th className="px-4 py-3 text-right font-bold">Amount</th>
                   <th className="px-4 py-3 font-bold">Due</th>
                   <th className="px-4 py-3 font-bold">Decision</th>
@@ -460,6 +470,22 @@ export default async function LogPage({
                     </td>
                     <td className="max-w-[180px] truncate px-4 py-3 text-[12.5px] text-muted">
                       {d.vendor?.name ?? <span className="text-subtle">—</span>}
+                    </td>
+                    {/* Editable in place. Filter the log to a category, see what does not
+                        belong, fix it in the row — which is the only shape in which
+                        correcting a hundred of them is work anybody will actually do. */}
+                    <td className="px-4 py-3">
+                      {canEdit ? (
+                        <CategoryCell
+                          documentId={d.id}
+                          categoryId={d.category?.id ?? null}
+                          categories={categoryOptions}
+                        />
+                      ) : (
+                        <span className="text-[12.5px] text-muted">
+                          {d.category?.name ?? <span className="text-subtle">—</span>}
+                        </span>
+                      )}
                     </td>
                     <td className="tabular whitespace-nowrap px-4 py-3 text-right text-[13.5px] font-bold text-navy-900">
                       {formatMoney(d.amount)}
