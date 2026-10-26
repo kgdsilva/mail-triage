@@ -86,7 +86,18 @@ export type Arrival = {
 }
 
 export type Outcome = {
-  outcome: 'accepted' | 'refused' | 'ignored'
+  /**
+   * `duplicate` is its own answer, and the reason is a lesson from the first one.
+   *
+   * The first email that worked end to end carried a PDF already in the log, so nothing
+   * was created and the screen said IGNORED — which reads as "this failed", and was read
+   * that way. It had not failed: the webhook, the signature, the key, the download and
+   * the hash all worked, and the system then correctly declined to file the same bytes
+   * twice. Four words of status undid the whole chain's credibility.
+   *
+   * Recognising a duplicate is the system working. It gets a word that says so.
+   */
+  outcome: 'accepted' | 'refused' | 'ignored' | 'duplicate'
   reason: string | null
   documentsCreated: number
 }
@@ -173,7 +184,7 @@ async function ingest(
   companyGroupId: string,
   attachment: Attachment,
   context: { from: string; subject: string | null; actorUserId: string | null },
-): Promise<{ created: boolean; reason?: string }> {
+): Promise<{ created: boolean; reason?: string; duplicateOf?: string }> {
   const contentType = (attachment.contentType ?? '').toLowerCase() || 'application/pdf'
   if (!ACCEPTED.has(contentType)) {
     return { created: false, reason: `${attachment.filename}: ${contentType} is not a document the reader can open` }
@@ -212,7 +223,11 @@ async function ingest(
     })
     if (twin) {
       await deleteObject(stored.key, stored.bucket)
-      return { created: false, reason: `${attachment.filename}: already here as “${twin.originalFilename}”` }
+      return {
+        created: false,
+        reason: `${attachment.filename} is already in the log as “${twin.originalFilename}”, so it was not filed twice.`,
+        duplicateOf: twin.originalFilename,
+      }
     }
 
     const prefill = await parseIncomingFilename(companyGroupId, attachment.filename)
@@ -349,6 +364,7 @@ export async function receive(arrival: Arrival): Promise<Outcome & { groupName?:
   }
 
   let created = 0
+  let duplicates = 0
   const skipped: string[] = []
 
   for (const attachment of arrival.attachments) {
@@ -358,10 +374,18 @@ export async function receive(arrival: Arrival): Promise<Outcome & { groupName?:
       actorUserId: sender.userId,
     })
     if (result.created) created += 1
-    else if (result.reason) skipped.push(result.reason)
+    else {
+      if (result.duplicateOf) duplicates += 1
+      if (result.reason) skipped.push(result.reason)
+    }
   }
 
   if (created === 0) {
+    // Everything that arrived was already here. The system worked; it simply had
+    // nothing to add, which is not the same as having failed at something.
+    if (duplicates > 0 && duplicates === arrival.attachments.length) {
+      return record({ outcome: 'duplicate', reason: skipped.join('; '), documentsCreated: 0 })
+    }
     return record({
       outcome: 'ignored',
       reason: skipped.join('; ') || 'Nothing in it could be filed.',

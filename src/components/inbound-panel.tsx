@@ -161,16 +161,28 @@ export function InboundPanel({
   )
 }
 
+/**
+ * The word matters more than it looks.
+ *
+ * A duplicate was shown as "ignored" and read as a failure, because that is what
+ * "ignored" means. It was the opposite: everything worked and the system declined to
+ * file the same bytes twice. So it says "already here", in the tone of a thing that went
+ * right, and only a genuine refusal is red.
+ */
+const WORDS: Record<string, { label: string; tone: string }> = {
+  accepted: { label: 'filed', tone: 'bg-ok-100 text-ok-700' },
+  duplicate: { label: 'already here', tone: 'bg-navy-100 text-navy-700' },
+  refused: { label: 'refused', tone: 'bg-danger-100 text-danger-700' },
+  ignored: { label: 'nothing to file', tone: 'bg-line-soft text-muted' },
+}
+
 function Outcome({ outcome }: { outcome: string }) {
-  const tone =
-    outcome === 'accepted'
-      ? 'bg-ok-100 text-ok-700'
-      : outcome === 'refused'
-        ? 'bg-danger-100 text-danger-700'
-        : 'bg-line-soft text-muted'
+  const word = WORDS[outcome] ?? { label: outcome, tone: 'bg-line-soft text-muted' }
   return (
-    <span className={`rounded-full px-1.5 py-0.5 text-[10.5px] font-bold uppercase ${tone}`}>
-      {outcome}
+    <span
+      className={`whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10.5px] font-bold uppercase ${word.tone}`}
+    >
+      {word.label}
     </span>
   )
 }
