@@ -474,7 +474,7 @@ export default async function LogPage({
                     {/* Editable in place. Filter the log to a category, see what does not
                         belong, fix it in the row — which is the only shape in which
                         correcting a hundred of them is work anybody will actually do. */}
-                    <td className="px-4 py-3">
+                    <td className="whitespace-nowrap px-4 py-3">
                       {canEdit ? (
                         <CategoryCell
                           documentId={d.id}
