@@ -355,10 +355,19 @@ export async function receive(arrival: Arrival): Promise<Outcome & { groupName?:
      * Nothing to take. Common and not an error: a reply, a confirmation, a note. The
      * body is deliberately not turned into a document — a sentence is not a bill, and
      * filing one as if it were would put text in the queue that nobody can act on.
+     *
+     * The message names the case this keeps hitting, because the first version did not
+     * and was useless exactly when it mattered: an invoice that is only a "pay now"
+     * link. Telling that sender to "attach the PDF" names a file that does not exist.
+     * What they have to do is make one — which is also why a file is required at all,
+     * since a link dies with the account that issued it.
      */
     return record({
       outcome: 'ignored',
-      reason: 'No attachment. Forward the email with the invoice attached, or attach the PDF.',
+      reason:
+        'No attachment. If the invoice is only a link or a web page, open it and save it ' +
+        'as a PDF first — then forward that, or use “Add a bill” on the Accounting screen. ' +
+        'A link cannot be kept: cancel the subscription and it is a dead page.',
       documentsCreated: 0,
     })
   }
