@@ -4,7 +4,12 @@ import { revalidatePath } from 'next/cache'
 import { prisma } from '@/server/db/client'
 import { recordEvent } from '@/server/documents'
 import { readDocument } from '@/server/ai/read-document'
-import { categoryByName, needsCategoryWhere } from '@/server/categorise'
+import {
+  categoryByName,
+  needsCategoryWhere,
+  needsRereadWhere,
+  otherCategoryId,
+} from '@/server/categorise'
 import { requireAdmin } from '@/server/session'
 
 /**
@@ -33,11 +38,29 @@ export type CategoriseResult = {
   halted: boolean
 }
 
-export async function categoriseSlice(size = 4): Promise<CategoriseResult> {
+/**
+ * `reread` is the second pass: the documents the first list could not place.
+ *
+ * One function rather than two, because the only differences are which documents are
+ * picked and which event retires them. A copy would be a copy of the halt handling, the
+ * slice bounds and the "a person's choice wins" transaction — the three things here that
+ * were got wrong once each and are now right.
+ */
+export async function categoriseSlice(
+  size = 4,
+  mode: 'fill' | 'reread' = 'fill',
+): Promise<CategoriseResult> {
   const session = await requireAdmin()
 
+  const other = mode === 'reread' ? await otherCategoryId(session.companyGroupId) : null
+  const where =
+    mode === 'reread'
+      ? needsRereadWhere(session.companyGroupId, other)
+      : needsCategoryWhere(session.companyGroupId)
+  const event = mode === 'reread' ? 'recategorised' : 'categorised'
+
   const docs = await prisma.document.findMany({
-    where: needsCategoryWhere(session.companyGroupId),
+    where,
     // Oldest first, so a run that is stopped and resumed moves through the log in a
     // predictable order rather than revisiting the same end of it.
     orderBy: { createdAt: 'asc' },
@@ -90,10 +113,10 @@ export async function categoriseSlice(size = 4): Promise<CategoriseResult> {
       await recordEvent({
         documentId: doc.id,
         actorUserId: session.userId,
-        action: 'categorised',
+        action: event,
         toValue: {
           category: null,
-          via: 'backfill',
+          via: mode === 'reread' ? 'reread' : 'backfill',
           readAs: read.extraction.categoryName,
           readAsType: read.extraction.documentTypeCode,
         },
@@ -104,8 +127,16 @@ export async function categoriseSlice(size = 4): Promise<CategoriseResult> {
     await prisma.$transaction(async (tx) => {
       // Re-read inside the transaction: a person may have set one while this ran, and
       // their choice always wins.
+      /*
+       * On the second pass "unchanged" means still null or still Other — those are the
+       * two answers this pass exists to replace. Anything else means somebody or
+       * something decided in between, and that decision stands.
+       */
       const fresh = await tx.document.findFirst({
-        where: { id: doc.id, categoryId: null },
+        where:
+          mode === 'reread'
+            ? { id: doc.id, OR: [{ categoryId: null }, ...(other ? [{ categoryId: other }] : [])] }
+            : { id: doc.id, categoryId: null },
         select: { id: true },
       })
       if (!fresh) return
@@ -115,10 +146,10 @@ export async function categoriseSlice(size = 4): Promise<CategoriseResult> {
         {
           documentId: doc.id,
           actorUserId: session.userId,
-          action: 'categorised',
+          action: event,
           toValue: {
             category: read.extraction.categoryName,
-            via: 'backfill',
+            via: mode === 'reread' ? 'reread' : 'backfill',
             // The type is deliberately not written, but what the reader thought it was
             // is worth keeping: it is the evidence for typing the 28 insurance
             // documents later without paying to read them twice.
@@ -131,9 +162,7 @@ export async function categoriseSlice(size = 4): Promise<CategoriseResult> {
     })
   }
 
-  const remaining = await prisma.document.count({
-    where: needsCategoryWhere(session.companyGroupId),
-  })
+  const remaining = await prisma.document.count({ where })
 
   if (filled > 0) revalidatePath('/', 'layout')
 

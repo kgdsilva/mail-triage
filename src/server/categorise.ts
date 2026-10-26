@@ -73,6 +73,85 @@ export function needsCategoryWhere(companyGroupId: string): Prisma.DocumentWhere
   }
 }
 
+/**
+ * The documents the first pass could not place, for a second pass with a better list.
+ *
+ * The first backfill ran against seven categories that described a software company —
+ * Technology, Legal, Insurance, Marketing, Office/Rent, Utilities, Other — while this
+ * office's mail is tax notices, unemployment agencies, title companies, banks,
+ * collections and tolls. Nearly everything landed in "Other", correctly: nothing else
+ * fitted. The reading was sound; the choices were not.
+ *
+ * So this targets exactly what that list failed on — a category of "Other" or none —
+ * and nothing else. A document the first pass filed as Insurance or Legal is left
+ * alone: those answers were available and were chosen, and paying to re-ask a question
+ * that was already answered is how a backfill becomes a subscription.
+ *
+ * ---------------------------------------------------------------------------
+ * Whose answer is being replaced
+ * ---------------------------------------------------------------------------
+ *
+ * The machine's, and only the machine's. This first gated on `reclassified` as well, to
+ * protect a person's choice — and that was wrong twice over. Every imported document
+ * carries a `reclassified` event from its original classification, so the gate excluded
+ * the entire log and the queue was always empty; and reclassifying does not set a
+ * category anyway. Narrowing to Other-or-nothing is what actually does the protecting:
+ * any document holding a real category is already out of scope, whoever put it there.
+ *
+ * Worth saying plainly, because it is a gap rather than a design: no screen lets anybody
+ * set a category by hand. The only writers are this backfill and the reader's
+ * suggestion. So if a category here comes out wrong, there is currently nowhere to
+ * correct it — which is a thing to build, not a thing to leave implied.
+ *
+ * `recategorised` is what takes a document out of this queue, exactly as `categorised`
+ * does for the first pass — including when the second pass also finds nothing, so a
+ * document that fits none of the fourteen is read once more and then never again.
+ */
+export function needsRereadWhere(
+  companyGroupId: string,
+  otherCategoryId: string | null,
+): Prisma.DocumentWhereInput {
+  return {
+    companyGroupId,
+    deletedAt: null,
+    isDemo: false,
+    storageKey: { not: null },
+    // Cheques and spam, same as the first pass: there is no spend to file.
+    OR: [
+      { documentType: { is: null } },
+      { documentType: { is: { code: { notIn: [...NOT_MONEY_TYPE_CODES] } } } },
+    ],
+    // What the old list failed on, and only that.
+    AND: [
+      {
+        OR: [
+          { categoryId: null },
+          ...(otherCategoryId ? [{ categoryId: otherCategoryId }] : []),
+        ],
+      },
+      { events: { some: { action: 'categorised' } } },
+      { events: { none: { action: 'recategorised' } } },
+    ],
+  }
+}
+
+/** The id of the catch-all, which is the category this pass exists to empty. */
+export async function otherCategoryId(companyGroupId: string): Promise<string | null> {
+  const row = await prisma.category.findFirst({
+    where: { companyGroupId, name: { equals: 'Other', mode: 'insensitive' } },
+    select: { id: true },
+  })
+  return row?.id ?? null
+}
+
+export async function rereadProgress(companyGroupId: string) {
+  const other = await otherCategoryId(companyGroupId)
+  const remaining = await prisma.document.count({
+    where: needsRereadWhere(companyGroupId, other),
+  })
+  return { remaining, estimate: estimate(remaining) }
+}
+
 export async function categoryProgress(companyGroupId: string) {
   const [remaining, filled, noFile] = await Promise.all([
     prisma.document.count({ where: needsCategoryWhere(companyGroupId) }),

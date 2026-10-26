@@ -3,7 +3,7 @@ import { saveCategory, toggleCategoryActive } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
 import { requireAdmin } from '@/server/session'
 import { BTN, INPUT } from '@/lib/theme'
-import { categoryProgress } from '@/server/categorise'
+import { categoryProgress, rereadProgress } from '@/server/categorise'
 import { CategoriseRunner } from '@/components/categorise-runner'
 
 export const dynamic = 'force-dynamic'
@@ -24,7 +24,10 @@ export default async function CategoriesPage() {
     include: { _count: { select: { documents: true } } },
   })
 
-  const progress = await categoryProgress(session.companyGroupId)
+  const [progress, reread] = await Promise.all([
+    categoryProgress(session.companyGroupId),
+    rereadProgress(session.companyGroupId),
+  ])
 
   return (
     <div className="space-y-5">
@@ -38,6 +41,20 @@ export default async function CategoriesPage() {
         filled={progress.filled}
         noFile={progress.noFile}
         estimate={`$${progress.estimate.toFixed(2)}`}
+      />
+
+      {/*
+        The second pass, shown only while there is something to re-read. The first one
+        ran against a list that described a different kind of company, so almost
+        everything came back "Other" — a correct answer to a question that could not be
+        answered otherwise. This asks again, now that the categories match the mail.
+      */}
+      <CategoriseRunner
+        mode="reread"
+        remaining={reread.remaining}
+        filled={progress.filled}
+        noFile={0}
+        estimate={`$${reread.estimate.toFixed(2)}`}
       />
 
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">

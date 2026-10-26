@@ -21,12 +21,22 @@ export function CategoriseRunner({
   filled,
   noFile,
   estimate,
+  mode = 'fill',
 }: {
   remaining: number
   filled: number
   /** Documents with no file at all — nothing this can do for them. */
   noFile: number
   estimate: string
+  /**
+   * The second pass, over what the old list could not place.
+   *
+   * Same machinery, different queue and different words. The words matter: somebody who
+   * has already paid for one pass needs to read why they are being asked to pay again,
+   * on the screen, before the button — not be shown an identical panel that quietly
+   * costs money a second time.
+   */
+  mode?: 'fill' | 'reread'
 }) {
   const router = useRouter()
   const [asking, setAsking] = useState(false)
@@ -58,7 +68,7 @@ export function CategoriseRunner({
 
     try {
       for (;;) {
-        const res = await categoriseSlice(4)
+        const res = await categoriseSlice(4, mode)
         seen += res.processed
         hit += res.filled
         miss += res.unmatched
@@ -148,6 +158,16 @@ export function CategoriseRunner({
   }
 
   if (remaining === 0) {
+    if (mode === 'reread') {
+      return done > 0 ? (
+        <div className="rounded-xl border border-line bg-surface p-4">
+          <p className="text-[13px] text-navy-900">
+            <span className="font-semibold">Re-read finished.</span> {gotOne} were placed in one
+            of the new categories, {none} still fit none of them, about ${spent.toFixed(2)}.
+          </p>
+        </div>
+      ) : null
+    }
     return (
       <div className="rounded-xl border border-line bg-surface p-4">
         <p className="text-[13px] text-navy-900">
@@ -168,21 +188,33 @@ export function CategoriseRunner({
     <div className="rounded-xl border border-line bg-surface p-4">
       <h3 className="flex items-center gap-2 text-[14px] font-bold text-navy-900">
         <Tags className="size-4 text-navy-500" aria-hidden />
-        Fill in the missing categories
+        {mode === 'reread' ? 'Re-read the ones that fitted nothing' : 'Fill in the missing categories'}
       </h3>
-      <p className="mt-1 text-[12.5px] text-muted">
-        <span className="font-semibold text-navy-900">{remaining}</span> documents have a file and
-        no category. Reading them is the only way to get one: the category cannot be worked out
-        from anything already stored — barely any document carries a vendor, and until recently the
-        reader was not asked for a category at all.
-        {filled > 0 && ` ${filled} already have one.`}
-        {noFile > 0 && ` ${noFile} more have no file, so they cannot be read.`}
-      </p>
+      {mode === 'reread' ? (
+        <p className="mt-1 text-[12.5px] text-muted">
+          <span className="font-semibold text-navy-900">{remaining}</span> documents are filed
+          under Other, or under nothing. That was the right answer to the wrong question: the
+          list they were offered described a software company — Technology, Legal, Marketing,
+          Office, Utilities — while this office receives tax notices, unemployment agencies,
+          title companies and tolls. Now that those categories exist, these are worth asking
+          again. Anything already filed under a real category is left alone, and so is anything
+          a person has reclassified by hand.
+        </p>
+      ) : (
+        <p className="mt-1 text-[12.5px] text-muted">
+          <span className="font-semibold text-navy-900">{remaining}</span> documents have a file
+          and no category. Reading them is the only way to get one: the category cannot be worked
+          out from anything already stored — barely any document carries a vendor, and until
+          recently the reader was not asked for a category at all.
+          {filled > 0 && ` ${filled} already have one.`}
+          {noFile > 0 && ` ${noFile} more have no file, so they cannot be read.`}
+        </p>
+      )}
 
       {!asking ? (
         <button type="button" className={`${BTN.primary} mt-3`} onClick={() => setAsking(true)}>
           <Tags className="size-3.5" aria-hidden />
-          Read {remaining} documents — about {estimate}
+          {mode === 'reread' ? 'Re-read' : 'Read'} {remaining} documents — about {estimate}
         </button>
       ) : (
         <div className="mt-3 space-y-2 rounded-lg border border-navy-500 bg-navy-50 p-3">
