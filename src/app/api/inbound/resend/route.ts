@@ -139,18 +139,22 @@ async function fetchAttachments(emailId: string): Promise<Attachment[]> {
     }[]
   }
 
+  // Filtered before it becomes an Attachment, so the two provider-only fields that
+  // decide it never travel further than this function.
   return (body.data ?? [])
+    .filter((a) =>
+      isRealAttachment({
+        contentDisposition: a.content_disposition ?? null,
+        contentId: a.content_id ?? null,
+      }),
+    )
     .map((a) => ({
       id: a.id ?? '',
       filename: a.filename ?? 'attachment',
       contentType: a.content_type ?? null,
-      contentDisposition: a.content_disposition ?? null,
-      contentId: a.content_id ?? null,
       downloadUrl: a.download_url ?? null,
       size: typeof a.size === 'number' ? a.size : null,
     }))
-    .filter(isRealAttachment)
-    .map(({ contentDisposition: _d, contentId: _c, ...rest }) => rest)
 }
 
 export async function POST(request: Request) {
