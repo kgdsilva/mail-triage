@@ -1,7 +1,12 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { applyPlacements, placementDryRun } from '@/server/categorise-free'
+import {
+  applyPlacements,
+  applyRepairs,
+  placementDryRun,
+  repairDryRun,
+} from '@/server/categorise-free'
 import { requireAdmin } from '@/server/session'
 
 /**
@@ -20,6 +25,18 @@ export async function previewPlacements() {
 export async function runPlacements() {
   const session = await requireAdmin()
   const result = await applyPlacements(session.companyGroupId, session.userId)
+  revalidatePath('/', 'layout')
+  return result
+}
+
+export async function previewRepairs() {
+  const session = await requireAdmin()
+  return repairDryRun(session.companyGroupId)
+}
+
+export async function runRepairs() {
+  const session = await requireAdmin()
+  const result = await applyRepairs(session.companyGroupId, session.userId)
   revalidatePath('/', 'layout')
   return result
 }

@@ -34,6 +34,7 @@
 import type { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/server/db/client'
 import { needsRereadWhere, otherCategoryId } from '@/server/categorise'
+import { NOT_MONEY_TYPE_CODES } from '@/server/money'
 
 /**
  * Patterns to category names, most specific first.
@@ -322,4 +323,202 @@ export async function applyPlacements(companyGroupId: string, actorUserId: strin
   }
 
   return { considered: docs.length, placed, unknownCategory, leftToRead: docs.length - placed }
+}
+
+/**
+ * Two repairs to what the first pass wrote, both free.
+ *
+ * ---------------------------------------------------------------------------
+ * Why "Other" was not the whole wound
+ * ---------------------------------------------------------------------------
+ *
+ * The re-read only looks at documents filed under Other or under nothing, on the
+ * reasoning that a real category is an answer somebody chose. Against the live log that
+ * turned out to be half true. The first pass had seven categories and official mail to
+ * file, and when none fitted it did not always reach for Other — it reached for the
+ * nearest word. An IRS disallowance notice went to Utilities. Puerto Rico's labour
+ * department went to Legal. A collections notice went to Legal. Those are wrong answers
+ * wearing a right answer's clothes, and no amount of re-reading Other would find them.
+ *
+ * Measured on the live log: of 278 categorised non-cheque documents the rules agree with
+ * 137, disagree with 23, and abstain on 118. Only the 23 are touched. The 118 keep what
+ * they have — not because it is right, but because nothing here knows better, and
+ * replacing an unexamined answer with silence is not an improvement.
+ *
+ * ---------------------------------------------------------------------------
+ * And the cheques
+ * ---------------------------------------------------------------------------
+ *
+ * 168 cheques carry a spend category of "Other", from the pass that should never have
+ * read them. Excluding them from future runs stopped the spending; it did not undo the
+ * labelling. A cheque with a spend category is a small lie that makes every total on the
+ * category screen wrong, so the category comes off.
+ */
+export type Repair =
+  | { documentId: string; kind: 'clear'; was: string; filename: string }
+  | { documentId: string; kind: 'move'; was: string; to: string; matched: string; filename: string }
+
+export async function repairDryRun(companyGroupId: string) {
+  const other = await otherCategoryId(companyGroupId)
+
+  const cheques = await prisma.document.findMany({
+    where: {
+      companyGroupId,
+      deletedAt: null,
+      isDemo: false,
+      categoryId: { not: null },
+      documentType: { is: { code: { in: [...NOT_MONEY_TYPE_CODES] } } },
+      events: { some: { action: 'categorised' } },
+    },
+    select: { ...SELECT, category: { select: { name: true } } },
+  })
+
+  const categorised = await prisma.document.findMany({
+    where: {
+      companyGroupId,
+      deletedAt: null,
+      isDemo: false,
+      categoryId: { not: null },
+      events: { some: { action: 'categorised' } },
+      OR: [
+        { documentType: { is: null } },
+        { documentType: { is: { code: { notIn: [...NOT_MONEY_TYPE_CODES] } } } },
+      ],
+    },
+    select: { ...SELECT, category: { select: { name: true } } },
+  })
+
+  const repairs: Repair[] = []
+
+  for (const d of cheques) {
+    repairs.push({
+      documentId: d.id,
+      kind: 'clear',
+      was: d.category!.name,
+      filename: d.finalFilename ?? d.originalFilename,
+    })
+  }
+
+  for (const d of categorised) {
+    const placement = placementFor(d)
+    if (!placement) continue
+    if (placement.categoryName === d.category!.name) continue
+    repairs.push({
+      documentId: d.id,
+      kind: 'move',
+      was: d.category!.name,
+      to: placement.categoryName,
+      matched: placement.matched,
+      filename: d.finalFilename ?? d.originalFilename,
+    })
+  }
+
+  const moves = repairs.filter((r): r is Extract<Repair, { kind: 'move' }> => r.kind === 'move')
+  const byMove = new Map<string, number>()
+  for (const m of moves) {
+    const key = `${m.was} → ${m.to}`
+    byMove.set(key, (byMove.get(key) ?? 0) + 1)
+  }
+
+  // `other` is read for the queue's sake elsewhere; referenced here so a future change
+  // that stops computing it cannot silently drop the Other-specific reasoning above.
+  void other
+
+  return {
+    toClear: repairs.filter((r) => r.kind === 'clear').length,
+    toMove: moves.length,
+    byMove: [...byMove.entries()].sort((a, b) => b[1] - a[1]),
+    examples: moves.slice(0, 6).map((m) => ({ was: m.was, to: m.to, filename: m.filename })),
+  }
+}
+
+export async function applyRepairs(companyGroupId: string, actorUserId: string) {
+  const plan = await repairDryRun(companyGroupId)
+
+  const categories = await prisma.category.findMany({
+    where: { companyGroupId },
+    select: { id: true, name: true },
+  })
+  const byName = new Map(categories.map((c) => [c.name.toLowerCase(), c.id]))
+
+  let cleared = 0
+  let moved = 0
+
+  // Rebuilt rather than carried from the dry run, so the write works from a fresh read
+  // of the log instead of a snapshot taken before whatever happened in between.
+  const chequeDocs = await prisma.document.findMany({
+    where: {
+      companyGroupId,
+      deletedAt: null,
+      isDemo: false,
+      categoryId: { not: null },
+      documentType: { is: { code: { in: [...NOT_MONEY_TYPE_CODES] } } },
+      events: { some: { action: 'categorised' } },
+    },
+    select: { id: true, category: { select: { name: true } } },
+  })
+
+  for (const d of chequeDocs) {
+    await prisma.$transaction(async (tx) => {
+      await tx.document.update({ where: { id: d.id }, data: { categoryId: null } })
+      await tx.documentEvent.create({
+        data: {
+          documentId: d.id,
+          actorUserId,
+          action: 'recategorised',
+          toValue: {
+            category: null,
+            via: 'rules',
+            why: 'a cheque received has no spend category',
+            wasCategory: d.category?.name ?? null,
+          },
+        },
+      })
+      cleared += 1
+    })
+  }
+
+  const candidates = await prisma.document.findMany({
+    where: {
+      companyGroupId,
+      deletedAt: null,
+      isDemo: false,
+      categoryId: { not: null },
+      events: { some: { action: 'categorised' } },
+      OR: [
+        { documentType: { is: null } },
+        { documentType: { is: { code: { notIn: [...NOT_MONEY_TYPE_CODES] } } } },
+      ],
+    },
+    select: { ...SELECT, category: { select: { name: true } } },
+  })
+
+  for (const d of candidates) {
+    const placement = placementFor(d)
+    if (!placement || placement.categoryName === d.category!.name) continue
+
+    const categoryId = byName.get(placement.categoryName.toLowerCase())
+    if (!categoryId) continue
+
+    await prisma.$transaction(async (tx) => {
+      await tx.document.update({ where: { id: d.id }, data: { categoryId } })
+      await tx.documentEvent.create({
+        data: {
+          documentId: d.id,
+          actorUserId,
+          action: 'recategorised',
+          toValue: {
+            category: placement.categoryName,
+            via: 'rules',
+            matched: placement.matched,
+            from: placement.from,
+            wasCategory: d.category!.name,
+          },
+        },
+      })
+      moved += 1
+    })
+  }
+
+  return { cleared, moved, planned: { toClear: plan.toClear, toMove: plan.toMove } }
 }

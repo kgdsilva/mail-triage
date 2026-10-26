@@ -6,7 +6,8 @@ import { BTN, INPUT } from '@/lib/theme'
 import { categoryProgress, rereadProgress } from '@/server/categorise'
 import { CategoriseRunner } from '@/components/categorise-runner'
 import { PlacementPanel } from '@/components/placement-panel'
-import { placementDryRun } from '@/server/categorise-free'
+import { placementDryRun, repairDryRun } from '@/server/categorise-free'
+import { RepairPanel } from '@/components/repair-panel'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,10 +27,11 @@ export default async function CategoriesPage() {
     include: { _count: { select: { documents: true } } },
   })
 
-  const [progress, reread, placements] = await Promise.all([
+  const [progress, reread, placements, repairs] = await Promise.all([
     categoryProgress(session.companyGroupId),
     rereadProgress(session.companyGroupId),
     placementDryRun(session.companyGroupId),
+    repairDryRun(session.companyGroupId),
   ])
 
   return (
@@ -48,6 +50,9 @@ export default async function CategoriesPage() {
 
       {/* The free half of the repair, above the paid half because it is free. */}
       <PlacementPanel initial={placements} />
+
+      {/* And the answers the first pass got wrong without saying so. */}
+      <RepairPanel initial={repairs} />
 
       {/*
         The second pass, shown only while there is something to re-read. The first one
