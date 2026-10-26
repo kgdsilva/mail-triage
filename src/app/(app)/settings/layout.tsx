@@ -17,8 +17,11 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         <NavLink href="/settings/vendors">
           Vendors
         </NavLink>
+        {/* Named for the question, not for one of its two answers: the page holds both
+            the money taken automatically and the money somebody has to remember. Called
+            "Autopay", it told anyone looking for the lawyers that they were not here. */}
         <NavLink href="/settings/autopay">
-          Autopay
+          Recurring
         </NavLink>
         <NavLink href="/settings/members">
           Members
