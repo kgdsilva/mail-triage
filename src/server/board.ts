@@ -43,19 +43,29 @@ function where(filters: BoardFilters, companyGroupId: string): Prisma.DocumentWh
     status: { in: [...OPEN] },
     disposition: 'ACTION' as const,
     /*
-     * An approved bill is not waiting on a decision any more — it is waiting on money,
-     * which is the accountant's screen. Leaving it here put the same bill on two lists
-     * with nothing saying so, and made the board's count read as work when the work had
-     * already been done.
+     * A bill that is with an approver is not waiting on a decision here.
+     *
+     * Each of the three screens answers to one person, and an item belongs to exactly
+     * one of them: this board is what the office has to deal with, Bills to approve is
+     * what an approver has to clear, Accounting is what the accountant has to settle.
+     *
+     * Approved was excluded first, for the obvious half — it waits on money, not on a
+     * decision. Pending was left in, and that was the costly half: of nine items on this
+     * board, seven were bills sitting in Eric's queue. The first screen anybody opens
+     * was three-quarters other people's work, offered as though anyone could pick it up,
+     * when only the named approver can act on it at all.
      *
      * A refusal stays: denied and needs-review both come back as a REVIEW action
-     * assigned to a person, and both genuinely need somebody to act.
+     * assigned to a person, and both genuinely need somebody here to act.
      *
-     * Spelled as an OR rather than `not: 'APPROVED'`, because that comparison drops
-     * NULLs in SQL — and every document that is not a bill has no approval status at
-     * all, so it would have emptied the board.
+     * Spelled as an OR with an explicit null rather than `notIn`, because a comparison
+     * on a nullable column drops NULLs in SQL — and every document that is not a bill
+     * has no approval status at all, so it would have emptied the board.
      */
-    OR: [{ approvalStatus: null }, { approvalStatus: { not: 'APPROVED' } }],
+    OR: [
+      { approvalStatus: null },
+      { approvalStatus: { notIn: ['APPROVED', 'PENDING'] } },
+    ],
     /*
      * And a money document still waiting on the accountant is not here either.
      *
@@ -97,17 +107,15 @@ export async function listBoard(companyGroupId: string, filters: BoardFilters) {
  * the sentence the old screen could not say.
  */
 export async function boardCounts(companyGroupId: string, userId: string) {
-  const base: Prisma.DocumentWhereInput = {
-    companyGroupId,
-    deletedAt: null,
-    status: { in: [...OPEN] },
-    disposition: 'ACTION' as const,
-    // The same exclusion as the list, or the tab would promise items the board does
-    // not show — which is how a count stops being believed.
-    OR: [{ approvalStatus: null }, { approvalStatus: { not: 'APPROVED' as const } }],
-    // Same exclusion as the list, or the badge promises work the board will not show.
-    NOT: { AND: [toDecideWhere(companyGroupId)] },
-  }
+  /*
+   * The list's own predicate, not a copy of it.
+   *
+   * This was a hand-kept duplicate with two comments promising it matched — and it
+   * stopped matching the moment the list changed, which is exactly what a comment
+   * promising a copy is worth. A count that disagrees with the list it labels is worse
+   * than no count, because the number is read first and believed.
+   */
+  const base = where({ scope: 'everyone', userId }, companyGroupId)
 
   const [mine, everyone, unassigned] = await Promise.all([
     prisma.document.count({ where: { ...base, assignedToUserId: userId } }),
