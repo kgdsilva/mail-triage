@@ -3,6 +3,7 @@ import { setAutopayCeiling, setReturnedBillsRole } from '@/server/actions/settin
 import { autopayCeiling } from '@/server/action-filter'
 import { emailMode } from '@/server/email'
 import { NotifyPanel } from '@/components/notify-panel'
+import { InboundPanel, type Arrival } from '@/components/inbound-panel'
 import { prisma } from '@/server/db/client'
 import { DEFAULT_RETURN_ROLE, configuredReturnRole, type ReturnRole } from '@/server/returns'
 import { requireAdmin } from '@/server/session'
@@ -45,6 +46,39 @@ export default async function WorkflowPage() {
   })
   const current = configuredReturnRole(group.settings)
   const ceiling = await autopayCeiling(session.companyGroupId)
+
+  const inbound = (group.settings as { inboundAddress?: string; inboundExtraSenders?: string[] } | null) ?? {}
+  const inboundAddress = inbound.inboundAddress ?? null
+  const inboundSenders = inbound.inboundExtraSenders ?? []
+
+  /*
+   * The last twenty, newest first. Enough to answer "did my forward arrive" without
+   * becoming a second log — the documents themselves are in the real one.
+   */
+  const arrivals: Arrival[] = (
+    await prisma.inboundEmail.findMany({
+      where: { companyGroupId: session.companyGroupId },
+      orderBy: { receivedAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        fromAddress: true,
+        subject: true,
+        outcome: true,
+        reason: true,
+        documentsCreated: true,
+        receivedAt: true,
+      },
+    })
+  ).map((a) => ({
+    id: a.id,
+    from: a.fromAddress,
+    subject: a.subject,
+    outcome: a.outcome,
+    reason: a.reason,
+    documents: a.documentsCreated,
+    at: a.receivedAt.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+  }))
 
   // Who currently holds each role, so the choice shows its consequence rather than
   // making somebody go and look it up on another screen.
@@ -143,6 +177,14 @@ export default async function WorkflowPage() {
 
       {/* Nothing on this screen matters if nobody is told it happened. */}
       <NotifyPanel {...emailMode()} />
+
+      {/* Mail out, and now mail in: the second door into the same triage. */}
+      <InboundPanel
+        address={inboundAddress}
+        senders={inboundSenders}
+        signingConfigured={Boolean(process.env.RESEND_INBOUND_SECRET?.trim())}
+        arrivals={arrivals}
+      />
 
       {/*
         The second question this screen answers: not who gets a bill back, but which

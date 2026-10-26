@@ -45,6 +45,7 @@ model CompanyGroup {
   vendors       Vendor[]
   autopayRules  AutopayRule[]
   recurring     RecurringPayment[]
+  inboundEmails InboundEmail[]
   routingRules  RoutingRule[]
   batches       Batch[]
   documents     Document[]
@@ -415,6 +416,50 @@ model AutopayRule {
   @@unique([vendorId, entityId, effectiveFrom])
   @@index([companyGroupId, entityId])
   @@map("autopay_rule")
+}
+
+/// Every email that reached the forwarding address, accepted or not.
+///
+/// The address is a door onto the public internet: anybody who learns it can post to the
+/// triage queue. So the first question this table answers is a security one — who sent
+/// what, and was it let in — and the second is the one that will actually be asked forty
+/// times a week: "I forwarded that invoice, did it arrive?" Without a record the honest
+/// answer is "look in the log and guess", and a feature nobody can verify is a feature
+/// nobody trusts.
+///
+/// A refusal is stored exactly like an acceptance. An email dropped silently is
+/// indistinguishable from an email that was never sent, and those two have opposite
+/// remedies — one is "check your spam rules", the other "ask to be allowed".
+model InboundEmail {
+  id             String       @id @default(cuid())
+  companyGroupId String       @map("company_group_id")
+  companyGroup   CompanyGroup @relation(fields: [companyGroupId], references: [id], onDelete: Cascade)
+
+  /// The provider's id for the message, so a retried webhook is recognised rather than
+  /// ingested twice. Providers retry on any non-2xx, and a slow response counts.
+  providerId String @unique @map("provider_id")
+
+  fromAddress String  @map("from_address")
+  toAddress   String  @map("to_address")
+  subject     String?
+
+  /// accepted | refused | ignored
+  ///
+  /// Three and not two: refused means somebody was turned away and may need to be let
+  /// in; ignored means there was nothing to take, such as a reply with no attachment.
+  /// Collapsing them would make a configuration problem look like an empty inbox.
+  outcome String
+
+  /// Why, in words meant for the person who forwarded it.
+  reason String?
+
+  /// How many documents it put in the queue.
+  documentsCreated Int @default(0) @map("documents_created")
+
+  receivedAt DateTime @default(now()) @map("received_at")
+
+  @@index([companyGroupId, receivedAt])
+  @@map("inbound_email")
 }
 
 /// Money this office owes on a schedule that nobody drafts automatically.
