@@ -20,7 +20,9 @@
  * never overwritten even once.
  */
 
+import type { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/server/db/client'
+import { NOT_MONEY_TYPE_CODES } from '@/server/money'
 
 /** Sonnet, measured on this group's own mail: about half a cent per document. */
 const PER_DOCUMENT = 1_850 * (2 / 1_000_000) + 260 * (10 / 1_000_000)
@@ -35,13 +37,29 @@ export function estimate(documents: number) {
  * Demo rows are excluded — they are seeded with categories already and are not what
  * anybody is paying to classify.
  */
-export function needsCategoryWhere(companyGroupId: string) {
+export function needsCategoryWhere(companyGroupId: string): Prisma.DocumentWhereInput {
   return {
     companyGroupId,
     deletedAt: null,
     isDemo: false,
     storageKey: { not: null },
     categoryId: null,
+    /*
+     * Not a cheque, and not spam.
+     *
+     * A category here means a spend category, and a cheque this office *received* is
+     * money arriving — there is no spend to categorise, so the only honest answer is
+     * none. The first run did not know that and read 123 of them anyway: the model was
+     * asked an unanswerable question 123 times, answered "Other" 123 times, and the bill
+     * for that was about four dollars. The question was wrong, not the answer.
+     *
+     * `NOT_MONEY_TYPE_CODES` already said which types these are; this is the third place
+     * to use it rather than a fourth list that can drift from the other three.
+     */
+    OR: [
+      { documentType: { is: null } },
+      { documentType: { is: { code: { notIn: [...NOT_MONEY_TYPE_CODES] } } } },
+    ],
     /*
      * And not already looked at.
      *
@@ -52,7 +70,7 @@ export function needsCategoryWhere(companyGroupId: string) {
      * of the queue. A null category after a read is an answer, not an unfinished job.
      */
     events: { none: { action: 'categorised' } },
-  } as const
+  }
 }
 
 export async function categoryProgress(companyGroupId: string) {
