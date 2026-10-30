@@ -1,6 +1,7 @@
 'use server'
 
 import path from 'node:path'
+import { CARD_NUMBER_REFUSED, looksLikeCardNumber } from '@/lib/reference'
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/server/db/client'
 import { recordEvent } from '@/server/documents'
@@ -231,6 +232,15 @@ async function settle(input: PaymentInput, formData?: FormData) {
         byteSize: put.byteSize,
       }
     }
+  }
+
+  /*
+     Refused here rather than trusted to the label: an approver read "Credit card" and
+     "check or reference no." together and typed the card's number, which is the one
+     value this must never hold. See src/lib/reference.ts.
+  */
+  if (input.reference && looksLikeCardNumber(input.reference)) {
+    return { ok: false as const, error: CARD_NUMBER_REFUSED }
   }
 
   const payment = await prisma.$transaction(async (tx) => {

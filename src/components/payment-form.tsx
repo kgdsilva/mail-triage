@@ -192,14 +192,33 @@ export function PaymentForm({
           </select>
         </label>
 
+        {/*
+          The label follows the method, because "Credit card" above and "check or
+          reference no." here read together as a request for the card's number — and an
+          approver, reasonably, gave one. The write path refuses a card number outright
+          (src/lib/reference.ts); this is so nobody is asked for one in the first place.
+        */}
         <label className="block">
-          <Label>Check or reference no.</Label>
+          <Label>
+            {method === 'Check'
+              ? 'Check no.'
+              : method === 'Credit card'
+                ? 'Last four digits, or the authorisation code'
+                : 'Reference no.'}
+          </Label>
           <input
             value={reference}
             onChange={(e) => setReference(e.target.value)}
-            placeholder={method === 'Check' ? '1043' : 'Optional'}
+            placeholder={
+              method === 'Check' ? '1043' : method === 'Credit card' ? '4821' : 'Optional'
+            }
             className={`mt-1 ${INPUT}`}
           />
+          {method === 'Credit card' && (
+            <p className="mt-1 text-[11.5px] text-subtle">
+              Never the full card number — it is not stored here.
+            </p>
+          )}
         </label>
 
         <label className="block">
