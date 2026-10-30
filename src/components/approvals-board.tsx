@@ -1,17 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
-import {
-  Ban,
-  Check,
-  CircleHelp,
-  Clock,
-  Download,
-  FileText,
-  History,
-  Keyboard,
-  Wallet,
-} from 'lucide-react'
+import { Ban, Check, CircleHelp, Clock, Download, FileText, HelpCircle, History, Keyboard, Wallet } from 'lucide-react'
 import { approveBill, approveSelected } from '@/server/actions/approvals'
 import { BillPanel, STATUS_LABEL, STATUS_TONE, type PanelBill } from '@/components/bill-panel'
 import { formatDate, formatMoney } from '@/components/badges'
@@ -544,6 +534,22 @@ function Row({
               {' · '}
               {bill.categoryName ?? 'Uncategorised'}
             </span>
+            {/*
+              A bill he asked about sits in his list alongside the ones he has not looked
+              at, so the question has to be readable from the row itself — and with the
+              question, what he asked. He wanted this to run through with the owner on a
+              Monday: a mark that says only "question" would send him into each bill one
+              at a time to remember which question it was.
+            */}
+            {bill.status === 'NEEDS_REVIEW' && (
+              <span className="mt-1 flex items-start gap-1.5 text-[12px] text-amber-800">
+                <HelpCircle className="mt-px size-3.5 flex-none" aria-hidden />
+                <span className="min-w-0">
+                  <span className="font-semibold">You asked:</span>{' '}
+                  {bill.note?.trim() ? bill.note : 'waiting on an answer'}
+                </span>
+              </span>
+            )}
             {/* On a phone the badges have nowhere to sit beside the name, so they sit
                 under it rather than being dropped. */}
             <span className="mt-1 flex items-center gap-2 sm:hidden">

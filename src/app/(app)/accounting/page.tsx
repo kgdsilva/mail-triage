@@ -105,7 +105,18 @@ export default async function AccountingPage({
             companyGroupId: session.companyGroupId,
             isActive: true,
             userId: { not: session.userId },
-            role: { in: ['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER'] },
+            /*
+              Approvers and the accountant belong here too. Leaving them out meant the
+              accountant, looking at a notice only the approver could explain, was told
+              "I can't pick you" — and the workaround was to make that approver an
+              administrator, which quietly dissolved the one control this system has:
+              that approving and paying are different people.
+
+              Handing something over is asking for an answer, not transferring the work.
+              It stays in whichever queue it was already in; the named person simply gets
+              it on their own screen as a question to answer.
+            */
+            role: { in: ['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'APPROVER', 'ACCOUNTANT'] },
           },
           orderBy: { createdAt: 'asc' },
           select: { user: { select: { id: true, name: true, email: true } } },

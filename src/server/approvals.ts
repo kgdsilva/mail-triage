@@ -139,3 +139,57 @@ export async function billHistory(session: Session, documentId: string) {
     orderBy: { createdAt: 'asc' },
   })
 }
+
+/**
+ * Documents somebody handed to this person by name, waiting on their answer.
+ *
+ * ---------------------------------------------------------------------------
+ * Why an approver needs this at all
+ * ---------------------------------------------------------------------------
+ *
+ * The accountant hands over a notice nobody in the office can place — "do we have
+ * property in Homestead?" — and the only person who knows is the approver. Before this,
+ * that document went to the shared board, and an approver cannot open the shared board:
+ * WORK_ROLES has never included them. So it arrived nowhere. The approver's words were
+ * "it says Chris passed this to you, but in bills to approve, I don't see it."
+ *
+ * Handing over is a request for an answer, not a transfer of the work. The document
+ * stays in whatever queue already held it — the accountant still has to decide what it
+ * is once the question comes back — and this is simply the named person's own copy of
+ * the question, on the one screen they have.
+ */
+export async function listHandedTo(session: Session) {
+  const ids = await visibleEntityIds(session)
+
+  return prisma.document.findMany({
+    where: {
+      companyGroupId: session.companyGroupId,
+      deletedAt: null,
+      status: { in: [...OPEN] },
+      assignedToUserId: session.userId,
+      // A bill routed for payment reaches them through the approval tabs instead; this
+      // is the other kind of handover, where somebody wants something answered.
+      actionKind: 'REVIEW',
+      ...entityWhere(ids),
+    },
+    include: BILL_INCLUDE,
+    orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
+    take: 200,
+  })
+}
+
+/** The badge on the handover tab, counted on its own. */
+export async function handedToCount(session: Session) {
+  const ids = await visibleEntityIds(session)
+
+  return prisma.document.count({
+    where: {
+      companyGroupId: session.companyGroupId,
+      deletedAt: null,
+      status: { in: [...OPEN] },
+      assignedToUserId: session.userId,
+      actionKind: 'REVIEW',
+      ...entityWhere(ids),
+    },
+  })
+}

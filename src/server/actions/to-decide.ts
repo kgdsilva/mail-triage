@@ -5,7 +5,7 @@ import { prisma } from '@/server/db/client'
 import { archiveWithReason, quickDecide, recordEvent, type ArchiveReason } from '@/server/documents'
 import { approversFor, toDecideWhere } from '@/server/to-decide'
 import { entityWhere, visibleEntityIds } from '@/server/scope'
-import { requirePaymentTriage } from '@/server/session'
+import { requirePaymentTriage, requireSession } from '@/server/session'
 
 /**
  * The accountant's three answers to "what is this".
@@ -162,6 +162,75 @@ export async function markNeedsOtherAction(
         actorUserId: session.userId,
         action: 'routed',
         toValue: { assignedToUserId: recipient.userId, actionKind: 'REVIEW', note: typed, from: 'accounting' },
+      },
+      tx,
+    )
+  })
+
+  revalidatePath('/', 'layout')
+  return { ok: true }
+}
+
+/**
+ * The answer to a question somebody handed you.
+ *
+ * ---------------------------------------------------------------------------
+ * Why this is its own action
+ * ---------------------------------------------------------------------------
+ *
+ * Writing a note anywhere else in this file goes through requirePaymentTriage, which an
+ * approver does not have and should not: notes on the money queue are the accountant's.
+ * But the person who can answer "do we have property in Homestead?" is precisely the
+ * approver, and before this he had no way to write the answer down — he could read the
+ * question and not reply to it.
+ *
+ * The permission is therefore not a role at all. It is being the person it was handed
+ * to: whoever is named on the document may answer it, whatever their role, and nobody
+ * else may. That is narrower than any role check would be.
+ *
+ * Answering clears the assignment and leaves the note behind. It does not route the
+ * document anywhere, because it never left the queue it was in — the accountant still
+ * has to decide what it is, and now has the answer to decide with.
+ */
+export async function answerHandover(documentId: string, answer: string): Promise<Result> {
+  const session = await requireSession()
+
+  const text = answer.trim()
+  if (!text) return { ok: false, error: 'Write the answer first.' }
+
+  const doc = await prisma.document.findFirst({
+    where: {
+      id: documentId,
+      companyGroupId: session.companyGroupId,
+      deletedAt: null,
+      // The whole permission check: it is yours because your name is on it.
+      assignedToUserId: session.userId,
+    },
+    select: { id: true, internalNotes: true },
+  })
+
+  if (!doc) {
+    return { ok: false, error: 'Not yours to answer — it may have been handed on.' }
+  }
+
+  const note = text.slice(0, 2000)
+
+  await prisma.$transaction(async (tx) => {
+    await tx.document.update({
+      where: { id: documentId },
+      data: {
+        // Kept, not replaced: the question that was asked is part of the record, and an
+        // answer that erased it would leave the next reader with a reply to nothing.
+        internalNotes: doc.internalNotes ? `${doc.internalNotes}\n\n${note}` : note,
+        assignedToUserId: null,
+      },
+    })
+    await recordEvent(
+      {
+        documentId,
+        actorUserId: session.userId,
+        action: 'note_added',
+        toValue: { note, by: 'handover-answer' },
       },
       tx,
     )

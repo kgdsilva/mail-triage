@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { PageHelp } from '@/components/page-help'
 import type { ApprovalStatus } from '@/generated/prisma/enums'
-import { billCounts, listBills } from '@/server/approvals'
+import { billCounts, handedToCount, listBills, listHandedTo } from '@/server/approvals'
+import { HandedToYou, type Handover } from '@/components/handed-to-you'
 import { narrowEntityChoice, visibleEntities, visibleEntityIds } from '@/server/scope'
 import { canAddBill, canApprove, canConfigure, requireApprover } from '@/server/session'
 import { AddBill } from '@/components/add-bill'
@@ -19,14 +20,41 @@ export const dynamic = 'force-dynamic'
  * which means yesterday's answers have to be reachable; they are not where the work is.
  */
 
+/*
+ * Four tabs, where there were three.
+ *
+ * "Sent back" held a denial and a question in one bucket, which is how an approver came
+ * to say of his own bills: "it's in sent back, which I don't know what that means." They
+ * are opposites. A denial is a decision and is finished; a question is the absence of
+ * one, and the bill is still his.
+ *
+ * So a bill he asked about stays in "Waiting on you", because he has not decided it —
+ * asking is not deciding. It also keeps a tab of its own, which is the list he wanted
+ * for his Monday meeting with the owner: "I could just go through, get a question on
+ * this, question on this."
+ *
+ * The office still sees the same bill on its own board and owes the answer. That is not
+ * the same item on two screens for no reason — the office has to act, he has to wait,
+ * and each screen says which of those it is.
+ */
 const TABS = [
-  { key: 'pending', label: 'Waiting on you', statuses: ['PENDING'] as ApprovalStatus[] },
-  { key: 'approved', label: 'Approved', statuses: ['APPROVED'] as ApprovalStatus[] },
   {
-    key: 'returned',
-    label: 'Sent back',
-    statuses: ['DENIED', 'NEEDS_REVIEW'] as ApprovalStatus[],
+    key: 'pending',
+    label: 'Waiting on you',
+    statuses: ['PENDING', 'NEEDS_REVIEW'] as ApprovalStatus[],
   },
+  {
+    key: 'questions',
+    label: 'Your questions',
+    statuses: ['NEEDS_REVIEW'] as ApprovalStatus[],
+  },
+  {
+    key: 'handed',
+    label: 'Handed to you',
+    statuses: [] as ApprovalStatus[],
+  },
+  { key: 'approved', label: 'Approved', statuses: ['APPROVED'] as ApprovalStatus[] },
+  { key: 'denied', label: 'Denied', statuses: ['DENIED'] as ApprovalStatus[] },
 ] as const
 
 export default async function ApprovalsPage({
@@ -41,17 +69,33 @@ export default async function ApprovalsPage({
   const scope = await visibleEntityIds(session)
   const chosen = narrowEntityChoice(entity, scope)
 
-  const [bills, counts, entities] = await Promise.all([
-    listBills(session, {
-      statuses: [...active.statuses],
-      entityId: chosen,
-      // An approved bill stays on the Approved tab after it is paid; the pending list is
-      // only what is still open.
-      settled: active.key === 'pending' ? false : undefined,
-    }),
+  const handedTab = active.key === 'handed'
+
+  const [bills, counts, entities, handed, handedCount] = await Promise.all([
+    // The handover tab reads a different question, so the bill query is skipped rather
+    // than run with an empty status list that would match nothing anyway.
+    handedTab
+      ? Promise.resolve([])
+      : listBills(session, {
+          statuses: [...active.statuses],
+          entityId: chosen,
+          // An approved bill stays on the Approved tab after it is paid; the pending
+          // list is only what is still open.
+          settled: active.key === 'pending' ? false : undefined,
+        }),
     billCounts(session, chosen),
     visibleEntities(session),
+    handedTab ? listHandedTo(session) : Promise.resolve([]),
+    handedToCount(session),
   ])
+
+  const handovers: Handover[] = handed.map((d) => ({
+    id: d.id,
+    title: d.finalFilename ?? d.originalFilename,
+    companyCode: d.entity?.code ?? null,
+    question: d.internalNotes,
+    receivedDate: d.createdAt.toISOString(),
+  }))
 
   const rows: BoardBill[] = bills.map((d) => ({
     id: d.id,
@@ -78,12 +122,18 @@ export default async function ApprovalsPage({
    * counts — keeping a second, separate sum up here was how the top of the screen and
    * the middle of it ended up disagreeing about what "overdue" meant.
    */
+  // Each tab counts exactly what it shows, now that a question and a denial are no
+  // longer added together under one heading.
   const tabCount = (key: (typeof TABS)[number]['key']) =>
     key === 'pending'
-      ? counts.pending
-      : key === 'approved'
-        ? counts.approvedUnpaid + counts.paid
-        : counts.denied + counts.needsReview
+      ? counts.pending + counts.needsReview
+      : key === 'questions'
+        ? counts.needsReview
+        : key === 'handed'
+          ? handedCount
+          : key === 'approved'
+            ? counts.approvedUnpaid + counts.paid
+            : counts.denied
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-4">
@@ -157,14 +207,18 @@ export default async function ApprovalsPage({
 
       </div>
 
-      <ApprovalsBoard
-        bills={rows}
-        canDecide={canApprove(session.role)}
-        showCompany={entities.length > 1}
-        // Everything on this tab is pending, so saying so on every row is repeating the
-        // tab's own name fourteen times.
-        showStatus={active.key !== 'pending'}
-      />
+      {handedTab ? (
+        <HandedToYou items={handovers} />
+      ) : (
+        <ApprovalsBoard
+          bills={rows}
+          canDecide={canApprove(session.role)}
+          showCompany={entities.length > 1}
+          // The pending tab now holds two kinds — not yet looked at, and asked about —
+          // so the row says which. The question badge carries that for the asked ones.
+          showStatus={active.key !== 'pending'}
+        />
+      )}
 
       {canConfigure(session.role) && (
         <p className="text-[12.5px] text-subtle">
