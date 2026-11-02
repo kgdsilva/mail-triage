@@ -3,6 +3,8 @@ import { signOut } from '@/auth'
 import { countUnreviewed } from '@/server/documents'
 import { billCounts } from '@/server/approvals'
 import { boardCounts } from '@/server/board'
+import { countToDecide, toDecideWhere } from '@/server/to-decide'
+import { handedToCount } from '@/server/approvals'
 import {
   canApprove,
   canConfigure,
@@ -24,7 +26,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession()
-  const [workspaces, pending, pendingApprovals, mine] = await Promise.all([
+  const [workspaces, pending, pendingApprovals, mine, accounting] = await Promise.all([
     listWorkspaces(session.userId),
     // Only meaningful for people who actually triage; skip the query otherwise.
     canTriage(session.role) ? countUnreviewed(session.companyGroupId) : Promise.resolve(0),
@@ -45,6 +47,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
      */
     canWork(session.role)
       ? boardCounts(session.companyGroupId, session.userId).then((c) => c.mine)
+      : Promise.resolve(0),
+    /*
+     * The accountant's menu had no number on it either, and he is the person this
+     * office hands the most documents to: every open handover in the database is his.
+     *
+     * Two things, added: what is waiting on him to say whether it is a bill, and what
+     * somebody has asked him by name. Not the bills already cleared for payment — those
+     * are a queue he works through, not an arrival, and adding them would have made the
+     * badge a number that is never zero.
+     */
+    canSettle(session.role)
+      ? Promise.all([
+          countToDecide(session),
+          handedToCount(session, toDecideWhere(session.companyGroupId)),
+        ]).then(([decide, handed]) => decide + handed)
       : Promise.resolve(0),
   ])
 
@@ -103,6 +120,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 label: 'Accounting',
                 blurb: 'Approved bills ready to pay, what is still waiting, and the history.',
                 icon: 'accounting' as const,
+                badge: accounting || undefined,
               },
             ],
           },
@@ -159,6 +177,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 blurb:
                   'Is it a bill, what is cleared to pay, what is waiting, what is paid, and cheques in.',
                 icon: 'accounting' as const,
+                badge: accounting || undefined,
               },
             ],
           },
