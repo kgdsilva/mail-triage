@@ -46,12 +46,21 @@ export const HELP: Record<string, Help> = {
   approvals: {
     title: 'What am I deciding here?',
     body: [
-      'Every bill waiting on you, for the companies assigned to you. You are clearing it for payment, not paying it — the accountant pays and records it afterwards.',
+      'Everything waiting on you, for the companies assigned to you: bills to clear, bills you asked a question about, and questions somebody asked you. All three are on the first tab, because all three are waiting on you — the other tabs only filter it.',
+      'You are clearing a bill for payment, not paying it — the accountant pays and records it afterwards.',
       'The three totals at the top say what to open first: overdue, due this week, waiting in total. Bills are grouped the same way.',
       'Approve clears it. Deny means do not pay, and your reason is kept and shown to the accountant. Send back is a question rather than a decision — it returns to the office with your note and can come round again.',
       'Preview opens the invoice. Approving without opening it is possible, and recorded as such.',
       'A band above the buttons means you may already have this bill. Open the document it names before approving — the band says whether that one has already been paid.',
       'Where each one goes: approved moves to Approved and waits on the accountant to pay; denied moves to Denied; a question stays on your list, under Your questions, until the office answers. The screen says so each time you act.',
+    ],
+  },
+
+  'approvals.handed': {
+    title: 'What is on this tab?',
+    body: [
+      'Documents somebody handed to you by name, with the question they wanted answered. They also appear at the top of Waiting on you — this tab is only here for when you want them on their own.',
+      'Answering leaves your reply on the document, where whoever asked will read it. It does not move the document: handing something over is a request for an answer, not a transfer of the work.',
     ],
   },
 

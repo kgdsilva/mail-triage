@@ -24,21 +24,28 @@ export const dynamic = 'force-dynamic'
  */
 
 /*
- * Four tabs, where there were three.
+ * One list of what is waiting on you, and filters on it.
+ *
+ * ---------------------------------------------------------------------------
+ * Said twice in the same meeting, about two different things
+ * ---------------------------------------------------------------------------
  *
  * "Sent back" held a denial and a question in one bucket, which is how an approver came
- * to say of his own bills: "it's in sent back, which I don't know what that means." They
- * are opposites. A denial is a decision and is finished; a question is the absence of
- * one, and the bill is still his.
+ * to say of his own bills: "it's in sent back, which I don't know what that means." A
+ * denial is a decision and is finished; a question is the absence of one, and the bill
+ * is still his — so a bill he asked about stays in "Waiting on you".
  *
- * So a bill he asked about stays in "Waiting on you", because he has not decided it —
- * asking is not deciding. It also keeps a tab of its own, which is the list he wanted
- * for his Monday meeting with the owner: "I could just go through, get a question on
- * this, question on this."
+ * And of a document the accountant handed him: "it'd be great if, if he passes something
+ * to me, it puts it back into my waiting on me — bills to approve." Which is the same
+ * sentence again. It arrived first as its own tab, which was the obvious shape and the
+ * wrong one: it is a third thing that is waiting on him, and a tab he has to remember to
+ * click is a tab he does not click. "It says Chris passed this to you, but in bills to
+ * approve, I don't see it" is not fixed by a second place to not see it.
  *
- * The office still sees the same bill on its own board and owes the answer. That is not
- * the same item on two screens for no reason — the office has to act, he has to wait,
- * and each screen says which of those it is.
+ * So the first tab is everything waiting on him — bills to clear, bills he asked about,
+ * and questions somebody asked him — and the rest are filters on that, for when he wants
+ * one kind. The pair of question tabs is deliberately symmetric: what you asked, and
+ * what was asked of you.
  */
 const TABS = [
   {
@@ -53,7 +60,7 @@ const TABS = [
   },
   {
     key: 'handed',
-    label: 'Handed to you',
+    label: 'Questions for you',
     statuses: [] as ApprovalStatus[],
   },
   { key: 'approved', label: 'Approved', statuses: ['APPROVED'] as ApprovalStatus[] },
@@ -73,6 +80,9 @@ export default async function ApprovalsPage({
   const chosen = narrowEntityChoice(entity, scope)
 
   const handedTab = active.key === 'handed'
+  // The first tab carries the handovers as well, which is the whole point of it being
+  // the first tab: one place that answers "what is waiting on me".
+  const showsHandovers = handedTab || active.key === 'pending'
 
   const [bills, counts, entities, handed, handedCount, settler] = await Promise.all([
     // The handover tab reads a different question, so the bill query is skipped rather
@@ -88,7 +98,7 @@ export default async function ApprovalsPage({
         }),
     billCounts(session, chosen),
     visibleEntities(session),
-    handedTab ? listHandedTo(session) : Promise.resolve([]),
+    showsHandovers ? listHandedTo(session) : Promise.resolve([]),
     handedToCount(session),
     settlerName(session.companyGroupId),
   ])
@@ -155,7 +165,7 @@ export default async function ApprovalsPage({
   // longer added together under one heading.
   const tabCount = (key: (typeof TABS)[number]['key']) =>
     key === 'pending'
-      ? counts.pending + counts.needsReview
+      ? counts.pending + counts.needsReview + handedCount
       : key === 'questions'
         ? counts.needsReview
         : key === 'handed'
@@ -193,11 +203,11 @@ export default async function ApprovalsPage({
           {entities.length === 1
             ? `Everything waiting on you for ${entities[0].legalName}.`
             : 'Everything waiting on you, for the companies you approve.'}{' '}
-          Open the invoice, then approve, deny or send it back with a question.
+          Open the invoice, then approve, deny or ask a question about it.
         </p>
       </header>
 
-      <PageHelp topic="approvals" />
+      <PageHelp topic={handedTab ? 'approvals.handed' : 'approvals'} />
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1 rounded-xl border border-line bg-surface p-1">
@@ -235,6 +245,21 @@ export default async function ApprovalsPage({
         {entities.length > 1 && <CompanyPicker entities={entities} value={chosen} />}
 
       </div>
+
+      {/*
+        Questions first, and above the money.
+        A bill is waiting on a deadline; a question is waiting on a person who cannot
+        get on with their work until it is answered. The list is short and the bills are
+        long, so putting it second would have buried it under a scroll.
+      */}
+      {active.key === 'pending' && handovers.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="px-1 text-[12.5px] font-bold uppercase tracking-wide text-amber-800">
+            Questions for you · {handovers.length}
+          </h2>
+          <HandedToYou items={handovers} />
+        </section>
+      )}
 
       {handedTab ? (
         <HandedToYou items={handovers} />
