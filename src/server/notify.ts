@@ -69,6 +69,13 @@ const money = (v: unknown) =>
 
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null)
 
+/** Where a person goes to answer something handed to them, given what they can open. */
+function handedHref(role: string): string {
+  if (canApprove(role) && !canWork(role)) return '/approvals?tab=handed'
+  if (canTriagePayments(role) && !canWork(role)) return '/accounting?tab=handed'
+  return '/'
+}
+
 /**
  * Everybody who might be owed an email, with their scope.
  *
@@ -200,8 +207,22 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
     }
   }
 
-  // --- anything handed to this person by name ---------------------------------------
-  if (canWork(member.role)) {
+  /*
+   * --- anything handed to this person by name -----------------------------------------
+   *
+   * Not gated by role, and that is the fix rather than an oversight.
+   *
+   * It used to require `canWork`, which is OWNER/ADMIN/OPERATOR/MEMBER/VIEWER — so the
+   * two people this office actually hands documents to, the approver and the accountant,
+   * were the two the email never reached. Every open handover in the database is
+   * addressed to the accountant. He was emailed about the money queue and never about
+   * the question somebody put his name on.
+   *
+   * The permission is the same one `answerHandover` uses: your name is on the document.
+   * That is narrower than any role check, and it is the only one that matches what the
+   * screens now show.
+   */
+  {
     const mine = await prisma.document.findMany({
       where: {
         companyGroupId: member.companyGroupId,
@@ -218,6 +239,7 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
         finalFilename: true,
         amount: true,
         dueDate: true,
+        actionKind: true,
         entity: { select: { code: true } },
         vendor: { select: { name: true } },
       },
@@ -228,12 +250,18 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
       if (items.some((i) => i.documentId === d.id)) continue
       items.push({
         documentId: d.id,
-        what: 'assigned to you',
+        what:
+          d.actionKind === 'REVIEW'
+            ? 'somebody has a question for you'
+            : 'assigned to you',
         title: d.vendor?.name ?? d.finalFilename ?? d.originalFilename,
         entityCode: d.entity?.code ?? null,
         amount: money(d.amount),
         dueDate: day(d.dueDate),
-        href: '/',
+        // The screen this person can actually open. An approver cannot reach the shared
+        // board and the accountant cannot either, so a link to it was a link to a
+        // refusal — which is how "Chris passed this to you" became impossible to find.
+        href: handedHref(member.role),
       })
     }
   }
