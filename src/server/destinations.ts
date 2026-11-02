@@ -85,6 +85,11 @@ export async function approverIndex(companyGroupId: string) {
       .map((m) => display(m.user))
       .filter((n): n is string => Boolean(n))
 
-    return names.length ? names.join(' and ') : null
+    /*
+     * "or", not "and": any one of them can clear the bill, and "Eric and Eric Demo"
+     * reads as both signatures being needed. Approval here is single-signature by
+     * design — two names are two routes to the same yes.
+     */
+    return names.length ? names.join(' or ') : null
   }
 }

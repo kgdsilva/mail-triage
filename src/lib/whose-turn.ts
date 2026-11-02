@@ -90,7 +90,14 @@ export function whoseTurn(s: TurnState): Turn {
 
     case 'PENDING': {
       if (s.isYou) return { label: 'Waiting on you to approve', tone: 'you' }
-      const approver = s.approver ?? s.holder
+      /*
+       * The approver, and only the approver. Falling back to whoever the document is
+       * assigned to produced "With Chris to approve" about the accountant, who is the
+       * one person the separation of duties forbids from approving — on a bill for a
+       * company that has no approver at all, which is the state the next line exists to
+       * announce. An assignee is not a stand-in for an approver.
+       */
+      const approver = s.approver
       // "With the approver" when the company has none is the one lie this codebase goes
       // out of its way to refuse: `markNeedsPayment` will not create this state, and a
       // row that predates that rule still has to say what it is. A bill waiting on
