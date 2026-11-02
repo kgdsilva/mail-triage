@@ -28,10 +28,13 @@ export type ApprovalBill = {
   hasFile: boolean
   /** Whose turn it is now, named on the server. Optional: not every caller knows yet. */
   turn?: Turn
+  /** Others that might be this same bill — read by the panel this table opens. */
+  duplicates?: NearMatch[]
 }
 
 import { BillPanel, STATUS_LABEL, STATUS_TONE } from '@/components/bill-panel'
 import { TURN_TONE, type Turn } from '@/lib/whose-turn'
+import type { NearMatch } from '@/server/near-duplicates'
 
 /**
  * The approver's list: one line per bill, and the invoice one click away.

@@ -50,6 +50,7 @@ export const HELP: Record<string, Help> = {
       'The three totals at the top say what to open first: overdue, due this week, waiting in total. Bills are grouped the same way.',
       'Approve clears it. Deny means do not pay, and your reason is kept and shown to the accountant. Send back is a question rather than a decision — it returns to the office with your note and can come round again.',
       'Preview opens the invoice. Approving without opening it is possible, and recorded as such.',
+      'A band above the buttons means you may already have this bill. Open the document it names before approving — the band says whether that one has already been paid.',
       'Where each one goes: approved moves to Approved and waits on the accountant to pay; denied moves to Denied; a question stays on your list, under Your questions, until the office answers. The screen says so each time you act.',
     ],
   },
@@ -69,6 +70,7 @@ export const HELP: Record<string, Help> = {
       'Money that nobody has ruled on yet. The reader thinks each of these involves money; you decide what it actually is.',
       'Needs payment sends it to the approver for that company. If that company has no approver assigned, the button refuses and says so — a bill waiting on nobody is the failure this whole workflow exists to prevent.',
       'Not a bill is for a statement, a notice with nothing owed, a confirmation. Needs other action is for real work that is not a payment: a form to return, a dispute. Hand that to a person by name.',
+      'An amber or red band means another document in the log has the same company, vendor and amount. It is a warning, not a verdict — a monthly notice looks the same as a double-billing — so open the other one and decide.',
     ],
   },
 

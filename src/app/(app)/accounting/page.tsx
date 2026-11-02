@@ -21,6 +21,7 @@ import { RecurringLine, type Row as RecurringRow } from '@/components/recurring-
 import { periodOf, previousPeriod, recurringFor } from '@/server/recurring'
 import { approverIndex, settlerName } from '@/server/destinations'
 import { whoseTurn } from '@/lib/whose-turn'
+import { nearDuplicatesFor } from '@/server/near-duplicates'
 
 export const dynamic = 'force-dynamic'
 
@@ -187,6 +188,16 @@ export default async function AccountingPage({
 
   const readyTotal = bills.reduce((sum, b) => sum + Number(b.amount ?? 0), 0)
 
+  /*
+   * One lookup for whichever list this tab is about to draw. Both queues reach it: the
+   * accountant decides a bill exists on one tab and pays it on another, and a warning
+   * that only appeared on one of them would be missed on whichever he was looking at.
+   */
+  const duplicates = await nearDuplicatesFor(session.companyGroupId, [
+    ...bills.map((d) => d.id),
+    ...decideRows.map((d) => d.id),
+  ])
+
   const accountingRows: AccountingBill[] = bills.map((d) => ({
     id: d.id,
     title: d.finalFilename ?? d.originalFilename,
@@ -216,6 +227,7 @@ export default async function AccountingPage({
       : null,
     approvalNote: d.approvalNote,
     turn: turnOf(d),
+    duplicates: duplicates.get(d.id) ?? [],
     refusal:
       d.approvalStatus === 'DENIED'
         ? {
@@ -248,6 +260,7 @@ export default async function AccountingPage({
     decidedAt: d.approvalDecidedAt?.toISOString() ?? null,
     hasFile: Boolean(d.storageKey),
     turn: turnOf(d),
+    duplicates: duplicates.get(d.id) ?? [],
   }))
 
   const monthName = (period: string) =>
@@ -361,6 +374,7 @@ export default async function AccountingPage({
             hasFile: Boolean(d.storageKey),
             handedBy: handoff(d, session.userId)?.by ?? null,
             handNote: handoff(d, session.userId)?.note ?? null,
+            duplicates: duplicates.get(d.id) ?? [],
           }))}
           people={handoverPeople.map((m) => ({
             id: m.user.id,

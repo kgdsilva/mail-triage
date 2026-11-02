@@ -22,6 +22,9 @@ import { formatDate } from '@/components/badges'
 import { DUE_TONE, describeDue } from '@/lib/due'
 import { BTN, entityColor } from '@/lib/theme'
 
+import type { NearMatch } from '@/server/near-duplicates'
+import { DuplicateWarning } from '@/components/duplicate-warning'
+
 export type PanelBill = {
   id: string
   title: string
@@ -39,6 +42,8 @@ export type PanelBill = {
   decidedBy: string | null
   decidedAt: string | null
   hasFile: boolean
+  /** Other documents that might be this same bill. Advisory; never blocks a decision. */
+  duplicates?: NearMatch[]
 }
 
 export const STATUS_LABEL: Record<PanelBill['status'], string> = {
@@ -178,6 +183,14 @@ export function BillPanel({
               <X className="size-4" aria-hidden />
             </button>
           </div>
+
+          {/* Above the buttons, because it is the one thing that should be read before
+              the Approve key is pressed — and this panel is where that happens. */}
+          {bill.duplicates && bill.duplicates.length > 0 && (
+            <div className="mt-3">
+              <DuplicateWarning matches={bill.duplicates} />
+            </div>
+          )}
 
           {canDecide && (
             <div className="mt-3 flex flex-wrap items-center gap-2">

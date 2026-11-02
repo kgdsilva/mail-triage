@@ -7,6 +7,7 @@ import { BillPanel, STATUS_LABEL, type PanelBill } from '@/components/bill-panel
 import { formatDate, formatMoney } from '@/components/badges'
 import { DUE_TONE, describeDue } from '@/lib/due'
 import { TURN_TONE, type Turn } from '@/lib/whose-turn'
+import { DuplicateWarning } from '@/components/duplicate-warning'
 import { BTN, entityColor } from '@/lib/theme'
 
 export type BoardBill = PanelBill & {
@@ -573,6 +574,14 @@ function Row({
               Monday: a mark that says only "question" would send him into each bill one
               at a time to remember which question it was.
             */}
+            {/* On the row as well as in the panel: a bulk approve never opens a panel,
+                and the tick box is right here. */}
+            {bill.duplicates && bill.duplicates.length > 0 && (
+              <span className="mt-1 block">
+                <DuplicateWarning matches={bill.duplicates} />
+              </span>
+            )}
+
             {bill.status === 'NEEDS_REVIEW' && (
               <span className="mt-1 flex items-start gap-1.5 text-[12px] text-amber-800">
                 <HelpCircle className="mt-px size-3.5 flex-none" aria-hidden />

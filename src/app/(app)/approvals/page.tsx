@@ -11,6 +11,7 @@ import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
 import { settlerName } from '@/server/destinations'
 import { whoseTurn } from '@/lib/whose-turn'
+import { nearDuplicatesFor } from '@/server/near-duplicates'
 
 export const dynamic = 'force-dynamic'
 
@@ -100,6 +101,16 @@ export default async function ApprovalsPage({
     receivedDate: d.createdAt.toISOString(),
   }))
 
+  /*
+   * Asked after the bills are known, rather than as part of that query: it is a question
+   * about the rows on screen, and two queries about five visible bills beat a join that
+   * every other caller of listBills would then carry.
+   */
+  const duplicates = await nearDuplicatesFor(
+    session.companyGroupId,
+    bills.map((d) => d.id),
+  )
+
   const rows: BoardBill[] = bills.map((d) => ({
     id: d.id,
     title: d.finalFilename ?? d.originalFilename,
@@ -118,6 +129,7 @@ export default async function ApprovalsPage({
     decidedBy: d.approvalDecidedBy?.name ?? d.approvalDecidedBy?.email ?? null,
     decidedAt: d.approvalDecidedAt?.toISOString() ?? null,
     hasFile: Boolean(d.storageKey),
+    duplicates: duplicates.get(d.id) ?? [],
     /*
      * Worked out here rather than in the row, because the answer is a person's name and
      * the browser has never been told any names. The row renders a label it was handed.

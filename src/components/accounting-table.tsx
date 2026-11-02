@@ -7,6 +7,8 @@ import { PdfFrame } from '@/components/pdf-peek'
 import { formatDate } from '@/components/badges'
 import { BTN, URGENCY_TONE, entityColor, urgencyWithin } from '@/lib/theme'
 import { TURN_TONE, type Turn } from '@/lib/whose-turn'
+import { DuplicateWarning } from '@/components/duplicate-warning'
+import type { NearMatch } from '@/server/near-duplicates'
 
 export type AccountingBill = {
   id: string
@@ -35,6 +37,8 @@ export type AccountingBill = {
   approvalNote: string | null
   /** Whose turn it is now, named on the server. */
   turn: Turn
+  /** Others that might be this same bill. Shown, never acted on. */
+  duplicates: NearMatch[]
 }
 
 /**
@@ -181,6 +185,17 @@ function Row({
           </span>
         </span>
       </div>
+
+      {/*
+        Last stop before the money leaves. On the Paid tab it is a different sentence
+        doing a different job — "you may have paid this already" about something that
+        has gone out is how a refund gets asked for in time.
+      */}
+      {bill.duplicates.length > 0 && (
+        <div className="px-3 pb-3">
+          <DuplicateWarning matches={bill.duplicates} />
+        </div>
+      )}
 
       {/*
         Who approved it, on every row. It is the accountant's authority to pay and the

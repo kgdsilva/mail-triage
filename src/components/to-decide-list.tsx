@@ -13,6 +13,8 @@ import { EntityBadge, formatMoney } from '@/components/badges'
 import { PdfFrame } from '@/components/pdf-peek'
 import { DUE_TONE, describeDue } from '@/lib/due'
 import { BTN } from '@/lib/theme'
+import { DuplicateWarning } from '@/components/duplicate-warning'
+import type { NearMatch } from '@/server/near-duplicates'
 
 /**
  * "Is this a bill, and does it have to be paid?" — answered one document at a time.
@@ -41,6 +43,8 @@ export type DecideRow = {
   /** Set when somebody handed it over rather than the reader routing it. */
   handedBy: string | null
   handNote: string | null
+  /** Others that might be this same bill. Shown, never acted on. */
+  duplicates: NearMatch[]
 }
 
 const WHY = [
@@ -126,6 +130,14 @@ function Row({ row, people }: { row: DecideRow; people: { id: string; name: stri
 
           {row.summary && (
             <p className="mt-1 line-clamp-2 text-[12.5px] text-muted">{row.summary}</p>
+          )}
+
+          {/* Before "Needs payment" is pressed, because that is the click that sets a
+              second payment of the same bill in motion. */}
+          {row.duplicates.length > 0 && (
+            <div className="mt-1.5">
+              <DuplicateWarning matches={row.duplicates} />
+            </div>
           )}
 
           {/* Who handed it over, which is the first thing you want to know. */}
