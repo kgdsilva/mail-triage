@@ -53,6 +53,13 @@ export type WaitingItem = {
   dueDate: string | null
   /** Where this lives on the site. */
   href: string
+  /**
+   * Something changed at this moment, so the usual "already told you about this
+   * document" rule does not apply — only an email sent *after* this counts as having
+   * said it. Without it a reply to a question would be silently swallowed by the
+   * reminder the document had already earned days earlier.
+   */
+  since?: Date
 }
 
 export type Waiting = {
@@ -68,6 +75,14 @@ const money = (v: unknown) =>
       )
 
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null)
+
+/** Where a person goes to read a reply to a question they asked. */
+function askerHref(role: string): string {
+  // Only two kinds of person can hand a document over: the accountant, from the money
+  // queue, and the office, from the shared board. Each gets back the screen they asked
+  // from, which is also the screen the answer is now printed on.
+  return canTriagePayments(role) && !canWork(role) ? '/accounting' : '/'
+}
 
 /** Where a person goes to answer something handed to them, given what they can open. */
 function handedHref(role: string): string {
@@ -307,6 +322,13 @@ export async function unTold(
     told.filter((t) => t.sentAt !== null && t.sentAt.getTime() > cutoff).map((t) => t.documentId),
   )
 
+  /** The last time this person was written to about each document. */
+  const lastTold = new Map<string, number>()
+  for (const t of told) {
+    if (!t.sentAt) continue
+    lastTold.set(t.documentId, Math.max(lastTold.get(t.documentId) ?? 0, t.sentAt.getTime()))
+  }
+
   /*
    * A monthly payment is mentioned once for its month, not once a week.
    *
@@ -328,7 +350,10 @@ export async function unTold(
 
   return items.filter((i) => {
     if (i.recurring) return remindedPeriods.get(i.recurring.id) !== i.recurring.period
-    return i.documentId !== null && !recent.has(i.documentId)
+    if (i.documentId === null) return false
+    // Something happened to this one; the question is whether we have said so since.
+    if (i.since) return (lastTold.get(i.documentId) ?? 0) < i.since.getTime()
+    return !recent.has(i.documentId)
   })
 }
 

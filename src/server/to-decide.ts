@@ -75,19 +75,95 @@ const SELECT = {
    * only its note is the message they meant to leave.
    */
   events: {
-    where: { action: 'routed' },
+    where: { action: { in: ['routed', 'note_added'] } },
     orderBy: { createdAt: 'desc' },
-    take: 1,
-    select: { toValue: true, actor: { select: { name: true, email: true } } },
+    take: 10,
+    select: {
+      action: true,
+      createdAt: true,
+      toValue: true,
+      actor: { select: { name: true, email: true } },
+    },
   },
 } satisfies Prisma.DocumentSelect
 
+type EventRow = {
+  action: string
+  toValue: unknown
+  actor: { name: string | null; email: string } | null
+}
+
+const whoSaid = (e: EventRow) => e.actor?.name?.trim() || e.actor?.email || 'Somebody'
+
+const noteOn = (e: EventRow): string | null => {
+  const v = e.toValue
+  if (!v || typeof v !== 'object' || !('note' in v)) return null
+  const note = String((v as { note?: unknown }).note ?? '').trim()
+  return note || null
+}
+
+const isAnswer = (e: EventRow) =>
+  e.action === 'note_added' &&
+  typeof e.toValue === 'object' &&
+  e.toValue !== null &&
+  'by' in e.toValue &&
+  (e.toValue as { by?: unknown }).by === 'handover-answer'
+
+export type Exchange = {
+  asked: { by: string; note: string } | null
+  answered: { by: string; note: string } | null
+}
+
+/**
+ * The question and the answer, as two attributed sentences.
+ *
+ * ---------------------------------------------------------------------------
+ * Why not just show internalNotes
+ * ---------------------------------------------------------------------------
+ *
+ * Because by the time there is an answer, `internalNotes` is the question and the answer
+ * concatenated, with nothing saying which is which or who wrote either. It is the right
+ * place to keep them — one field, appended to, never overwritten — and the wrong thing
+ * to put on a screen.
+ *
+ * The events have what the field cannot: an actor and an order. So the row reads
+ * "Chris asked: … / Danny answered: …", and that is reconstructed rather than parsed.
+ *
+ * The important difference from `handoff` below: this does not care who the document is
+ * assigned to. Answering clears the assignment, which is correct — the question is
+ * settled — and it also meant the answer appeared on no queue screen at all, only in the
+ * history page. The person who asked got their document back with their own question
+ * gone and no reply in sight.
+ */
+export function exchange(doc: { events: EventRow[] }): Exchange {
+  let answered: Exchange['answered'] = null
+  let asked: Exchange['asked'] = null
+
+  // Newest first, so the first answer found is the current one and the first routed
+  // event after it in the list is the question it answers.
+  for (const event of doc.events) {
+    if (!answered && isAnswer(event)) {
+      const note = noteOn(event)
+      if (note) answered = { by: whoSaid(event), note }
+      continue
+    }
+    if (!asked && event.action === 'routed') {
+      const note = noteOn(event)
+      if (note) asked = { by: whoSaid(event), note }
+    }
+  }
+
+  return { asked, answered }
+}
+
 /** The handoff message, if this document got here by one. */
 export function handoff(
-  doc: { assignedTo: { id: string } | null; events: { toValue: unknown; actor: { name: string | null; email: string } | null }[] },
+  doc: { assignedTo: { id: string } | null; events: EventRow[] },
   viewerId: string,
 ): { by: string; note: string | null } | null {
-  const event = doc.events[0]
+  // The list now carries answers as well as handoffs, so the handoff is looked up by
+  // action rather than taken as "the most recent event".
+  const event = doc.events.find((e) => e.action === 'routed')
   if (!event) return null
   // Only when it was handed to *this* person: a document routed to somebody else is
   // not a message to the reader.

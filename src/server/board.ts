@@ -46,12 +46,17 @@ export const BOARD_INCLUDE = {
    * server/to-decide.ts: an assignee set by the importer is not somebody passing work on.
    */
   events: {
-    where: { action: 'routed' },
+    where: { action: { in: ['routed', 'note_added'] } },
     orderBy: { createdAt: 'desc' as const },
-    take: 1,
-    select: { toValue: true, actor: { select: { name: true, email: true } } },
+    take: 10,
+    select: {
+      action: true,
+      createdAt: true,
+      toValue: true,
+      actor: { select: { name: true, email: true } },
+    },
   },
-} as const
+} satisfies Prisma.DocumentInclude
 
 function where(filters: BoardFilters, companyGroupId: string): Prisma.DocumentWhereInput {
   return {

@@ -43,6 +43,9 @@ export type DecideRow = {
   /** Set when somebody handed it over rather than the reader routing it. */
   handedBy: string | null
   handNote: string | null
+  /** Set once the person it was handed to has replied. */
+  answeredBy: string | null
+  answerNote: string | null
   /** Others that might be this same bill. Shown, never acted on. */
   duplicates: NearMatch[]
 }
@@ -145,6 +148,19 @@ function Row({ row, people }: { row: DecideRow; people: { id: string; name: stri
             <p className="mt-1 rounded-lg bg-navy-50 px-2.5 py-1.5 text-[12.5px] text-navy-900">
               <span className="font-semibold">{row.handedBy} passed this to you</span>
               {row.handNote ? `: ${row.handNote}` : '.'}
+            </p>
+          )}
+
+          {/*
+            The reply to a question you asked.
+            This is the row you get your document back on, and until now it came back
+            looking exactly as it left: answering clears the assignment, so the handoff
+            line above goes quiet and the answer itself was only in the history page.
+          */}
+          {row.answeredBy && (
+            <p className="mt-1 rounded-lg bg-ok-100 px-2.5 py-1.5 text-[12.5px] text-ok-700">
+              <span className="font-semibold">{row.answeredBy} answered</span>
+              {row.answerNote ? `: ${row.answerNote}` : '.'}
             </p>
           )}
         </div>

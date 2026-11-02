@@ -6,7 +6,7 @@ import { billCounts, handedToCount, listBills, listHandedTo } from '@/server/app
 import { narrowEntityChoice, visibleEntities, visibleEntityIds } from '@/server/scope'
 import { canApprove, canSettle, requireSettler } from '@/server/session'
 import { prisma } from '@/server/db/client'
-import { countToDecide, handoff, listToDecide, toDecideWhere } from '@/server/to-decide'
+import { countToDecide, exchange, handoff, listToDecide, toDecideWhere } from '@/server/to-decide'
 import { canAddBill, canTriagePayments } from '@/server/session'
 import { AddBill } from '@/components/add-bill'
 import { AccountingTable, type AccountingBill } from '@/components/accounting-table'
@@ -374,6 +374,8 @@ export default async function AccountingPage({
             hasFile: Boolean(d.storageKey),
             handedBy: handoff(d, session.userId)?.by ?? null,
             handNote: handoff(d, session.userId)?.note ?? null,
+            answeredBy: exchange(d).answered?.by ?? null,
+            answerNote: exchange(d).answered?.note ?? null,
             duplicates: duplicates.get(d.id) ?? [],
           }))}
           people={handoverPeople.map((m) => ({

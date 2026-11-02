@@ -42,6 +42,9 @@ export type CardDoc = {
   /** Who handed this to you, and what they asked. Null unless it was handed to you. */
   handedBy: string | null
   handNote: string | null
+  /** Who answered the question on it, and what they said. Shown to everybody. */
+  answeredBy: string | null
+  answerNote: string | null
   mine: boolean
   /** A historical row can exist before its PDF is attached; an iframe would 404. */
   hasFile: boolean
@@ -180,6 +183,14 @@ export function DocumentCard({
               */}
               <AnswerBox documentId={doc.id} />
             </div>
+          )}
+
+          {/* The reply, which is the thing the person who asked came back for. */}
+          {doc.answeredBy && (
+            <p className="mt-1.5 rounded-lg bg-ok-100 px-2.5 py-1.5 text-[12.5px] text-ok-700">
+              <span className="font-bold">{doc.answeredBy} answered</span>
+              {doc.answerNote ? `: ${doc.answerNote}` : '.'}
+            </p>
           )}
 
           {doc.summaryNote && (
