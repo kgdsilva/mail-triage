@@ -290,9 +290,13 @@ export function DocumentCard({
             <option value="CONFIRM">confirm</option>
             <option value="REVIEW">review</option>
           </select>
+          {/* Required, and asked as a question — the server refuses a blank one, and a
+              field that says "optional" is how it came to be blank every time. */}
           <input
             name="note"
-            placeholder="Note (optional)"
+            required
+            minLength={3}
+            placeholder="What do you need from them?"
             className="min-w-32 flex-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[12.5px] outline-none transition-colors placeholder:text-subtle focus:border-navy-500"
           />
           <button className={BTN.secondary}>Send</button>

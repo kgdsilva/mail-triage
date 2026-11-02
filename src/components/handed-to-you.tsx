@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { HelpCircle, Loader2 } from 'lucide-react'
+import { ArrowRight, HelpCircle, Loader2 } from 'lucide-react'
 import { answerHandover } from '@/server/actions/to-decide'
 
 /**
@@ -53,6 +53,7 @@ export function HandedToYou({ items }: { items: Handover[] }) {
 function HandoverRow({ item }: { item: Handover }) {
   const [answer, setAnswer] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [went, setWent] = useState<string | null>(null)
   const [pending, start] = useTransition()
 
   const send = () => {
@@ -60,7 +61,10 @@ function HandoverRow({ item }: { item: Handover }) {
     start(async () => {
       const result = await answerHandover(item.id, answer)
       if (!result.ok) setError(result.error ?? 'That did not save.')
-      else setAnswer('')
+      else {
+        setAnswer('')
+        setWent(result.went ?? null)
+      }
     })
   }
 
@@ -99,6 +103,13 @@ function HandoverRow({ item }: { item: Handover }) {
       </div>
 
       {error && <p className="mt-2 text-[12px] font-semibold text-red-700">{error}</p>}
+
+      {went && (
+        <p className="mt-2 flex items-start gap-1.5 text-[12px] font-semibold text-ok-700">
+          <ArrowRight className="mt-px size-3.5 flex-none" aria-hidden />
+          {went}
+        </p>
+      )}
     </li>
   )
 }

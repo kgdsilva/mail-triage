@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
-import { Ban, Check, FileText, History, Share2 } from 'lucide-react'
+import { ArrowRight, Ban, Check, FileText, History, Share2 } from 'lucide-react'
 import {
   markNeedsOtherAction,
   markNeedsPayment,
@@ -86,17 +86,21 @@ function Row({ row, people }: { row: DecideRow; people: { id: string; name: stri
   const [note, setNote] = useState('')
   const [who, setWho] = useState(people[0]?.id ?? '')
   const [error, setError] = useState<string | null>(null)
+  // Where it went, kept on the row that is about to disappear from this list. The row
+  // leaves on the next refresh; the sentence is what remains of it.
+  const [went, setWent] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
 
   const due = describeDue(row.dueDate)
 
-  function act(fn: () => Promise<{ ok: boolean; error?: string }>) {
+  function act(fn: () => Promise<{ ok: boolean; error?: string; went?: string }>) {
     setError(null)
     start(async () => {
       const res = await fn()
       if (!res.ok) setError(res.error ?? 'That did not work.')
       else {
         setAsking(null)
+        setWent(res.went ?? null)
         router.refresh()
       }
     })
@@ -235,6 +239,13 @@ function Row({ row, people }: { row: DecideRow; people: { id: string; name: stri
       {error && (
         <p className="border-t border-line-soft bg-danger-100 px-3 py-2 text-[12.5px] text-danger-700">
           {error}
+        </p>
+      )}
+
+      {went && (
+        <p className="flex items-start gap-1.5 border-t border-line-soft bg-ok-100 px-3 py-2 text-[12.5px] font-semibold text-ok-700">
+          <ArrowRight className="mt-px size-3.5 flex-none" aria-hidden />
+          {went}
         </p>
       )}
 

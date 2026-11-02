@@ -5,6 +5,8 @@ import { z } from 'zod'
 import type { ApprovalStatus } from '@/generated/prisma/enums'
 import { prisma } from '@/server/db/client'
 import { recordEvent } from '@/server/documents'
+import { returneeName, settlerName } from '@/server/destinations'
+import { wentTo } from '@/lib/whose-turn'
 import { entityWhere, visibleEntityIds } from '@/server/scope'
 import { returnTo } from '@/server/returns'
 import { requireApprover } from '@/server/session'
@@ -51,7 +53,7 @@ async function decide(
   documentIds: string[],
   decision: Decision,
   note: string | null,
-): Promise<{ ok: boolean; count?: number; error?: string }> {
+): Promise<{ ok: boolean; count?: number; error?: string; went?: string }> {
   const session = await requireApprover()
 
   /*
@@ -122,8 +124,22 @@ async function decide(
     })
   }
 
+  /*
+   * The sentence the screen shows back.
+   *
+   * Read after the writes rather than before, so it describes what happened and not what
+   * was about to: if the only approver was removed between the click and the commit, the
+   * message says "accounting" instead of naming somebody who is no longer there.
+   */
+  const went =
+    decision === 'APPROVED'
+      ? wentTo.approved(await settlerName(session.companyGroupId))
+      : decision === 'DENIED'
+        ? wentTo.denied(await returneeName(session.companyGroupId))
+        : wentTo.asked(await returneeName(session.companyGroupId))
+
   revalidatePath('/', 'layout')
-  return { ok: true, count: targets.length }
+  return { ok: true, count: targets.length, went }
 }
 
 /** One click, no note. The common case, and the only one that is one click. */

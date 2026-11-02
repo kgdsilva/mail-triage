@@ -26,9 +26,12 @@ export type ApprovalBill = {
   decidedBy: string | null
   decidedAt: string | null
   hasFile: boolean
+  /** Whose turn it is now, named on the server. Optional: not every caller knows yet. */
+  turn?: Turn
 }
 
 import { BillPanel, STATUS_LABEL, STATUS_TONE } from '@/components/bill-panel'
+import { TURN_TONE, type Turn } from '@/lib/whose-turn'
 
 /**
  * The approver's list: one line per bill, and the invoice one click away.
@@ -422,11 +425,19 @@ function Row({
       </span>
     ),
 
+    /*
+      On the accountant's read-only tab this column is the whole point of the tab: it is
+      there so he can see what to chase and who to chase, and "Pending" named neither.
+      The status label stays as the tooltip for anyone who wants the raw word.
+    */
     status: showStatus ? (
       <span
-        className={`inline-block w-fit rounded-full px-2 py-0.5 text-[11px] font-bold ${STATUS_TONE[bill.status]}`}
+        title={STATUS_LABEL[bill.status]}
+        className={`inline-block w-fit rounded-full px-2 py-0.5 text-[11px] font-bold ${
+          bill.turn ? TURN_TONE[bill.turn.tone] : STATUS_TONE[bill.status]
+        }`}
       >
-        {STATUS_LABEL[bill.status]}
+        {bill.turn?.label ?? STATUS_LABEL[bill.status]}
       </span>
     ) : null,
 

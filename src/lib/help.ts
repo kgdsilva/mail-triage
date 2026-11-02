@@ -50,6 +50,16 @@ export const HELP: Record<string, Help> = {
       'The three totals at the top say what to open first: overdue, due this week, waiting in total. Bills are grouped the same way.',
       'Approve clears it. Deny means do not pay, and your reason is kept and shown to the accountant. Send back is a question rather than a decision — it returns to the office with your note and can come round again.',
       'Preview opens the invoice. Approving without opening it is possible, and recorded as such.',
+      'Where each one goes: approved moves to Approved and waits on the accountant to pay; denied moves to Denied; a question stays on your list, under Your questions, until the office answers. The screen says so each time you act.',
+    ],
+  },
+
+  'accounting.handed': {
+    title: 'What is on this tab?',
+    body: [
+      'Documents somebody handed to you by name, with the question they wanted answered. Answering leaves your reply on the document, where whoever asked will read it.',
+      'Handing something over is a request for an answer, not a transfer of the work — so answering does not move the document anywhere. It stays in whichever queue already held it.',
+      'Anything already waiting in “Is it a bill?” is not repeated here; that queue shows the question itself.',
     ],
   },
 
@@ -68,6 +78,7 @@ export const HELP: Record<string, Help> = {
       'Everything an approver has cleared and nobody has settled yet. Each row shows who approved it and when.',
       'Make the payment in QuickBooks, then record it here: the amount, the date the money actually left, how it was paid, and the cheque number or reference. The date is the day the money moved, not the day you typed it in.',
       'Attach the receipt to the payment. It stays on the payment rather than becoming another document, so a proof of payment never turns up in the triage queue asking to be classified.',
+      'Recording it moves the bill to Paid, where it stays with its proof. Nothing else has to be done to it.',
     ],
   },
 

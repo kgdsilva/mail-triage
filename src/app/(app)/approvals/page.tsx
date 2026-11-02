@@ -9,6 +9,8 @@ import { AddBill } from '@/components/add-bill'
 import { ApprovalsBoard, ShortcutHint, type BoardBill } from '@/components/approvals-board'
 import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
+import { settlerName } from '@/server/destinations'
+import { whoseTurn } from '@/lib/whose-turn'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,7 +73,7 @@ export default async function ApprovalsPage({
 
   const handedTab = active.key === 'handed'
 
-  const [bills, counts, entities, handed, handedCount] = await Promise.all([
+  const [bills, counts, entities, handed, handedCount, settler] = await Promise.all([
     // The handover tab reads a different question, so the bill query is skipped rather
     // than run with an empty status list that would match nothing anyway.
     handedTab
@@ -87,6 +89,7 @@ export default async function ApprovalsPage({
     visibleEntities(session),
     handedTab ? listHandedTo(session) : Promise.resolve([]),
     handedToCount(session),
+    settlerName(session.companyGroupId),
   ])
 
   const handovers: Handover[] = handed.map((d) => ({
@@ -115,6 +118,20 @@ export default async function ApprovalsPage({
     decidedBy: d.approvalDecidedBy?.name ?? d.approvalDecidedBy?.email ?? null,
     decidedAt: d.approvalDecidedAt?.toISOString() ?? null,
     hasFile: Boolean(d.storageKey),
+    /*
+     * Worked out here rather than in the row, because the answer is a person's name and
+     * the browser has never been told any names. The row renders a label it was handed.
+     */
+    turn: whoseTurn({
+      approvalStatus: d.approvalStatus,
+      settled: d.status === 'DONE',
+      holder: d.assignedTo?.name?.trim() || d.assignedTo?.email || null,
+      // A bill awaiting approval is assigned to nobody — the approver is implied by the
+      // screen, not written on the row. On this screen that approver is the reader, so
+      // "waiting on you" is the true label and the generic "with the approver" is not.
+      isYou: d.approvalStatus === 'PENDING' || d.assignedTo?.id === session.userId,
+      settler,
+    }),
   }))
 
   /*

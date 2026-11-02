@@ -6,6 +6,8 @@ import { archiveWithReason, quickDecide, recordEvent, type ArchiveReason } from 
 import { approversFor, toDecideWhere } from '@/server/to-decide'
 import { entityWhere, visibleEntityIds } from '@/server/scope'
 import { requirePaymentTriage, requireSession } from '@/server/session'
+import { nameOf } from '@/server/destinations'
+import { wentTo } from '@/lib/whose-turn'
 
 /**
  * The accountant's three answers to "what is this".
@@ -16,7 +18,8 @@ import { requirePaymentTriage, requireSession } from '@/server/session'
  * check alone would not give that; the predicate does.
  */
 
-type Result = { ok: boolean; error?: string }
+/** `went` is the destination, in words, for the screen to show back. */
+type Result = { ok: boolean; error?: string; went?: string }
 
 /** The document, only if it is genuinely this person's to decide. */
 async function decidable(session: Awaited<ReturnType<typeof requirePaymentTriage>>, id: string) {
@@ -78,7 +81,10 @@ export async function markNeedsPayment(documentId: string, note?: string): Promi
   }
 
   revalidatePath('/', 'layout')
-  return { ok: true }
+  return {
+    ok: true,
+    went: wentTo.needsPayment(approvers.map((a) => a.name?.trim() || a.email)),
+  }
 }
 
 /**
@@ -113,7 +119,7 @@ export async function markNotABill(documentId: string, reason: string): Promise<
   await archiveWithReason(session.companyGroupId, documentId, session.userId, mapped)
 
   revalidatePath('/', 'layout')
-  return { ok: true }
+  return { ok: true, went: wentTo.notABill }
 }
 
 /**
@@ -168,7 +174,7 @@ export async function markNeedsOtherAction(
   })
 
   revalidatePath('/', 'layout')
-  return { ok: true }
+  return { ok: true, went: wentTo.handed((await nameOf(recipient.userId)) ?? 'them') }
 }
 
 /**
@@ -237,5 +243,5 @@ export async function answerHandover(documentId: string, answer: string): Promis
   })
 
   revalidatePath('/', 'layout')
-  return { ok: true }
+  return { ok: true, went: wentTo.answered }
 }

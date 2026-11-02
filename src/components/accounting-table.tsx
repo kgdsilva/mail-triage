@@ -6,6 +6,7 @@ import { PaymentForm, type PaymentEntity } from '@/components/payment-form'
 import { PdfFrame } from '@/components/pdf-peek'
 import { formatDate } from '@/components/badges'
 import { BTN, URGENCY_TONE, entityColor, urgencyWithin } from '@/lib/theme'
+import { TURN_TONE, type Turn } from '@/lib/whose-turn'
 
 export type AccountingBill = {
   id: string
@@ -32,6 +33,8 @@ export type AccountingBill = {
   refusal: { by: string | null; at: string | null; note: string | null } | null
   /** What the approver said when clearing it — often how to pay it. */
   approvalNote: string | null
+  /** Whose turn it is now, named on the server. */
+  turn: Turn
 }
 
 /**
@@ -112,6 +115,17 @@ function Row({
           {bill.categoryName && (
             <span className="block text-[12px] text-muted">{bill.categoryName}</span>
           )}
+          {/*
+            Under the name, on every tab, because "where is this now" is asked of a paid
+            bill as often as of a waiting one — and on Ready to pay the answer is "you",
+            which is worth saying to somebody who has thirty rows and no idea which are
+            his.
+          */}
+          <span
+            className={`mt-1 inline-block w-fit rounded-full px-2 py-0.5 text-[11px] font-bold ${TURN_TONE[bill.turn.tone]}`}
+          >
+            {bill.turn.label}
+          </span>
         </span>
 
         <span className="flex items-center gap-2 md:block">

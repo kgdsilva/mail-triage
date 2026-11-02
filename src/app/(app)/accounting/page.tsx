@@ -2,15 +2,16 @@ import Link from 'next/link'
 import { PageHelp } from '@/components/page-help'
 import { Clock } from 'lucide-react'
 import type { ApprovalStatus } from '@/generated/prisma/enums'
-import { billCounts, listBills } from '@/server/approvals'
+import { billCounts, handedToCount, listBills, listHandedTo } from '@/server/approvals'
 import { narrowEntityChoice, visibleEntities, visibleEntityIds } from '@/server/scope'
 import { canApprove, canSettle, requireSettler } from '@/server/session'
 import { prisma } from '@/server/db/client'
-import { countToDecide, handoff, listToDecide } from '@/server/to-decide'
+import { countToDecide, handoff, listToDecide, toDecideWhere } from '@/server/to-decide'
 import { canAddBill, canTriagePayments } from '@/server/session'
 import { AddBill } from '@/components/add-bill'
 import { AccountingTable, type AccountingBill } from '@/components/accounting-table'
 import { ToDecideList } from '@/components/to-decide-list'
+import { HandedToYou, type Handover } from '@/components/handed-to-you'
 import { ChecksTable } from '@/components/checks-table'
 import { listChecks } from '@/server/documents'
 import { ApprovalsTable, type ApprovalBill } from '@/components/approvals-table'
@@ -18,6 +19,8 @@ import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
 import { RecurringLine, type Row as RecurringRow } from '@/components/recurring-line'
 import { periodOf, previousPeriod, recurringFor } from '@/server/recurring'
+import { approverIndex, settlerName } from '@/server/destinations'
+import { whoseTurn } from '@/lib/whose-turn'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,7 +33,14 @@ export const dynamic = 'force-dynamic'
  * separation this workflow exists to keep.
  */
 
-const TABS = ['decide', 'ready', 'waiting', 'denied', 'paid', 'checks'] as const
+/*
+ * "Handed to you" is here as well as on the approver's screen, for the same reason it
+ * had to exist at all: a document is handed to a person, and the person only has the one
+ * screen their role lets them open. The accountant cannot reach the shared board — the
+ * roles that can were never his — so a notice handed to him with no money on it reached
+ * nowhere. Every open handoff in the database today is addressed to him.
+ */
+const TABS = ['decide', 'ready', 'waiting', 'handed', 'denied', 'paid', 'checks'] as const
 type Tab = (typeof TABS)[number]
 
 /*
@@ -48,6 +58,7 @@ const LABELS: Record<Tab, string> = {
   decide: 'Is it a bill?',
   ready: 'Ready to pay',
   waiting: 'Waiting on approval',
+  handed: 'Handed to you',
   denied: 'Denied',
   paid: 'Paid',
   checks: 'Checks received',
@@ -82,7 +93,7 @@ export default async function AccountingPage({
         ? ['DENIED']
         : ['APPROVED']
 
-  const [bills, counts, entities] = await Promise.all([
+  const [bills, counts, entities, settler, approverFor] = await Promise.all([
     listBills(session, {
       statuses,
       entityId: chosen,
@@ -92,10 +103,31 @@ export default async function AccountingPage({
     }),
     billCounts(session, chosen),
     visibleEntities(session),
+    settlerName(session.companyGroupId),
+    approverIndex(session.companyGroupId),
   ])
 
+  /*
+   * Whose turn it is, for every row on this screen.
+   *
+   * One function over the same bills the three tables each render, so Ready to pay,
+   * Waiting on approval and Denied cannot describe the same bill differently — which is
+   * exactly what they did before, by each naming a status in its own words.
+   */
+  const turnOf = (d: (typeof bills)[number]) =>
+    whoseTurn({
+      approvalStatus: d.approvalStatus,
+      settled: d.status === 'DONE',
+      holder: d.assignedTo?.name?.trim() || d.assignedTo?.email || null,
+      isYou: d.assignedTo?.id === session.userId,
+      settler,
+      settlerIsYou: canSettle(session.role),
+      approver: approverFor(d.entityId),
+    })
+
   const thisPeriod = periodOf(new Date())
-  const [checkRows, decideRows, decideCount, handoverPeople, recurring] = await Promise.all([
+  const [checkRows, decideRows, decideCount, handoverPeople, recurring, handed, handedCount] =
+    await Promise.all([
     active === 'checks' ? listChecks(session.companyGroupId, chosen) : Promise.resolve([]),
     active === 'decide' ? listToDecide(session, chosen) : Promise.resolve([]),
     countToDecide(session, chosen),
@@ -127,12 +159,27 @@ export default async function AccountingPage({
      * a list that resets on the 1st is how a missed month stops existing.
      */
     recurringFor(session.companyGroupId, [previousPeriod(thisPeriod), thisPeriod], scope),
+    // Anything already sitting in "Is it a bill?" is not repeated here: on this screen
+    // that queue already shows the question and who asked it.
+    active === 'handed'
+      ? listHandedTo(session, toDecideWhere(session.companyGroupId))
+      : Promise.resolve([]),
+    handedToCount(session, toDecideWhere(session.companyGroupId)),
   ])
+
+  const handovers: Handover[] = handed.map((d) => ({
+    id: d.id,
+    title: d.finalFilename ?? d.originalFilename,
+    companyCode: d.entity?.code ?? null,
+    question: d.internalNotes,
+    receivedDate: d.createdAt.toISOString(),
+  }))
 
   const count: Record<Tab, number> = {
     decide: decideCount,
     ready: counts.approvedUnpaid,
     waiting: counts.pending + counts.needsReview,
+    handed: handedCount,
     denied: counts.denied,
     paid: counts.paid,
     checks: checkRows.length,
@@ -168,6 +215,7 @@ export default async function AccountingPage({
         }
       : null,
     approvalNote: d.approvalNote,
+    turn: turnOf(d),
     refusal:
       d.approvalStatus === 'DENIED'
         ? {
@@ -199,6 +247,7 @@ export default async function AccountingPage({
     decidedBy: d.approvalDecidedBy?.name ?? d.approvalDecidedBy?.email ?? null,
     decidedAt: d.approvalDecidedAt?.toISOString() ?? null,
     hasFile: Boolean(d.storageKey),
+    turn: turnOf(d),
   }))
 
   const monthName = (period: string) =>
@@ -290,7 +339,9 @@ export default async function AccountingPage({
       {/* The way in for a bill that did not arrive as post. */}
       {canAddBill(session.role) && <AddBill entities={entities} />}
 
-      {active === 'checks' ? (
+      {active === 'handed' ? (
+        <HandedToYou items={handovers} />
+      ) : active === 'checks' ? (
         <ChecksTable rows={checkRows} />
       ) : active === 'decide' ? (
         <ToDecideList

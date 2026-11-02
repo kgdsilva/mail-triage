@@ -1,3 +1,4 @@
+import type { Prisma } from '@/generated/prisma/client'
 import type { ApprovalStatus } from '@/generated/prisma/enums'
 import { prisma } from '@/server/db/client'
 import { entityWhere, visibleEntityIds } from '@/server/scope'
@@ -19,6 +20,9 @@ export const BILL_INCLUDE = {
   category: { select: { name: true } },
   documentType: { select: { label: true, code: true } },
   approvalDecidedBy: { select: { name: true, email: true } },
+  // Who holds it now, which is a different person from who decided it the moment a
+  // bill is refused and lands back on somebody's desk.
+  assignedTo: { select: { id: true, name: true, email: true } },
   payments: {
     select: { id: true, paidOn: true, amount: true, method: true, reference: true },
     orderBy: { paidOn: 'desc' as const },
@@ -157,8 +161,14 @@ export async function billHistory(session: Session, documentId: string) {
  * stays in whatever queue already held it — the accountant still has to decide what it
  * is once the question comes back — and this is simply the named person's own copy of
  * the question, on the one screen they have.
+ *
+ * `except` is for the reader who can already see some of these somewhere else. The
+ * accountant's own money queue shows a handed document with the question on it, so
+ * without this the same notice would sit on two of his tabs at once — which is the exact
+ * duplication that made "Needs a decision" and "Bills to approve" unreadable, and the
+ * reason that filter is now written in one place.
  */
-export async function listHandedTo(session: Session) {
+export async function listHandedTo(session: Session, except?: Prisma.DocumentWhereInput) {
   const ids = await visibleEntityIds(session)
 
   return prisma.document.findMany({
@@ -170,6 +180,7 @@ export async function listHandedTo(session: Session) {
       // A bill routed for payment reaches them through the approval tabs instead; this
       // is the other kind of handover, where somebody wants something answered.
       actionKind: 'REVIEW',
+      ...(except ? { NOT: except } : {}),
       ...entityWhere(ids),
     },
     include: BILL_INCLUDE,
@@ -178,8 +189,14 @@ export async function listHandedTo(session: Session) {
   })
 }
 
-/** The badge on the handover tab, counted on its own. */
-export async function handedToCount(session: Session) {
+/**
+ * The badge on the handover tab.
+ *
+ * Takes the same `except` as the list, because a count that includes what the list
+ * excludes is a tab that says 7 and shows 2 — and a badge that disagrees with its own
+ * list is how every miscount in this project started.
+ */
+export async function handedToCount(session: Session, except?: Prisma.DocumentWhereInput) {
   const ids = await visibleEntityIds(session)
 
   return prisma.document.count({
@@ -189,6 +206,7 @@ export async function handedToCount(session: Session) {
       status: { in: [...OPEN] },
       assignedToUserId: session.userId,
       actionKind: 'REVIEW',
+      ...(except ? { NOT: except } : {}),
       ...entityWhere(ids),
     },
   })

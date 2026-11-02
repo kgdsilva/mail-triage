@@ -1,14 +1,19 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
-import { Ban, Check, CircleHelp, Clock, Download, FileText, HelpCircle, History, Keyboard, Wallet } from 'lucide-react'
+import { ArrowRight, Ban, Check, CircleHelp, Clock, Download, FileText, HelpCircle, History, Keyboard, Wallet } from 'lucide-react'
 import { approveBill, approveSelected } from '@/server/actions/approvals'
-import { BillPanel, STATUS_LABEL, STATUS_TONE, type PanelBill } from '@/components/bill-panel'
+import { BillPanel, STATUS_LABEL, type PanelBill } from '@/components/bill-panel'
 import { formatDate, formatMoney } from '@/components/badges'
 import { DUE_TONE, describeDue } from '@/lib/due'
+import { TURN_TONE, type Turn } from '@/lib/whose-turn'
 import { BTN, entityColor } from '@/lib/theme'
 
-export type BoardBill = PanelBill & { amountValue: number }
+export type BoardBill = PanelBill & {
+  amountValue: number
+  /** Whose turn it is now, worked out on the server where the names are. */
+  turn: Turn
+}
 
 /**
  * Bills to approve, as a worklist rather than a table.
@@ -80,6 +85,14 @@ export function ApprovalsBoard({
   const [cursor, setCursor] = useState<number>(-1)
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  /*
+   * What the last action did, in words, until the next one replaces it.
+   *
+   * The approver's question was "I approved it — where does it go?", and until now the
+   * answer was that the row vanished. A row leaving a list is the only feedback an
+   * approval gave, and a thing disappearing is indistinguishable from a thing lost.
+   */
+  const [went, setWent] = useState<string | null>(null)
   const rows = useRef<Map<string, HTMLElement>>(new Map())
 
   const shown = filter ? bills.filter((b) => bucketOf(b) === filter) : bills
@@ -128,11 +141,12 @@ export function ApprovalsBoard({
     [shown],
   )
 
-  function decide(id: string, fn: () => Promise<{ ok: boolean; error?: string }>) {
+  function decide(id: string, fn: () => Promise<{ ok: boolean; error?: string; went?: string }>) {
     setError(null)
     startTransition(async () => {
       const res = await fn()
       if (!res.ok) setError(res.error ?? 'That did not go through.')
+      else setWent(res.went ?? null)
     })
   }
 
@@ -221,6 +235,9 @@ export function ApprovalsBoard({
     startTransition(async () => {
       const res = await approveSelected([...selected])
       if (!res.ok) setError(res.error ?? 'Could not approve those.')
+      // The count is the truth of what moved, and it is not always what was ticked —
+      // so it is said out loud rather than echoing the selection back.
+      else setWent(`${res.count ?? 0} approved. ${res.went ?? ''}`.trim())
       setSelected(new Set())
       setConfirming(false)
     })
@@ -255,6 +272,20 @@ export function ApprovalsBoard({
         <p className="mt-2 rounded-lg bg-danger-100 px-3 py-2 text-[13px] text-danger-700">
           {error}
         </p>
+      )}
+
+      {went && (
+        <div className="mt-2 flex items-start gap-2 rounded-lg bg-ok-100 px-3 py-2 text-[13px] text-ok-700">
+          <ArrowRight className="mt-0.5 size-4 flex-none" aria-hidden />
+          <span className="min-w-0 flex-1 font-semibold">{went}</span>
+          <button
+            type="button"
+            onClick={() => setWent(null)}
+            className="flex-none text-[12px] font-medium underline"
+          >
+            Dismiss
+          </button>
+        </div>
       )}
 
       {bills.length === 0 ? (
@@ -340,8 +371,9 @@ export function ApprovalsBoard({
             setOpenId(null)
             setAsking(null)
           }}
-          onDecided={() => {
+          onDecided={(said) => {
             setAsking(null)
+            setWent(said ?? null)
             setOpenId(nextAfter(open.id))
           }}
         />
@@ -599,11 +631,18 @@ function Row({
           </span>
         </span>
 
+        {/*
+          Whose turn, not what status.
+          "Approved" was the whole badge, and it answered a question nobody asks — the
+          tab is already called Approved. What the approver wanted to know from the row
+          was who has it now, which is the same sentence the screen said when he clicked.
+        */}
         {showStatus && (
           <span
-            className={`hidden w-fit flex-none rounded-full px-2 py-0.5 text-[11px] font-bold lg:inline-block ${STATUS_TONE[bill.status]}`}
+            title={STATUS_LABEL[bill.status]}
+            className={`hidden w-fit flex-none rounded-full px-2 py-0.5 text-[11px] font-bold lg:inline-block ${TURN_TONE[bill.turn.tone]}`}
           >
-            {STATUS_LABEL[bill.status]}
+            {bill.turn.label}
           </span>
         )}
 

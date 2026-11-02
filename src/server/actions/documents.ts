@@ -354,6 +354,18 @@ export async function handOffDocument(documentId: string, formData: FormData) {
   if (!['PAY', 'CONFIRM', 'REVIEW'].includes(actionKind)) {
     throw new Error('Choose what the next person needs to do.')
   }
+  /*
+   * The question is the point of the handoff, so it is required.
+   *
+   * It was optional, and every open handoff in the database has no note on it — seven
+   * documents sitting on one person's screen with no indication of what anybody wanted
+   * from them. "Pay" as a verb does not say which card, "review" does not say what to
+   * look at, and the person receiving it cannot ask back without first working out who
+   * sent it. A handoff nobody can act on is worse than none: it looks handled.
+   */
+  if (note.length < 3) {
+    throw new Error('Say what you need from them — a handoff with no question cannot be answered.')
+  }
 
   const before = await prisma.document.findFirst({
     where: {
@@ -383,7 +395,7 @@ export async function handOffDocument(documentId: string, formData: FormData) {
         assignedToUserId: toUserId,
         actionKind: actionKind as never,
         status: 'WAITING',
-        ...(note ? { internalNotes: note } : {}),
+        internalNotes: note,
       },
     })
     await recordEvent(

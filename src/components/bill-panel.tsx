@@ -75,8 +75,12 @@ export function BillPanel({
   canDecide: boolean
   showCompany: boolean
   onClose: () => void
-  /** Hands control back so the list can move to the next bill, or close. */
-  onDecided: () => void
+  /**
+   * Hands control back so the list can move to the next bill, or close — carrying the
+   * sentence that says where the bill just went. The panel cannot show it itself: it is
+   * closing, and a message that disappears with the thing it describes was never read.
+   */
+  onDecided: (went?: string | null) => void
   /**
    * Open with the note already asking. The keyboard shortcuts for deny and needs
    * review land here: pressing D should put the cursor in the box, not make somebody
@@ -102,7 +106,7 @@ export function BillPanel({
     return () => document.removeEventListener('keydown', key)
   }, [onClose])
 
-  function act(fn: () => Promise<{ ok: boolean; error?: string }>) {
+  function act(fn: () => Promise<{ ok: boolean; error?: string; went?: string }>) {
     setError(null)
     startTransition(async () => {
       const res = await fn()
@@ -114,7 +118,7 @@ export function BillPanel({
       }
       setAsking(null)
       setNote('')
-      onDecided()
+      onDecided(res.went ?? null)
     })
   }
 
