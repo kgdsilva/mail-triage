@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { signOut } from '@/auth'
 import { countUnreviewed } from '@/server/documents'
 import { billCounts } from '@/server/approvals'
+import { boardCounts } from '@/server/board'
 import {
   canApprove,
   canConfigure,
@@ -23,13 +24,27 @@ export const dynamic = 'force-dynamic'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession()
-  const [workspaces, pending, pendingApprovals] = await Promise.all([
+  const [workspaces, pending, pendingApprovals, mine] = await Promise.all([
     listWorkspaces(session.userId),
     // Only meaningful for people who actually triage; skip the query otherwise.
     canTriage(session.role) ? countUnreviewed(session.companyGroupId) : Promise.resolve(0),
     // A badge an approver can see is the whole reason they open the app.
     canApprove(session.role)
       ? billCounts(session).then((c) => c.pending)
+      : Promise.resolve(0),
+    /*
+     * What is on this person's own name, for the one menu item that had no number.
+     *
+     * Bills to approve and New mail both carry a badge and the shared board did not,
+     * so the people whose work arrives there — which is now going to include Danny and
+     * Anna — had nothing in the app telling them anything had arrived at all. They
+     * found out twice a day by email, or by remembering to look.
+     *
+     * `mine`, not the whole board: a badge that counts other people's work is a number
+     * that never reaches zero, and a number that never reaches zero stops being read.
+     */
+    canWork(session.role)
+      ? boardCounts(session.companyGroupId, session.userId).then((c) => c.mine)
       : Promise.resolve(0),
   ])
 
@@ -119,6 +134,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 blurb:
                   'The shared board: everything waiting on a person, by company. Yours first.',
                 icon: 'queue' as const,
+                badge: mine || undefined,
               },
             ],
           },

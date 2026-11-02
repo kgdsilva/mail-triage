@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { ArrowRightLeft, Ban, Check, FolderInput, Hand, Wallet } from 'lucide-react'
+import { useState, useTransition } from 'react'
+import { ArrowRightLeft, Ban, Check, FolderInput, Hand, Loader2, Reply, Wallet } from 'lucide-react'
+import { answerHandover } from '@/server/actions/to-decide'
 import {
   claimDocument,
   handOffDocument,
@@ -38,6 +39,9 @@ export type CardDoc = {
   assigneeName: string | null
   /** Set when an approver refused it or asked a question, with what they said. */
   approval: { status: 'DENIED' | 'NEEDS_REVIEW'; note: string | null; by: string | null } | null
+  /** Who handed this to you, and what they asked. Null unless it was handed to you. */
+  handedBy: string | null
+  handNote: string | null
   mine: boolean
   /** A historical row can exist before its PDF is attached; an iframe would 404. */
   hasFile: boolean
@@ -151,6 +155,31 @@ export function DocumentCard({
               </span>
               {doc.approval.note ? ` — ${doc.approval.note}` : ''}
             </p>
+          )}
+
+          {/*
+            The question somebody handed this over with.
+            It was in the database and on no screen the receiver could open: the card
+            showed a filename and the reader had no idea why it was in front of them.
+            Above the summary, because the summary is what the document says and this is
+            what a person asked.
+          */}
+          {doc.handedBy && (
+            <div className="mt-1.5 rounded-lg bg-navy-50 px-2.5 py-1.5">
+              <p className="text-[12.5px] text-navy-900">
+                <span className="font-bold">{doc.handedBy} passed this to you</span>
+                {doc.handNote ? `: ${doc.handNote}` : '.'}
+              </p>
+              {/*
+                The reply, where the question is.
+                Answering is not one of the board's four verbs — it does not finish the
+                item, pay it or pass it on, and routing it back through "Hand off" made
+                a reply look like more work being delegated. The permission is not a
+                role either: it is being the person it was handed to, which is what
+                answerHandover checks.
+              */}
+              <AnswerBox documentId={doc.id} />
+            </div>
           )}
 
           {doc.summaryNote && (
@@ -308,3 +337,66 @@ export function DocumentCard({
 
 const SELECT =
   'rounded-lg border border-line bg-surface px-2 py-1.5 text-[12.5px] text-ink outline-none transition-colors focus:border-navy-500'
+
+/**
+ * Writing the answer back, on the card the question arrived on.
+ *
+ * Collapsed until asked for, because most cards on this board were never handed over by
+ * anybody and a permanently open text box on each one reads as work outstanding.
+ */
+function AnswerBox({ documentId }: { documentId: string }) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const [said, setSaid] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [pending, start] = useTransition()
+
+  if (said) {
+    return <p className="mt-1.5 text-[12px] font-semibold text-ok-700">{said}</p>
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-1.5 inline-flex items-center gap-1.5 text-[12px] font-semibold text-navy-700 underline"
+      >
+        <Reply className="size-3.5" aria-hidden />
+        Answer
+      </button>
+    )
+  }
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-start gap-2">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={2}
+          autoFocus
+          placeholder="Your answer — it stays on the document, where whoever asked will read it."
+          className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[12.5px] text-navy-900 placeholder:text-subtle focus:border-navy-500 focus:outline-none"
+        />
+        <button
+          type="button"
+          disabled={pending || !text.trim()}
+          onClick={() => {
+            setError(null)
+            start(async () => {
+              const result = await answerHandover(documentId, text)
+              if (!result.ok) setError(result.error ?? 'That did not save.')
+              else setSaid(result.went ?? 'Answer saved.')
+            })
+          }}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-navy-700 px-3 py-1.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-navy-900 disabled:opacity-40"
+        >
+          {pending && <Loader2 className="size-3.5 animate-spin" aria-hidden />}
+          Send
+        </button>
+      </div>
+      {error && <p className="mt-1 text-[12px] font-semibold text-danger-700">{error}</p>}
+    </div>
+  )
+}

@@ -4,6 +4,7 @@ import { ArrowRight, CircleAlert, Inbox, Wallet } from 'lucide-react'
 import { prisma } from '@/server/db/client'
 import { boardCounts, listBoard, type BoardScope } from '@/server/board'
 import { canDecide, canSeeWholeLog, requireWorker } from '@/server/session'
+import { handoff } from '@/server/to-decide'
 import { DocumentCard, type CardDoc } from '@/components/dashboard-card'
 import { BoardFilters } from '@/components/board-filters'
 import { CompanyPicker } from '@/components/company-picker'
@@ -231,9 +232,13 @@ function serialize(
     approvalStatus: string | null
     approvalNote: string | null
     approvalDecidedBy: { name: string | null; email: string } | null
+    events: { toValue: unknown; actor: { name: string | null; email: string } | null }[]
   },
   viewerId: string,
 ): CardDoc {
+  // The same reader the accountant's queue uses, so the two screens cannot end up
+  // disagreeing about who handed what to whom.
+  const handed = handoff({ assignedTo: doc.assignedTo, events: doc.events }, viewerId)
   return {
     id: doc.id,
     title: doc.finalFilename ?? doc.originalFilename,
@@ -263,6 +268,8 @@ function serialize(
             by: doc.approvalDecidedBy?.name ?? doc.approvalDecidedBy?.email ?? null,
           }
         : null,
+    handedBy: handed?.by ?? null,
+    handNote: handed?.note ?? null,
     mine: doc.assignedTo?.id === viewerId,
     hasFile: Boolean(doc.storageKey),
   }

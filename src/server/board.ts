@@ -34,6 +34,23 @@ export const BOARD_INCLUDE = {
   documentType: { select: { label: true, code: true } },
   assignedTo: { select: { id: true, name: true, email: true } },
   approvalDecidedBy: { select: { name: true, email: true } },
+  /*
+   * The handoff itself, read exactly the way the accountant's queue reads it.
+   *
+   * Without this the board showed a card with a filename on it and nothing else: the
+   * question somebody typed when they handed the document over was in the database and
+   * on no screen the receiver can open. "He hands it to Danny and nobody knows how
+   * Danny finds out" — this is the half of that answer that is a bug.
+   *
+   * Only a `routed` event counts, and only its note, for the reason spelled out in
+   * server/to-decide.ts: an assignee set by the importer is not somebody passing work on.
+   */
+  events: {
+    where: { action: 'routed' },
+    orderBy: { createdAt: 'desc' as const },
+    take: 1,
+    select: { toValue: true, actor: { select: { name: true, email: true } } },
+  },
 } as const
 
 function where(filters: BoardFilters, companyGroupId: string): Prisma.DocumentWhereInput {
