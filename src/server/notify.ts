@@ -223,6 +223,90 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
   }
 
   /*
+   * --- a question you asked, now answered ---------------------------------------------
+   *
+   * The last thing in the loop that nothing told anybody about. Answering clears the
+   * assignment and the document drops back into the asker's queue looking exactly as it
+   * left — their own question gone, the reply on the document but on no list. They found
+   * out by opening the queue, or seven days later when the reminder came round again.
+   *
+   * Matched through the events rather than a column, because "who asked" is not stored
+   * on the document: the handoff is a `routed` event with an actor, and the reply is a
+   * `note_added` written by answerHandover. A document is in this list when both exist
+   * and the asker was you.
+   */
+  {
+    const since = new Date(Date.now() - 30 * 86_400_000)
+
+    const answers = await prisma.documentEvent.findMany({
+      where: {
+        action: 'note_added',
+        toValue: { path: ['by'], equals: 'handover-answer' },
+        createdAt: { gte: since },
+        document: { companyGroupId: member.companyGroupId, deletedAt: null },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit * 2,
+      select: {
+        documentId: true,
+        createdAt: true,
+        actor: { select: { name: true, email: true } },
+        document: {
+          select: {
+            originalFilename: true,
+            finalFilename: true,
+            amount: true,
+            dueDate: true,
+            entity: { select: { code: true } },
+            vendor: { select: { name: true } },
+          },
+        },
+      },
+    })
+
+    if (answers.length > 0) {
+      // Whose question it was. One query for the whole batch rather than one per answer.
+      const asked = new Set(
+        (
+          await prisma.documentEvent.findMany({
+            where: {
+              action: 'routed',
+              actorUserId: member.userId,
+              documentId: { in: answers.map((a) => a.documentId) },
+            },
+            select: { documentId: true },
+          })
+        ).map((e) => e.documentId),
+      )
+
+      for (const answer of answers) {
+        if (!asked.has(answer.documentId)) continue
+        if (items.some((i) => i.documentId === answer.documentId)) continue
+
+        const who = answer.actor?.name?.trim() || answer.actor?.email || 'Somebody'
+        items.push({
+          documentId: answer.documentId,
+          what: `${who} answered your question`,
+          title:
+            answer.document.vendor?.name ??
+            answer.document.finalFilename ??
+            answer.document.originalFilename,
+          entityCode: answer.document.entity?.code ?? null,
+          amount: money(answer.document.amount),
+          dueDate: day(answer.document.dueDate),
+          href: askerHref(member.role),
+          /*
+           * The reply is news even though the document is not. It has almost certainly
+           * been emailed about days earlier, and the ordinary "already told you about
+           * this document" rule would swallow the one line that matters.
+           */
+          since: answer.createdAt,
+        })
+      }
+    }
+  }
+
+  /*
    * --- anything handed to this person by name -----------------------------------------
    *
    * Not gated by role, and that is the fix rather than an oversight.
