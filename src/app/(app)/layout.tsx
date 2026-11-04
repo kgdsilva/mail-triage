@@ -19,6 +19,9 @@ import {
 import { listWorkspaces } from '@/server/workspace'
 import { NavMenu, type NavGroup } from '@/components/nav-menu'
 import { WorkspaceSwitcher } from '@/components/workspace-switcher'
+import { ViewAsBanner, ViewAsMenu } from '@/components/view-as-menu'
+import { viewableMembers } from '@/server/actions/view-as'
+import { VIEW_AS_COOKIE } from '@/server/view-as'
 
 // Every page in this segment resolves the current user, so none of them can be
 // prerendered — the build has no session to render against.
@@ -64,6 +67,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         ]).then(([decide, handed]) => decide + handed)
       : Promise.resolve(0),
   ])
+
+  /*
+   * Only fetched for an administrator who is not already inside a view. Inside one the
+   * session's role is the viewed person's, so this returns nothing anyway — but asking
+   * at all would be a query per page load to be told what the banner already says.
+   */
+  const viewables = session.viewingAs ? [] : await viewableMembers()
 
   const triages = canTriage(session.role)
   const wholeLog = canSeeWholeLog(session.role)
@@ -279,6 +289,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavMenu groups={groups} />
 
           <div className="ml-3 hidden items-center gap-2.5 md:flex">
+            <ViewAsMenu
+              members={viewables}
+              viewing={
+                session.viewingAs
+                  ? { name: session.userName, realName: session.viewingAs.realUserName }
+                  : null
+              }
+            />
             <span
               className="grid size-8 place-items-center rounded-full bg-gold-500 text-[11px] font-extrabold text-navy-900"
               title={session.userEmail}
@@ -288,6 +306,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <form
               action={async () => {
                 'use server'
+                // Leave any "view as" behind with the session it belonged to, so the
+                // next person to sign in on this browser is not quietly inside one.
+                const { cookies } = await import('next/headers')
+                ;(await cookies()).delete(VIEW_AS_COOKIE)
                 await signOut({ redirectTo: '/signin' })
               }}
             >
@@ -298,6 +320,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
+
+      {session.viewingAs && (
+        <ViewAsBanner
+          name={session.userName}
+          role={session.role}
+          realName={session.viewingAs.realUserName}
+        />
+      )}
 
       <main className="mx-auto max-w-[1600px] px-6 py-8">{children}</main>
 

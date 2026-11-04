@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/auth'
 import { prisma } from '@/server/db/client'
 import { resolveMembership } from '@/server/workspace'
+import { viewingAsUserId } from '@/server/view-as'
 
 /**
  * Who is acting, and in which company group.
@@ -30,10 +31,26 @@ export type Session = {
   userName: string
   userEmail: string
   userImage: string | null
+  /**
+   * Set when an administrator is looking at the app as this person rather than being
+   * them. Everything on this session is the viewed person's — role, scope, name — which
+   * is the point: the screens have to be built from their permissions, not filtered
+   * afterwards. This says whose eyes are actually reading.
+   *
+   * It grants nothing. The database client refuses every write while it is set.
+   */
+  viewingAs?: { realUserId: string; realUserName: string }
 }
 
-/** Returns null when nobody is signed in, instead of redirecting. */
-export const getSession = cache(async (): Promise<Session | null> => {
+/**
+ * The person who actually signed in, before any "view as" is applied.
+ *
+ * Separate from `getSession` because the two answer different questions, and the
+ * difference is the whole of this feature: the screens want the viewed person, while
+ * deciding whether somebody may view at all wants the real one. Reading the viewed
+ * session to authorise viewing would let the mode extend itself.
+ */
+export const getRealSession = cache(async (): Promise<Session | null> => {
   const authed = await auth()
   const userId = authed?.user?.id
   if (!userId) return null
@@ -44,7 +61,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
   const membership = await resolveMembership(userId)
   if (!membership) return null
 
-  return {
+  const real: Session = {
     userId: membership.userId,
     companyGroupId: membership.companyGroupId,
     role: membership.role,
@@ -53,6 +70,54 @@ export const getSession = cache(async (): Promise<Session | null> => {
     userName: membership.user.name ?? membership.user.email,
     userEmail: membership.user.email,
     userImage: membership.user.image,
+  }
+
+  /*
+   * Looking through somebody else's eyes.
+   *
+   * Only an administrator, only within their own workspace, and only at somebody who is
+   * an active member of it — the same three conditions that decide what that person can
+   * see, so this cannot show more than they would see themselves.
+   *
+   * The returned session *is* theirs. Nothing downstream is told to behave differently,
+   * because a screen that had to remember it was being previewed would eventually
+   * forget, and the whole value of this is that what you see is what they get.
+   */
+  return real
+})
+
+/** Returns null when nobody is signed in, instead of redirecting. */
+export const getSession = cache(async (): Promise<Session | null> => {
+  const real = await getRealSession()
+  if (!real) return null
+
+  const asUserId = await viewingAsUserId()
+  if (!asUserId || !canConfigure(real.role) || asUserId === real.userId) return real
+
+  const target = await prisma.membership.findFirst({
+    where: {
+      userId: asUserId,
+      companyGroupId: real.companyGroupId,
+      isActive: true,
+    },
+    select: {
+      userId: true,
+      role: true,
+      entityScope: true,
+      user: { select: { name: true, email: true, image: true } },
+    },
+  })
+  if (!target) return real
+
+  return {
+    ...real,
+    userId: target.userId,
+    role: target.role,
+    entityScope: target.entityScope,
+    userName: target.user.name ?? target.user.email,
+    userEmail: target.user.email,
+    userImage: target.user.image,
+    viewingAs: { realUserId: real.userId, realUserName: real.userName },
   }
 })
 
