@@ -28,7 +28,31 @@ export const BILL_INCLUDE = {
     orderBy: { paidOn: 'desc' as const },
     take: 1,
   },
-} as const
+  /*
+   * The reply to a question the approver asked.
+   *
+   * Without it his own screen was the one place the answer never reached: he asks, the
+   * office answers on the board, and his row still showed only his own question. The
+   * same two kinds of event the board reads, so the two screens cannot tell different
+   * stories about one conversation.
+   */
+  events: {
+    where: {
+      OR: [
+        { action: 'routed' },
+        { action: 'note_added', toValue: { path: ['by'], equals: 'handover-answer' } },
+      ],
+    },
+    orderBy: { createdAt: 'desc' as const },
+    take: 10,
+    select: {
+      action: true,
+      createdAt: true,
+      toValue: true,
+      actor: { select: { name: true, email: true } },
+    },
+  },
+} satisfies Prisma.DocumentInclude
 
 export type BillFilters = {
   statuses: ApprovalStatus[]

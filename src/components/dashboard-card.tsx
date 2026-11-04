@@ -168,19 +168,26 @@ export function DocumentCard({
             what a person asked.
           */}
           {doc.handedBy && (
-            <div className="mt-1.5 rounded-lg bg-navy-50 px-2.5 py-1.5">
-              <p className="text-[12.5px] text-navy-900">
-                <span className="font-bold">{doc.handedBy} passed this to you</span>
-                {doc.handNote ? `: ${doc.handNote}` : '.'}
-              </p>
-              {/*
-                The reply, where the question is.
-                Answering is not one of the board's four verbs — it does not finish the
-                item, pay it or pass it on, and routing it back through "Hand off" made
-                a reply look like more work being delegated. The permission is not a
-                role either: it is being the person it was handed to, which is what
-                answerHandover checks.
-              */}
+            <p className="mt-1.5 rounded-lg bg-navy-50 px-2.5 py-1.5 text-[12.5px] text-navy-900">
+              <span className="font-bold">{doc.handedBy} passed this to you</span>
+              {doc.handNote ? `: ${doc.handNote}` : '.'}
+            </p>
+          )}
+
+          {/*
+            The reply box, under whichever question arrived.
+            It used to hang off `handedBy`, which is set only by a handoff — and an
+            approver's question is not a handoff: sending a bill back records
+            `needs_review`, not `routed`. So the one question people actually ask all day
+            arrived on this board with no way to answer it, and the only route back was
+            "Hand off", which reads as delegating rather than replying.
+
+            Answering is not one of the board's four verbs. The permission is not a role
+            either: it is holding the document, which is what answerHandover checks — so
+            the box shows when this is yours and something on it is waiting on an answer.
+          */}
+          {doc.mine && (doc.handedBy || doc.approval?.status === 'NEEDS_REVIEW') && (
+            <div className="mt-1.5">
               <AnswerBox documentId={doc.id} />
             </div>
           )}

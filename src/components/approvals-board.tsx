@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
-import { ArrowRight, Check, HelpCircle } from 'lucide-react'
+import { ArrowRight, Check, HelpCircle, Reply } from 'lucide-react'
 import { approveBill, approveSelected } from '@/server/actions/approvals'
 import { BillPanel, STATUS_LABEL, type PanelBill } from '@/components/bill-panel'
 import { formatDate, formatMoney } from '@/components/badges'
@@ -518,6 +518,17 @@ function Row({
                 <span className="min-w-0">
                   <span className="font-semibold">You asked:</span>{' '}
                   {bill.note?.trim() ? bill.note : 'waiting on an answer'}
+                </span>
+              </span>
+            )}
+
+            {/* And the reply, directly under the question it answers. */}
+            {bill.answeredBy && (
+              <span className="mt-1 flex items-start gap-1.5 text-[12px] text-ok-700">
+                <Reply className="mt-px size-3.5 flex-none" aria-hidden />
+                <span className="min-w-0">
+                  <span className="font-semibold">{bill.answeredBy} answered:</span>{' '}
+                  {bill.answerNote}
                 </span>
               </span>
             )}

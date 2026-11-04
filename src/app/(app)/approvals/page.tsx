@@ -11,6 +11,7 @@ import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
 import { settlerName } from '@/server/destinations'
 import { whoseTurn } from '@/lib/whose-turn'
+import { exchange } from '@/server/to-decide'
 import { nearDuplicatesFor } from '@/server/near-duplicates'
 
 export const dynamic = 'force-dynamic'
@@ -125,7 +126,9 @@ export default async function ApprovalsPage({
     bills.map((d) => d.id),
   )
 
-  const rows: BoardBill[] = bills.map((d) => ({
+  const rows: BoardBill[] = bills.map((d) => {
+    const answered = exchange(d).answered
+    return {
     id: d.id,
     title: d.finalFilename ?? d.originalFilename,
     vendorName: d.vendor?.name ?? null,
@@ -144,6 +147,8 @@ export default async function ApprovalsPage({
     decidedAt: d.approvalDecidedAt?.toISOString() ?? null,
     hasFile: Boolean(d.storageKey),
     duplicates: duplicates.get(d.id) ?? [],
+    answeredBy: answered?.by ?? null,
+    answerNote: answered?.note ?? null,
     /*
      * Worked out here rather than in the row, because the answer is a person's name and
      * the browser has never been told any names. The row renders a label it was handed.
@@ -158,7 +163,8 @@ export default async function ApprovalsPage({
       isYou: d.approvalStatus === 'PENDING' || d.assignedTo?.id === session.userId,
       settler,
     }),
-  }))
+    }
+  })
 
   /*
    * The totals moved into the board, which now groups by the same three buckets it

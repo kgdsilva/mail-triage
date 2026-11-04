@@ -44,6 +44,9 @@ export type PanelBill = {
   hasFile: boolean
   /** Other documents that might be this same bill. Advisory; never blocks a decision. */
   duplicates?: NearMatch[]
+  /** The reply to the question on this bill, once somebody has written one. */
+  answeredBy?: string | null
+  answerNote?: string | null
 }
 
 export const STATUS_LABEL: Record<PanelBill['status'], string> = {
