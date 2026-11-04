@@ -167,10 +167,27 @@ export async function billHistory(session: Session, documentId: string) {
  * without this the same notice would sit on two of his tabs at once — which is the exact
  * duplication that made "Needs a decision" and "Bills to approve" unreadable, and the
  * reason that filter is now written in one place.
+ *
+ * ---------------------------------------------------------------------------
+ * Why this one list ignores the entity scope
+ * ---------------------------------------------------------------------------
+ *
+ * Every other query here is cut down to the companies a person may see, and this one
+ * deliberately is not, because the permission it answers to is different. `answerHandover`
+ * lets you reply to anything with your name on it, whatever your role and whatever your
+ * scope — being named is the permission. Filtering the list by scope therefore produced a
+ * document that was assigned to you, answerable by you, and invisible to you.
+ *
+ * It is not a leak: somebody who is allowed to see the document chose to put your name on
+ * it and ask you a question. That is an explicit act by an authorised person, and it is
+ * the whole point of handing it over.
+ *
+ * It matters more than it sounds. The person who knows the answer is rarely the person
+ * who owns the company — the payroll questions in this office go to one man for all five
+ * entities, and scoping him to his own would mean the four he actually knows about never
+ * reach him.
  */
 export async function listHandedTo(session: Session, except?: Prisma.DocumentWhereInput) {
-  const ids = await visibleEntityIds(session)
-
   return prisma.document.findMany({
     where: {
       companyGroupId: session.companyGroupId,
@@ -181,7 +198,6 @@ export async function listHandedTo(session: Session, except?: Prisma.DocumentWhe
       // is the other kind of handover, where somebody wants something answered.
       actionKind: 'REVIEW',
       ...(except ? { NOT: except } : {}),
-      ...entityWhere(ids),
     },
     include: BILL_INCLUDE,
     orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
@@ -197,8 +213,6 @@ export async function listHandedTo(session: Session, except?: Prisma.DocumentWhe
  * list is how every miscount in this project started.
  */
 export async function handedToCount(session: Session, except?: Prisma.DocumentWhereInput) {
-  const ids = await visibleEntityIds(session)
-
   return prisma.document.count({
     where: {
       companyGroupId: session.companyGroupId,
@@ -207,7 +221,6 @@ export async function handedToCount(session: Session, except?: Prisma.DocumentWh
       assignedToUserId: session.userId,
       actionKind: 'REVIEW',
       ...(except ? { NOT: except } : {}),
-      ...entityWhere(ids),
     },
   })
 }
