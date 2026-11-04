@@ -1,0 +1,21 @@
+-- A link can be made by the system, not only by a person.
+--
+-- Additive in effect: one column stops being required. No data is dropped, renamed or
+-- rewritten, and every existing row keeps the user it already names.
+--
+-- The reimbursement form lives on the HQ site, where the whole company can reach it —
+-- not only the handful of people with a Mail Triage account. So the person submitting an
+-- expense report often has no user row here, and a receipt is tied to its bill by a row
+-- that records who tied it. Required, that row could not be written, so the receipts
+-- would have failed to attach in silence and the approver would have been shown a total
+-- with no evidence under it.
+--
+-- DocumentEvent has allowed this since the first migration — "Null for system actions
+-- (import jobs, AI suggestions, scheduled routing)" — so this is the link table catching
+-- up with a rule the trail already follows. The alternative was to attribute the link to
+-- some convenient administrator, which would put a name on an action nobody took.
+--
+-- Who submitted the report is not lost by this: their name and email are written into
+-- the bill's note, which the approver reads, and into the event that records its arrival.
+
+ALTER TABLE "document_link" ALTER COLUMN "created_by_user_id" DROP NOT NULL;

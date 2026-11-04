@@ -911,8 +911,12 @@ model DocumentLink {
 
   relation LinkRelation
 
-  createdByUserId String   @map("created_by_user_id")
-  createdBy       User     @relation(fields: [createdByUserId], references: [id])
+  /// Who tied the two documents together. Null for a system action — the same rule
+  /// DocumentEvent already follows, and for the same reason: a link made by an inbound
+  /// webhook has no signed-in person behind it, and inventing one would put a name on an
+  /// action nobody took.
+  createdByUserId String?  @map("created_by_user_id")
+  createdBy       User?    @relation(fields: [createdByUserId], references: [id])
   createdAt       DateTime @default(now()) @map("created_at")
   note            String?
 

@@ -166,21 +166,31 @@ export async function POST(request: Request) {
     return fail(413, `Those receipts come to ${(bytes / 1024 / 1024).toFixed(1)} MB, and the limit is 4 MB.`)
   }
 
-  /*
-   * The person has to be one of ours, and this refuses rather than guessing.
-   *
-   * Three reasons, and the first is the ordinary one: a cheque is about to be written to
-   * somebody, and the office should know who they are. The second is that every entry in
-   * the trail then has an actor instead of "system", on the one kind of bill where who
-   * asked for the money is the question. The third is structural — a receipt is linked to
-   * its bill by a row that records who linked it, and with nobody to name that row cannot
-   * be written, so the receipts would silently fail to attach and the approver would be
-   * shown a total with no evidence under it.
-   */
   if (!submittedByEmail) {
     return fail(400, 'submitted_by_email is required — it is how this knows who is being paid.')
   }
 
+  /*
+   * Anyone the HQ site vouches for, not only people with an account here.
+   *
+   * This asked for a Mail Triage membership first, and that was wrong: the form lives on
+   * the HQ platform, where the whole company can reach it, and most of the company has no
+   * account in this system. Requiring one would have turned "submit your expenses" into a
+   * refusal for nearly everybody.
+   *
+   * The trust is where it should be. The shared secret authenticates the *system*, and
+   * the HQ site authenticates the *person* — they are signed in there, so the name and
+   * email arrive from a session rather than from a text box, which is a better guarantee
+   * than a membership list would have been.
+   *
+   * Nothing about who they are is lost. Their name and email go on the bill's note, which
+   * is what the approver reads, and into the event that records its arrival. The control
+   * on a reimbursement was never that the person has a login — it is that Eric approves
+   * it and Chris pays it, which is unchanged.
+   *
+   * Where they do have an account, the trail names them; where they do not, it says
+   * system, which is honest and is what DocumentEvent has always allowed.
+   */
   const member = await prisma.membership.findFirst({
     where: {
       companyGroupId: entity.companyGroupId,
@@ -189,12 +199,6 @@ export async function POST(request: Request) {
     },
     select: { userId: true },
   })
-  if (!member) {
-    return fail(
-      403,
-      `${submittedByEmail} is not an active member of this workspace, so no cheque can be raised for them. Add them in Settings → Members first.`,
-    )
-  }
 
   const expenses = readExpenses(form)
   const description = String(form.get('description') ?? '').trim()
@@ -250,7 +254,7 @@ export async function POST(request: Request) {
       status: 'WAITING',
       approvalStatus: 'PENDING',
       summaryNote: noteLines.join('\n'),
-      reviewedByUserId: member.userId,
+      reviewedByUserId: member?.userId ?? null,
       reviewedAt: new Date(),
     },
     select: { id: true },
@@ -258,7 +262,7 @@ export async function POST(request: Request) {
 
   await recordEvent({
     documentId: doc.id,
-    actorUserId: member.userId,
+    actorUserId: member?.userId ?? null,
     action: 'added_by_hand',
     toValue: {
       via: 'reimbursement-webhook',
@@ -297,7 +301,7 @@ export async function POST(request: Request) {
           dispositionReason: 'OTHER',
           status: 'DONE',
           summaryNote: `Receipt filed with ${first.name}.`,
-          reviewedByUserId: member.userId,
+          reviewedByUserId: member?.userId ?? null,
           reviewedAt: new Date(),
         },
         select: { id: true },
@@ -307,7 +311,7 @@ export async function POST(request: Request) {
           fromDocumentId: receipt.id,
           toDocumentId: doc.id,
           relation: 'RELATED_TO',
-          createdByUserId: member.userId,
+          createdByUserId: member?.userId ?? null,
           note: 'Receipt for this reimbursement',
         },
       })
