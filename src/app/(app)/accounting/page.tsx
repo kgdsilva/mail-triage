@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { PageHelp } from '@/components/page-help'
 import { Clock } from 'lucide-react'
 import type { ApprovalStatus } from '@/generated/prisma/enums'
-import { billCounts, handedToCount, listBills, listHandedTo } from '@/server/approvals'
+import { billCounts, listBills, listHandedTo } from '@/server/approvals'
 import { narrowEntityChoice, visibleEntities, visibleEntityIds } from '@/server/scope'
 import { canApprove, canSettle, requireSettler } from '@/server/session'
 import { prisma } from '@/server/db/client'
@@ -41,7 +41,17 @@ export const dynamic = 'force-dynamic'
  * roles that can were never his — so a notice handed to him with no money on it reached
  * nowhere. Every open handoff in the database today is addressed to him.
  */
-const TABS = ['decide', 'ready', 'waiting', 'handed', 'denied', 'paid', 'checks'] as const
+/*
+ * Five, where there were seven.
+ *
+ * "Handed to you" was a tab for questions that now sit at the top of the first one, the
+ * same move the approver's screen made for the same reason: a tab you have to remember
+ * to click is a tab you do not click.
+ *
+ * Denied and Paid were two tabs for one question — what is finished — and the row says
+ * which it was, in words, in its own colour. Nothing is owed on either.
+ */
+const TABS = ['decide', 'ready', 'waiting', 'done', 'checks'] as const
 type Tab = (typeof TABS)[number]
 
 /*
@@ -59,9 +69,7 @@ const LABELS: Record<Tab, string> = {
   decide: 'Is it a bill?',
   ready: 'Ready to pay',
   waiting: 'Waiting on approval',
-  handed: 'Handed to you',
-  denied: 'Denied',
-  paid: 'Paid',
+  done: 'Done',
   checks: 'Checks received',
 }
 
@@ -88,20 +96,23 @@ export default async function AccountingPage({
   const chosen = narrowEntityChoice(entity, scope)
 
   const statuses: ApprovalStatus[] =
-    active === 'waiting'
-      ? ['PENDING', 'NEEDS_REVIEW']
-      : active === 'denied'
-        ? ['DENIED']
-        : ['APPROVED']
+    active === 'waiting' ? ['PENDING', 'NEEDS_REVIEW'] : ['APPROVED']
 
-  const [bills, counts, entities, settler, approverFor] = await Promise.all([
+  const [bills, refused, counts, entities, settler, approverFor] = await Promise.all([
     listBills(session, {
       statuses,
       entityId: chosen,
-      // A refusal is shown whether or not money ever moved: if a denied bill somehow
-      // carries a payment, that is the one case somebody most needs to see.
-      ...(active === 'denied' ? {} : { settled: active === 'paid' }),
+      settled: active === 'done' ? true : false,
     }),
+    /*
+     * Refusals, read separately because they are the one thing on this screen that is
+     * finished without money having moved — so they cannot share the `settled` filter
+     * the paid bills need. A refusal is shown whether or not money ever moved: a denied
+     * bill that somehow carries a payment is the one row somebody most needs to see.
+     */
+    active === 'done'
+      ? listBills(session, { statuses: ['DENIED'], entityId: chosen })
+      : Promise.resolve([]),
     billCounts(session, chosen),
     visibleEntities(session),
     settlerOf(session.companyGroupId),
@@ -142,7 +153,7 @@ export default async function AccountingPage({
     })
 
   const thisPeriod = periodOf(new Date())
-  const [checkRows, decideRows, decideCount, handoverPeople, recurring, handed, handedCount] =
+  const [checkRows, decideRows, decideCount, handoverPeople, recurring, handed] =
     await Promise.all([
     active === 'checks' ? listChecks(session.companyGroupId, chosen) : Promise.resolve([]),
     active === 'decide' ? listToDecide(session, chosen) : Promise.resolve([]),
@@ -177,10 +188,9 @@ export default async function AccountingPage({
     recurringFor(session.companyGroupId, [previousPeriod(thisPeriod), thisPeriod], scope),
     // Anything already sitting in "Is it a bill?" is not repeated here: on this screen
     // that queue already shows the question and who asked it.
-    active === 'handed'
+    active === 'decide'
       ? listHandedTo(session, toDecideWhere(session.companyGroupId))
       : Promise.resolve([]),
-    handedToCount(session, toDecideWhere(session.companyGroupId)),
   ])
 
   const handovers: Handover[] = handed.map((d) => ({
@@ -195,9 +205,7 @@ export default async function AccountingPage({
     decide: decideCount,
     ready: counts.approvedUnpaid,
     waiting: counts.pending + counts.needsReview,
-    handed: handedCount,
-    denied: counts.denied,
-    paid: counts.paid,
+    done: counts.paid + counts.denied,
     checks: checkRows.length,
   }
 
@@ -213,7 +221,7 @@ export default async function AccountingPage({
     ...decideRows.map((d) => d.id),
   ])
 
-  const accountingRows: AccountingBill[] = bills.map((d) => ({
+  const accountingRows: AccountingBill[] = [...bills, ...refused].map((d) => ({
     id: d.id,
     title: d.finalFilename ?? d.originalFilename,
     vendorName: d.vendor?.name ?? null,
@@ -367,12 +375,20 @@ export default async function AccountingPage({
       {/* The way in for a bill that did not arrive as post. */}
       {canAddBill(session.role) && <AddBill entities={entities} />}
 
-      {active === 'handed' ? (
-        <HandedToYou items={handovers} />
-      ) : active === 'checks' ? (
+      {active === 'checks' ? (
         <ChecksTable rows={checkRows} />
       ) : active === 'decide' ? (
-        <ToDecideList
+        <>
+          {/* The questions somebody put your name on, above the queue they are about. */}
+          {handovers.length > 0 && (
+            <section className="mb-3 space-y-2">
+              <h2 className="px-1 text-[12.5px] font-bold uppercase tracking-wide text-amber-800">
+                Questions for you · {handovers.length}
+              </h2>
+              <HandedToYou items={handovers} />
+            </section>
+          )}
+          <ToDecideList
           rows={decideRows.map((d) => {
             // Each read once, because both are two halves of one sentence.
             const handed = handoff(d, session.userId)
@@ -402,7 +418,8 @@ export default async function AccountingPage({
             id: m.user.id,
             name: m.user.name ?? m.user.email,
           }))}
-        />
+          />
+        </>
       ) : active === 'waiting' ? (
         <>
           {/* How long each has been sitting, which is what turns this list into a
@@ -446,7 +463,7 @@ export default async function AccountingPage({
       ) : (
         <AccountingTable
           bills={accountingRows}
-          mode={active === 'paid' ? 'paid' : active === 'denied' ? 'denied' : 'ready'}
+          mode={active === 'done' ? 'done' : 'ready'}
           entities={entities}
           canSettle={canSettle(session.role)}
         />

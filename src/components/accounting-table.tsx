@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Download, FileText, History, ShieldCheck, Wallet } from 'lucide-react'
+import { ShieldCheck, Wallet } from 'lucide-react'
 import { PaymentForm, type PaymentEntity } from '@/components/payment-form'
 import { PdfFrame } from '@/components/pdf-peek'
 import { formatDate } from '@/components/badges'
@@ -56,7 +56,7 @@ export function AccountingTable({
   canSettle,
 }: {
   bills: AccountingBill[]
-  mode: 'ready' | 'paid' | 'denied'
+  mode: 'ready' | 'done'
   entities: PaymentEntity[]
   canSettle: boolean
 }) {
@@ -64,18 +64,12 @@ export function AccountingTable({
     return (
       <div className="rounded-xl border border-dashed border-line bg-surface/60 px-6 py-14 text-center">
         <h3 className="text-[15px] font-bold text-navy-900">
-          {mode === 'ready'
-            ? 'Nothing is approved and waiting to be paid.'
-            : mode === 'denied'
-              ? 'Nothing has been refused.'
-              : 'Nothing paid yet.'}
+          {mode === 'ready' ? 'Nothing is approved and waiting to be paid.' : 'Nothing finished yet.'}
         </h3>
         <p className="mx-auto mt-1 max-w-sm text-[13px] text-muted">
           {mode === 'ready'
             ? 'A bill appears here the moment its approver clears it.'
-            : mode === 'denied'
-              ? 'A bill an approver refuses appears here, with the reason they gave.'
-              : 'Bills you mark as paid are kept here with their receipt.'}
+            : 'What you paid and what an approver refused are both kept here, with the proof and the reason.'}
         </p>
       </div>
     )
@@ -97,7 +91,7 @@ function Row({
   canSettle,
 }: {
   bill: AccountingBill
-  mode: 'ready' | 'paid' | 'denied'
+  mode: 'ready' | 'done'
   entities: PaymentEntity[]
   canSettle: boolean
 }) {
@@ -159,8 +153,8 @@ function Row({
         </span>
 
         <span className="flex items-center gap-2 md:block">
-          <Tag>{mode === 'paid' ? 'Paid' : 'Due'}</Tag>
-          {mode === 'paid' && bill.payment ? (
+          <Tag>{bill.payment ? 'Paid' : 'Due'}</Tag>
+          {bill.payment ? (
             <span className="tabular text-[12.5px] text-muted">
               {formatDate(new Date(`${bill.payment.paidOn}T00:00:00Z`))}
             </span>
@@ -177,9 +171,9 @@ function Row({
         </span>
 
         <span className="flex items-center gap-2 md:block">
-          <Tag>{mode === 'paid' ? 'How' : 'Received'}</Tag>
+          <Tag>{bill.payment ? 'How' : 'Received'}</Tag>
           <span className="text-[12.5px] text-muted">
-            {mode === 'paid' && bill.payment
+            {bill.payment
               ? [bill.payment.method, bill.payment.reference].filter(Boolean).join(' · ') || '—'
               : formatDate(new Date(bill.receivedDate))}
           </span>
@@ -214,55 +208,56 @@ function Row({
         </p>
       )}
 
-      {bill.approvedBy && mode !== 'denied' && (
-        <p className="flex items-center gap-1.5 border-t border-line-soft bg-ok-100/50 px-3 py-1.5 text-[12px] text-ok-700">
-          <ShieldCheck className="size-3.5 flex-none" aria-hidden />
-          Approved by {bill.approvedBy}
-          {bill.approvedAt ? ` on ${formatDate(new Date(bill.approvedAt))}` : ''}
+      {/*
+        Why not to pay it, in the approver's own words. A refusal without its reason is
+        just an absence, which is what this list exists to replace.
+      */}
+      {bill.refusal && (
+        <p className="border-t border-line-soft bg-danger-100 px-3 py-2 text-[12.5px] text-danger-700">
+          <span className="font-bold">Do not pay.</span>{' '}
+          {bill.refusal.by ? `${bill.refusal.by} refused this` : 'Refused'}
+          {bill.refusal.at ? ` on ${formatDate(new Date(bill.refusal.at))}` : ''}
+          {bill.refusal.note ? `: ${bill.refusal.note}` : '.'}
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-line-soft px-3 py-2">
-        <button type="button" onClick={() => setOpen((v) => !v)} className={BTN.quiet}>
-          <FileText className="size-3.5" aria-hidden />
-          {open ? 'Hide invoice' : 'Preview'}
-        </button>
-        <a href={`/api/files/${bill.id}?download=1`} className={BTN.quiet}>
-          <Download className="size-3.5" aria-hidden />
-          Download
-        </a>
-        <a href={`/history/${bill.id}`} className={BTN.quiet}>
-          <History className="size-3.5" aria-hidden />
-          History
-        </a>
+      {/*
+        ---- no bar of buttons under every bill -----------------------------
+        There was one: Preview, Download, History, and the pay button, on its own strip
+        under each row — four controls and a horizontal rule for every bill, so one and
+        a half of them fitted on a screen. The vendor's name already opens the invoice,
+        and Download and History are one click further in from there. Only the act this
+        screen exists for stays on the row.
 
-        {/*
-          Why not to pay it, in the approver's own words.
-          A refusal without its reason is just an absence, and an absence is what this
-          tab exists to replace: before it, a denied bill simply vanished from this
-          screen and the person who pays could not tell a refusal from a bill that had
-          never been decided.
-        */}
-        {mode === 'denied' && bill.refusal && (
-          <p className="w-full rounded-lg bg-danger-100 px-3 py-2 text-[12.5px] text-danger-700">
-            <span className="font-bold">Do not pay.</span>{' '}
-            {bill.refusal.by ? `${bill.refusal.by} refused this` : 'Refused'}
-            {bill.refusal.at ? ` on ${formatDate(new Date(bill.refusal.at))}` : ''}
-            {bill.refusal.note ? `: ${bill.refusal.note}` : '.'}
-          </p>
-        )}
+        Who approved it stays too, because that is the accountant's authority to pay and
+        the first thing anybody asks afterwards — but as a line of text rather than a
+        coloured band of its own.
+      */}
+      {(bill.approvedBy || (mode === 'ready' && canSettle)) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line-soft px-3 py-2">
+          {bill.approvedBy && !bill.refusal && (
+            <span className="flex items-center gap-1.5 text-[12px] text-ok-700">
+              <ShieldCheck className="size-3.5 flex-none" aria-hidden />
+              Approved by {bill.approvedBy}
+              {bill.approvedAt ? ` on ${formatDate(new Date(bill.approvedAt))}` : ''}
+            </span>
+          )}
+          <a href={`/history/${bill.id}`} className="text-[12px] text-subtle underline">
+            History
+          </a>
 
-        {mode === 'ready' && canSettle && (
-          <button
-            type="button"
-            onClick={() => setPaying((v) => !v)}
-            className={`ml-auto ${paying ? BTN.secondary : BTN.done}`}
-          >
-            <Wallet className="size-3.5" aria-hidden />
-            {paying ? 'Cancel' : 'Mark as paid'}
-          </button>
-        )}
-      </div>
+          {mode === 'ready' && canSettle && (
+            <button
+              type="button"
+              onClick={() => setPaying((v) => !v)}
+              className={`ml-auto ${paying ? BTN.secondary : BTN.done}`}
+            >
+              <Wallet className="size-3.5" aria-hidden />
+              {paying ? 'Cancel' : 'Mark as paid'}
+            </button>
+          )}
+        </div>
+      )}
 
       {paying && (
         <div className="border-t border-line-soft p-3">

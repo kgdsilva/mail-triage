@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
-import { ArrowRight, Ban, Check, FileText, History, Share2 } from 'lucide-react'
+import { ArrowRight, Ban, Check, FileText, Share2 } from 'lucide-react'
 import {
   markNeedsOtherAction,
   markNeedsPayment,
@@ -205,14 +205,21 @@ function Row({ row, people }: { row: DecideRow; people: { id: string; name: stri
           Needs other action
         </button>
 
+        {/*
+          Preview stays a button: on this screen you often cannot answer "is it a bill?"
+          without reading the thing. History is a quiet link, because it answers a
+          question nobody asks while deciding.
+        */}
         {row.hasFile && (
           <button type="button" className={`${BTN.quiet} ml-auto`} onClick={() => setOpen((v) => !v)}>
             <FileText className="size-3.5" aria-hidden />
             {open ? 'Hide' : 'Preview'}
           </button>
         )}
-        <Link href={`/history/${row.id}`} className={row.hasFile ? BTN.quiet : `${BTN.quiet} ml-auto`}>
-          <History className="size-3.5" aria-hidden />
+        <Link
+          href={`/history/${row.id}`}
+          className={`text-[12px] text-subtle underline ${row.hasFile ? '' : 'ml-auto'}`}
+        >
           History
         </Link>
       </div>

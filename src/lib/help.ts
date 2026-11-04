@@ -80,6 +80,7 @@ export const HELP: Record<string, Help> = {
       'Money that nobody has ruled on yet. The reader thinks each of these involves money; you decide what it actually is.',
       'Needs payment sends it to the approver for that company. If that company has no approver assigned, the button refuses and says so — a bill waiting on nobody is the failure this whole workflow exists to prevent.',
       'Not a bill is for a statement, a notice with nothing owed, a confirmation. Needs other action is for real work that is not a payment: a form to return, a dispute. Hand that to a person by name.',
+      'Questions somebody put your name on sit at the top of this tab, above the queue. Answering leaves your reply on the document, where whoever asked will read it.',
       'An amber or red band means another document in the log has the same company, vendor and amount. It is a warning, not a verdict — a monthly notice looks the same as a double-billing — so open the other one and decide.',
     ],
   },
@@ -102,21 +103,15 @@ export const HELP: Record<string, Help> = {
     ],
   },
 
-  'accounting.denied': {
-    title: 'What is a denied bill doing here?',
-    body: [
-      'An approver decided not to pay it, and said why. It sits next to Ready to pay on purpose: what to pay and what not to pay are the same question, and a refusal that disappeared would look exactly like a bill nobody had decided yet.',
-      'Nothing is owed on these. They stay visible so the reason is findable later.',
-    ],
-  },
-
-  'accounting.paid': {
+  'accounting.done': {
     title: 'What is in here?',
     body: [
-      'What has gone out, with who recorded it and the proof if one was attached. History, not a queue.',
+      'Everything finished: what you paid, with who recorded it and the proof, and what an approver refused, with the reason they gave.',
+      'Both in one place because nothing is owed on either, and because a refusal that disappeared would look exactly like a bill nobody had decided yet. Each row says which it was.',
       'Use the company filter and Export CSV in the log when somebody asks what a company paid over a period.',
     ],
   },
+
 
   'accounting.checks': {
     title: 'Why are cheques separate?',
