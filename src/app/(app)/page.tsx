@@ -221,6 +221,7 @@ function serialize(
     originalFilename: string
     finalFilename: string | null
     summaryNote: string | null
+    payeeName: string | null
     amount: unknown
     dueDate: Date | null
     actionKind: string | null
@@ -266,7 +267,7 @@ function serialize(
     entityIndex: doc.entity?.sortOrder ?? 0,
     typeCode: doc.documentType?.code ?? null,
     typeLabel: doc.documentType?.label ?? null,
-    vendorName: doc.vendor?.name ?? null,
+    vendorName: doc.vendor?.name ?? doc.payeeName ?? null,
     assigneeName: doc.assignedTo ? (doc.assignedTo.name ?? doc.assignedTo.email) : null,
     approval:
       doc.approvalStatus === 'DENIED' || doc.approvalStatus === 'NEEDS_REVIEW'

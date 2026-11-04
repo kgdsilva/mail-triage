@@ -53,6 +53,7 @@ const SELECT = {
   originalFilename: true,
   finalFilename: true,
   summaryNote: true,
+  payeeName: true,
   amount: true,
   dueDate: true,
   documentDate: true,

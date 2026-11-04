@@ -55,7 +55,7 @@ export default async function BillsPage({
   const bills: Bill[] = rows.map((d) => ({
     id: d.id,
     title: d.finalFilename ?? d.originalFilename,
-    vendorName: d.vendor?.name ?? null,
+    vendorName: d.vendor?.name ?? d.payeeName ?? null,
     typeLabel: d.documentType?.label ?? null,
     typeCode: d.documentType?.code ?? null,
     summaryNote: d.summaryNote,

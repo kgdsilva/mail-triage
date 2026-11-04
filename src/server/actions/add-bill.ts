@@ -204,6 +204,12 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
         entityId: entity.id,
         documentTypeId: billType?.id ?? null,
         vendorId: vendor?.id ?? null,
+        /*
+         * The typed name, kept when it matched no vendor — which on a reimbursement is
+         * every time. Before this it was thrown away and the approver was shown the
+         * filename of the first receipt instead of the person being paid.
+         */
+        payeeName: vendor ? null : vendorName,
         categoryId: category?.id ?? null,
         amount: amount.toFixed(2),
         dueDate: dueDate ? new Date(`${dueDate}T00:00:00Z`) : null,

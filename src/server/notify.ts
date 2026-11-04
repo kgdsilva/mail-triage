@@ -148,7 +148,7 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
       items.push({
         documentId: b.id,
         what: 'waiting on your approval',
-        title: b.vendor?.name ?? b.finalFilename ?? b.originalFilename,
+        title: b.vendor?.name ?? b.payeeName ?? b.finalFilename ?? b.originalFilename,
         entityCode: b.entity?.code ?? null,
         amount: money(b.amount),
         dueDate: day(b.dueDate),
@@ -167,6 +167,7 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
         id: true,
         originalFilename: true,
         finalFilename: true,
+        payeeName: true,
         amount: true,
         dueDate: true,
         entity: { select: { code: true } },
@@ -177,7 +178,7 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
       items.push({
         documentId: d.id,
         what: 'needs deciding — is it a bill?',
-        title: d.vendor?.name ?? d.finalFilename ?? d.originalFilename,
+        title: d.vendor?.name ?? d.payeeName ?? d.finalFilename ?? d.originalFilename,
         entityCode: d.entity?.code ?? null,
         amount: money(d.amount),
         dueDate: day(d.dueDate),
@@ -190,7 +191,7 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
       items.push({
         documentId: b.id,
         what: 'approved and waiting to be paid',
-        title: b.vendor?.name ?? b.finalFilename ?? b.originalFilename,
+        title: b.vendor?.name ?? b.payeeName ?? b.finalFilename ?? b.originalFilename,
         entityCode: b.entity?.code ?? null,
         amount: money(b.amount),
         dueDate: day(b.dueDate),
@@ -255,6 +256,7 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
           select: {
             originalFilename: true,
             finalFilename: true,
+            payeeName: true,
             amount: true,
             dueDate: true,
             entity: { select: { code: true } },
@@ -307,6 +309,7 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
           what: `${who} answered your question`,
           title:
             answer.document.vendor?.name ??
+            answer.document.payeeName ??
             answer.document.finalFilename ??
             answer.document.originalFilename,
           entityCode: answer.document.entity?.code ?? null,
@@ -354,6 +357,7 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
         id: true,
         originalFilename: true,
         finalFilename: true,
+        payeeName: true,
         amount: true,
         dueDate: true,
         actionKind: true,
@@ -371,7 +375,7 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
           d.actionKind === 'REVIEW'
             ? 'somebody has a question for you'
             : 'assigned to you',
-        title: d.vendor?.name ?? d.finalFilename ?? d.originalFilename,
+        title: d.vendor?.name ?? d.payeeName ?? d.finalFilename ?? d.originalFilename,
         entityCode: d.entity?.code ?? null,
         amount: money(d.amount),
         dueDate: day(d.dueDate),

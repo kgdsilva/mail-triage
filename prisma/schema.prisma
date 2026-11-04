@@ -761,6 +761,18 @@ model Document {
   vendorId String? @map("vendor_id")
   vendor   Vendor? @relation(fields: [vendorId], references: [id], onDelete: SetNull)
 
+  /// Who is being paid, when they are not a vendor on record.
+  ///
+  /// The same field Payment has carried since it existed, and for the same reason: a
+  /// reimbursement is money going back to a person, and a person is not a supplier.
+  /// Making them one would put colleagues in the vendor list beside the IRS and
+  /// Marquette Bank, let an autopay rule be attached to one of them, and make every
+  /// answer to "what did we pay this vendor" wrong.
+  ///
+  /// Null for an ordinary bill, which is nearly all of them — there the vendor is the
+  /// answer. Screens read the vendor first and fall back to this.
+  payeeName String? @map("payee_name")
+
   documentDate DateTime? @map("document_date") @db.Date
   dueDate      DateTime? @map("due_date") @db.Date
 

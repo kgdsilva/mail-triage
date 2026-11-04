@@ -145,7 +145,7 @@ export default async function ApprovalsPage({
     return {
     id: d.id,
     title: d.finalFilename ?? d.originalFilename,
-    vendorName: d.vendor?.name ?? null,
+    vendorName: d.vendor?.name ?? d.payeeName ?? null,
     invoiceNumber: d.invoiceNumber,
     amount: d.amount === null ? null : formatMoney(d.amount),
     amountValue: d.amount === null ? 0 : Number(d.amount.toString()),

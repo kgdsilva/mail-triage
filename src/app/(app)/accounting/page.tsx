@@ -237,7 +237,7 @@ export default async function AccountingPage({
   const accountingRows: AccountingBill[] = [...bills, ...refused].map((d) => ({
     id: d.id,
     title: d.finalFilename ?? d.originalFilename,
-    vendorName: d.vendor?.name ?? null,
+    vendorName: d.vendor?.name ?? d.payeeName ?? null,
     invoiceNumber: d.invoiceNumber,
     amount: d.amount === null ? null : formatMoney(d.amount),
     // Two decimals, so the form shows 486.90 rather than the Decimal's own 486.9 —
@@ -280,7 +280,7 @@ export default async function AccountingPage({
   const waitingRows: ApprovalBill[] = bills.map((d) => ({
     id: d.id,
     title: d.finalFilename ?? d.originalFilename,
-    vendorName: d.vendor?.name ?? null,
+    vendorName: d.vendor?.name ?? d.payeeName ?? null,
     invoiceNumber: d.invoiceNumber,
     amount: d.amount === null ? null : formatMoney(d.amount),
     amountValue: d.amount === null ? 0 : Number(d.amount.toString()),
@@ -409,7 +409,7 @@ export default async function AccountingPage({
             return {
             id: d.id,
             title: d.finalFilename ?? d.originalFilename,
-            vendorName: d.vendor?.name ?? null,
+            vendorName: d.vendor?.name ?? d.payeeName ?? null,
             amount: d.amount === null ? null : d.amount.toString(),
             dueDate: d.dueDate ? d.dueDate.toISOString().slice(0, 10) : null,
             receivedDate: d.createdAt.toISOString(),

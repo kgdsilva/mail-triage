@@ -1,0 +1,36 @@
+-- Who is being paid, when they are not a vendor on record.
+--
+-- Additive only: one nullable column. Nothing is dropped, renamed or rewritten.
+--
+-- A reimbursement is money going back to a person, and a person is not a supplier.
+-- Payment has carried exactly this field since it existed, for exactly this reason; the
+-- document side never caught up, so a manually added bill with an unmatched payee lost
+-- the name entirely and the approver was shown the filename instead. On a reimbursement
+-- form that is every single time: a colleague will never match a vendor.
+--
+-- The alternative was to create a vendor for each person, which would put colleagues in
+-- the list beside the IRS and Marquette Bank, let an autopay rule be attached to one of
+-- them, and make every answer to "what did we pay this vendor" wrong.
+--
+-- ---------------------------------------------------------------------------
+-- Why this file is not what `prisma migrate dev` generated
+-- ---------------------------------------------------------------------------
+--
+-- Because what it generated also dropped five indexes and a default:
+--
+--   DROP INDEX document_final_filename_trgm_idx;
+--   DROP INDEX document_original_filename_trgm_idx;
+--   DROP INDEX document_search_vector_idx;
+--   DROP INDEX entity_alias_text_trgm_idx;
+--   DROP INDEX vendor_name_trgm_idx;
+--   ALTER TABLE document ALTER COLUMN search_vector DROP DEFAULT;
+--
+-- Those are the Master log's search — the trigram indexes behind filename lookup and the
+-- GIN index behind full-text search — created by hand in SQL because Prisma's schema
+-- cannot express a generated tsvector column. Prisma does not know they exist, so every
+-- migration it writes proposes removing them. Applying one as generated would take the
+-- log's search out silently, on a change that is supposed to add a column.
+--
+-- This will happen again on the next generated migration. Read them.
+
+ALTER TABLE "document" ADD COLUMN "payee_name" TEXT;

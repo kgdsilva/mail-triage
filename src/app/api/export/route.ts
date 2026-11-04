@@ -59,7 +59,7 @@ export async function GET(req: Request) {
         r.finalFilename ?? '',
         r.entity?.code ?? '',
         r.documentType?.label ?? '',
-        r.vendor?.name ?? '',
+        r.vendor?.name ?? r.payeeName ?? '',
         isoDate(r.documentDate),
         isoDate(r.dueDate),
         r.amount ? r.amount.toString() : '',

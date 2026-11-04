@@ -472,7 +472,7 @@ export default async function LogPage({
                       )}
                     </td>
                     <td className="max-w-[180px] truncate px-4 py-3 text-[12.5px] text-muted">
-                      {d.vendor?.name ?? <span className="text-subtle">—</span>}
+                      {d.vendor?.name ?? d.payeeName ?? <span className="text-subtle">—</span>}
                     </td>
                     {/* Editable in place. Filter the log to a category, see what does not
                         belong, fix it in the row — which is the only shape in which

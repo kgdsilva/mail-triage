@@ -110,7 +110,7 @@ export default async function HistoryPage({ params }: { params: Promise<{ id: st
             </span>
           )}
           <h1 className="text-[20px] font-bold tracking-tight text-navy-900">
-            {doc.vendor?.name ?? doc.finalFilename ?? doc.originalFilename}
+            {doc.vendor?.name ?? doc.payeeName ?? doc.finalFilename ?? doc.originalFilename}
           </h1>
           {doc.amount !== null && (
             <span className="tabular ml-auto text-[20px] font-extrabold text-navy-900">
