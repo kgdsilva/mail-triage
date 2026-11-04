@@ -51,6 +51,7 @@ export const HELP: Record<string, Help> = {
       'The three totals at the top say what to open first: overdue, due this week, waiting in total. Bills are grouped the same way.',
       'Approve clears it. Deny means do not pay, and your reason is kept and shown to the accountant. Send back is a question rather than a decision — it returns to the office with your note and can come round again.',
       'Preview opens the invoice. Approving without opening it is possible, and recorded as such.',
+      'If you would rather not use the mouse: J and K move between bills, Enter opens one, A approves, R asks a question, D denies, Esc closes. They do nothing while you are typing.',
       'A band above the buttons means you may already have this bill. Open the document it names before approving — the band says whether that one has already been paid.',
       'Where each one goes: approved moves to Approved and waits on the accountant to pay; denied moves to Denied; a question stays on your list, under Your questions, until the office answers. The screen says so each time you act.',
     ],

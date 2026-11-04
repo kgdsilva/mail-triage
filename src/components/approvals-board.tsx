@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
-import { ArrowRight, Ban, Check, CircleHelp, Clock, Download, FileText, HelpCircle, History, Keyboard, Wallet } from 'lucide-react'
+import { ArrowRight, Check, HelpCircle } from 'lucide-react'
 import { approveBill, approveSelected } from '@/server/actions/approvals'
 import { BillPanel, STATUS_LABEL, type PanelBill } from '@/components/bill-panel'
 import { formatDate, formatMoney } from '@/components/badges'
@@ -72,13 +72,15 @@ export function ApprovalsBoard({
   canDecide,
   showCompany,
   showStatus,
+  totalLabel,
 }: {
   bills: BoardBill[]
   canDecide: boolean
   showCompany: boolean
   showStatus: boolean
+  /** What this list is, for the one line of money above it. */
+  totalLabel: string
 }) {
-  const [filter, setFilter] = useState<Bucket | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirming, setConfirming] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
@@ -96,7 +98,7 @@ export function ApprovalsBoard({
   const [went, setWent] = useState<string | null>(null)
   const rows = useRef<Map<string, HTMLElement>>(new Map())
 
-  const shown = filter ? bills.filter((b) => bucketOf(b) === filter) : bills
+  const shown = bills
   const open = bills.find((b) => b.id === openId) ?? null
 
   if (openId && !bills.some((b) => b.id === openId)) setOpenId(null)
@@ -115,14 +117,8 @@ export function ApprovalsBoard({
    */
   if (cursor >= shown.length) setCursor(shown.length - 1)
 
-  const totals = BUCKETS.map((b) => {
-    const inBucket = bills.filter((x) => bucketOf(x) === b.key)
-    return {
-      ...b,
-      count: inBucket.length,
-      total: inBucket.reduce((sum, x) => sum + x.amountValue, 0),
-    }
-  })
+  // The total, and only the total. What is overdue is said by the Overdue heading, on
+  // top of the overdue bills — saying it twice is what the three cards were doing.
   const allTotal = bills.reduce((sum, b) => sum + b.amountValue, 0)
 
   const selectable = shown.filter((b) => b.status === 'PENDING')
@@ -179,8 +175,7 @@ export function ApprovalsBoard({
       const key = e.key.toLowerCase()
 
       if (key === 'escape') {
-        if (openId) setOpenId(null)
-        else if (filter) setFilter(null)
+        setOpenId(null)
         return
       }
 
@@ -229,7 +224,7 @@ export function ApprovalsBoard({
 
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [shown, cursor, open, openId, filter, canDecide, nextAfter])
+  }, [shown, cursor, open, openId, canDecide, nextAfter])
 
   function runBulk() {
     setError(null)
@@ -246,28 +241,22 @@ export function ApprovalsBoard({
 
   return (
     <>
-      {/* ---- the three figures ------------------------------------------- */}
-      <div className="grid gap-2 sm:grid-cols-3">
-        {totals.slice(0, 2).map((t) => (
-          <Card
-            key={t.key}
-            label={t.label}
-            count={t.count}
-            total={t.total}
-            tone={t.key === 'overdue' ? 'danger' : 'gold'}
-            active={filter === t.key}
-            onClick={() => setFilter((f) => (f === t.key ? null : t.key))}
-          />
-        ))}
-        <Card
-          label="All waiting"
-          count={bills.length}
-          total={allTotal}
-          tone="plain"
-          active={filter === null}
-          onClick={() => setFilter(null)}
-        />
-      </div>
+      {/*
+        ---- one line, where there were three cards -------------------------
+        The cards said "Overdue $7,345.10 · 5 bills" in a box, and the section heading
+        four inches below said "OVERDUE 5 bills $7,345.10" again, about the same five
+        bills it was sitting on top of. Two readings of one number, and the one next to
+        the bills is the one that helps. They doubled as bucket filters, which filtered a
+        list to a group already visible as its own section.
+      */}
+      {bills.length > 0 && (
+        <p className="px-1 text-[13px] text-muted">
+          <span className="tabular font-bold text-navy-900">
+            {formatMoney({ toString: () => String(allTotal) })}
+          </span>{' '}
+          {totalLabel}, across {bills.length} bill{bills.length === 1 ? '' : 's'}.
+        </p>
+      )}
 
       {error && (
         <p className="mt-2 rounded-lg bg-danger-100 px-3 py-2 text-[13px] text-danger-700">
@@ -291,13 +280,6 @@ export function ApprovalsBoard({
 
       {bills.length === 0 ? (
         <Empty />
-      ) : shown.length === 0 ? (
-        <p className="mt-3 rounded-xl border border-dashed border-line px-4 py-10 text-center text-[13px] text-muted">
-          Nothing in that group.{' '}
-          <button onClick={() => setFilter(null)} className="font-semibold text-navy-700 underline">
-            Show everything
-          </button>
-        </p>
       ) : (
         <div className="mt-3 space-y-5">
           {BUCKETS.map((bucket) => {
@@ -431,58 +413,6 @@ export function ApprovalsBoard({
   )
 }
 
-/** One of the three figures. A toggle, so pressing the active one clears the filter. */
-function Card({
-  label,
-  count,
-  total,
-  tone,
-  active,
-  onClick,
-}: {
-  label: string
-  count: number
-  total: number
-  tone: 'danger' | 'gold' | 'plain'
-  active: boolean
-  onClick: () => void
-}) {
-  const ring =
-    tone === 'danger'
-      ? 'border-danger-500/60 bg-danger-100/40'
-      : tone === 'gold'
-        ? 'border-gold-500/60 bg-gold-50'
-        : 'border-line bg-surface'
-
-  const ink =
-    tone === 'danger' ? 'text-danger-700' : tone === 'gold' ? 'text-gold-800' : 'text-navy-900'
-
-  const Icon = tone === 'danger' ? Clock : tone === 'gold' ? Clock : Wallet
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`rounded-xl border px-4 py-3 text-left transition-colors ${ring} ${
-        active ? 'ring-2 ring-navy-500' : 'hover:border-navy-500'
-      } ${count === 0 ? 'opacity-55' : ''}`}
-    >
-      <span className={`flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-wide ${ink}`}>
-        <Icon className="size-3.5" aria-hidden />
-        {label}
-      </span>
-      <span className="mt-1 flex flex-wrap items-baseline gap-2">
-        <span className={`display tabular text-[22px] font-extrabold tracking-tight ${ink}`}>
-          {formatMoney({ toString: () => String(total) })}
-        </span>
-        <span className="text-[12.5px] text-muted">
-          {count} bill{count === 1 ? '' : 's'}
-        </span>
-      </span>
-    </button>
-  )
-}
 
 function Row({
   bill,
@@ -666,35 +596,42 @@ function Row({
           screen, and five of them are for the exception. Always visible on a phone,
           where there is no hover to reveal them with.
         */}
+        {/*
+          Three answers, written as words.
+
+          There were six controls on this row — preview, download, history, ask, deny,
+          approve — five of them icons that appeared on hover, and an approver looking at
+          it said the screen was not clear to him. Downloading and the full history live
+          in the panel the row already opens, so nothing is lost by taking them off a
+          list whose job is to be decided quickly. What is left is what he came to do:
+          approve it, ask about it, or refuse it.
+        */}
         <span
-          className="flex flex-none items-center gap-1 sm:ml-0"
+          className="flex flex-none items-center gap-1.5 sm:ml-0"
           onClick={(e) => e.stopPropagation()}
         >
-          <span className="flex items-center gap-1 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-            <Icon label="Preview the invoice" icon={FileText} onClick={() => onOpen()} />
-            <IconLink label="Download the invoice" href={`/api/files/${bill.id}?download=1`} icon={Download} />
-            <IconLink label="Full history" href={`/history/${bill.id}`} icon={History} />
-            {canDecide && (
-              <>
-                <Icon
-                  label="Needs review — asks a question and sends it back"
-                  icon={CircleHelp}
-                  onClick={() => onOpen('NEEDS_REVIEW')}
-                />
-                <Icon
-                  label="Deny — refuse it with a reason"
-                  icon={Ban}
-                  danger
-                  onClick={() => onOpen('DENIED')}
-                />
-              </>
-            )}
-          </span>
+          {canDecide && bill.turn.tone !== 'done' && (
+            <>
+              <button
+                type="button"
+                onClick={() => onOpen('NEEDS_REVIEW')}
+                className="rounded-lg border border-line px-2.5 py-1 text-[12px] font-semibold text-muted transition-colors hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700"
+              >
+                Ask
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpen('DENIED')}
+                className="rounded-lg border border-danger-500 px-2.5 py-1 text-[12px] font-semibold text-danger-700 transition-colors hover:bg-danger-100"
+              >
+                Deny
+              </button>
+            </>
+          )}
 
           {canDecide && bill.status !== 'APPROVED' && (
             <button
               type="button"
-              title="Approve this bill"
               onClick={onApprove}
               className="inline-flex items-center gap-1 rounded-lg bg-ok-700 px-2.5 py-1 text-[12px] font-semibold text-white transition-colors hover:bg-[#155538] active:bg-[#0f3f29]"
             >
@@ -709,46 +646,7 @@ function Row({
   )
 }
 
-function Icon({
-  label,
-  icon: Glyph,
-  onClick,
-  danger,
-}: {
-  label: string
-  icon: typeof Check
-  onClick: () => void
-  danger?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className={`grid size-7 place-items-center rounded-lg border transition-colors ${
-        danger
-          ? 'border-danger-500 text-danger-700 hover:bg-danger-100'
-          : 'border-line text-muted hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700'
-      }`}
-    >
-      <Glyph className="size-3.5" aria-hidden />
-    </button>
-  )
-}
 
-function IconLink({ label, href, icon: Glyph }: { label: string; href: string; icon: typeof Check }) {
-  return (
-    <a
-      href={href}
-      title={label}
-      aria-label={label}
-      className="grid size-7 place-items-center rounded-lg border border-line text-muted transition-colors hover:border-navy-500 hover:bg-navy-50 hover:text-navy-700"
-    >
-      <Glyph className="size-3.5" aria-hidden />
-    </a>
-  )
-}
 
 function Empty() {
   return (
@@ -761,41 +659,5 @@ function Empty() {
         When a bill is marked as needing payment, it appears here with the invoice attached.
       </p>
     </div>
-  )
-}
-
-/** The shortcuts, where somebody might find them. */
-export function ShortcutHint() {
-  const keys: [string, string][] = [
-    ['J / K', 'move between bills'],
-    ['Enter', 'open the invoice'],
-    ['A', 'approve'],
-    ['R', 'needs review'],
-    ['D', 'deny'],
-    ['Esc', 'close'],
-  ]
-
-  return (
-    <details className="group relative">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1 text-[12px] font-semibold text-muted transition-colors hover:border-navy-500 hover:text-navy-700 [&::-webkit-details-marker]:hidden">
-        <Keyboard className="size-3.5" aria-hidden />
-        Keyboard shortcuts
-      </summary>
-      <div className="absolute left-0 top-full z-20 mt-1 w-64 rounded-xl border border-line bg-surface p-2.5 shadow-[0_8px_24px_rgba(18,40,74,0.18)]">
-        <ul className="space-y-1">
-          {keys.map(([key, what]) => (
-            <li key={key} className="flex items-center justify-between gap-3 text-[12.5px]">
-              <kbd className="rounded border border-line bg-canvas px-1.5 py-0.5 font-mono text-[11px] font-bold text-navy-900">
-                {key}
-              </kbd>
-              <span className="text-muted">{what}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2 border-t border-line-soft pt-2 text-[11.5px] text-subtle">
-          They do nothing while you are typing a note or using the company filter.
-        </p>
-      </div>
-    </details>
   )
 }

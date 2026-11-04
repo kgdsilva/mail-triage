@@ -6,7 +6,7 @@ import { HandedToYou, type Handover } from '@/components/handed-to-you'
 import { narrowEntityChoice, visibleEntities, visibleEntityIds } from '@/server/scope'
 import { canAddBill, canApprove, canConfigure, requireApprover } from '@/server/session'
 import { AddBill } from '@/components/add-bill'
-import { ApprovalsBoard, ShortcutHint, type BoardBill } from '@/components/approvals-board'
+import { ApprovalsBoard, type BoardBill } from '@/components/approvals-board'
 import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
 import { settlerName } from '@/server/destinations'
@@ -47,6 +47,17 @@ export const dynamic = 'force-dynamic'
  * one kind. The pair of question tabs is deliberately symmetric: what you asked, and
  * what was asked of you.
  */
+/*
+ * Three, where there were five.
+ *
+ * "Questions for you" was a tab for something already sitting at the top of the first
+ * one, and on the approver's own screen it read 0 — a tab whose whole job was to be
+ * empty. Approved and Denied were two tabs for the same question, "what did I already
+ * decide", and each row says which it was anyway.
+ *
+ * What is left is the three things an approver actually asks: what is on me, what am I
+ * waiting on an answer for, and what did I already do.
+ */
 const TABS = [
   {
     key: 'pending',
@@ -59,12 +70,10 @@ const TABS = [
     statuses: ['NEEDS_REVIEW'] as ApprovalStatus[],
   },
   {
-    key: 'handed',
-    label: 'Questions for you',
-    statuses: [] as ApprovalStatus[],
+    key: 'decided',
+    label: 'Decided',
+    statuses: ['APPROVED', 'DENIED'] as ApprovalStatus[],
   },
-  { key: 'approved', label: 'Approved', statuses: ['APPROVED'] as ApprovalStatus[] },
-  { key: 'denied', label: 'Denied', statuses: ['DENIED'] as ApprovalStatus[] },
 ] as const
 
 export default async function ApprovalsPage({
@@ -79,23 +88,18 @@ export default async function ApprovalsPage({
   const scope = await visibleEntityIds(session)
   const chosen = narrowEntityChoice(entity, scope)
 
-  const handedTab = active.key === 'handed'
   // The first tab carries the handovers as well, which is the whole point of it being
   // the first tab: one place that answers "what is waiting on me".
-  const showsHandovers = handedTab || active.key === 'pending'
+  const showsHandovers = active.key === 'pending'
 
   const [bills, counts, entities, handed, handedCount, settler] = await Promise.all([
-    // The handover tab reads a different question, so the bill query is skipped rather
-    // than run with an empty status list that would match nothing anyway.
-    handedTab
-      ? Promise.resolve([])
-      : listBills(session, {
-          statuses: [...active.statuses],
-          entityId: chosen,
-          // An approved bill stays on the Approved tab after it is paid; the pending
-          // list is only what is still open.
-          settled: active.key === 'pending' ? false : undefined,
-        }),
+    listBills(session, {
+      statuses: [...active.statuses],
+      entityId: chosen,
+      // A decided bill stays on Decided after it is paid; the first list is only what
+      // is still open.
+      settled: active.key === 'pending' ? false : undefined,
+    }),
     billCounts(session, chosen),
     visibleEntities(session),
     showsHandovers ? listHandedTo(session) : Promise.resolve([]),
@@ -168,18 +172,13 @@ export default async function ApprovalsPage({
       ? counts.pending + counts.needsReview + handedCount
       : key === 'questions'
         ? counts.needsReview
-        : key === 'handed'
-          ? handedCount
-          : key === 'approved'
-            ? counts.approvedUnpaid + counts.paid
-            : counts.denied
+        : counts.approvedUnpaid + counts.paid + counts.denied
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-4">
       <header>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-[26px] font-bold tracking-tight text-navy-900">Bills to approve</h1>
-          <ShortcutHint />
           {/*
             The approver's own way in. Eric gets invoices by email that never touch the
             post; before this his only route was forwarding them to somebody with an
@@ -207,7 +206,7 @@ export default async function ApprovalsPage({
         </p>
       </header>
 
-      <PageHelp topic={handedTab ? 'approvals.handed' : 'approvals'} />
+      <PageHelp topic="approvals" />
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1 rounded-xl border border-line bg-surface p-1">
@@ -261,18 +260,21 @@ export default async function ApprovalsPage({
         </section>
       )}
 
-      {handedTab ? (
-        <HandedToYou items={handovers} />
-      ) : (
-        <ApprovalsBoard
-          bills={rows}
-          canDecide={canApprove(session.role)}
-          showCompany={entities.length > 1}
-          // The pending tab now holds two kinds — not yet looked at, and asked about —
-          // so the row says which. The question badge carries that for the asked ones.
-          showStatus={active.key !== 'pending'}
-        />
-      )}
+      <ApprovalsBoard
+        bills={rows}
+        totalLabel={
+          active.key === 'pending'
+            ? 'waiting on you'
+            : active.key === 'questions'
+              ? 'waiting on an answer'
+              : 'you have decided'
+        }
+        canDecide={canApprove(session.role)}
+        showCompany={entities.length > 1}
+        // The pending tab now holds two kinds — not yet looked at, and asked about — so
+        // the row says which. The question badge carries that for the asked ones.
+        showStatus={active.key !== 'pending'}
+      />
 
       {canConfigure(session.role) && (
         <p className="text-[12.5px] text-subtle">
