@@ -82,6 +82,17 @@ export function PaymentForm({
           fd,
         )
 
+        /*
+         * Branch on the result, because a refusal used to be read as a success: the
+         * card-number guard already returned one, and this read `result.hasReceipt` off
+         * it, found nothing, and reported "Payment recorded. You can attach the receipt
+         * later." about a payment that was never recorded.
+         */
+        if (!result.ok) {
+          setError(result.error)
+          return
+        }
+
         onDone?.(
           result.hasReceipt
             ? 'Payment recorded, with the receipt attached.'

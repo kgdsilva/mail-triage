@@ -197,7 +197,14 @@ export default async function AccountingPage({
     id: d.id,
     title: d.finalFilename ?? d.originalFilename,
     companyCode: d.entity?.code ?? null,
-    question: d.internalNotes,
+    /*
+     * The question somebody wrote when they handed it over, read from the event.
+     *
+     * It used to be `internalNotes`, which is whatever text the document happens to
+     * carry — so an imported row turned up on this list asking "Imported from the
+     * historical log — action taken: Pending review." Nobody asked that.
+     */
+    question: exchange(d).asked?.note ?? null,
     receivedDate: d.createdAt.toISOString(),
   }))
 

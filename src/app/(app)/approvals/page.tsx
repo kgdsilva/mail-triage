@@ -112,7 +112,14 @@ export default async function ApprovalsPage({
     id: d.id,
     title: d.finalFilename ?? d.originalFilename,
     companyCode: d.entity?.code ?? null,
-    question: d.internalNotes,
+    /*
+     * The question somebody wrote when they handed it over, read from the event.
+     *
+     * It used to be `internalNotes`, which is whatever text the document happens to
+     * carry — so an imported row turned up on this list asking "Imported from the
+     * historical log — action taken: Pending review." Nobody asked that.
+     */
+    question: exchange(d).asked?.note ?? null,
     receivedDate: d.createdAt.toISOString(),
   }))
 
@@ -149,6 +156,10 @@ export default async function ApprovalsPage({
     duplicates: duplicates.get(d.id) ?? [],
     answeredBy: answered?.by ?? null,
     answerNote: answered?.note ?? null,
+    askedBy:
+      d.approvalDecidedByUserId && d.approvalDecidedByUserId !== session.userId
+        ? (d.approvalDecidedBy?.name?.trim() || d.approvalDecidedBy?.email || null)
+        : null,
     /*
      * Worked out here rather than in the row, because the answer is a person's name and
      * the browser has never been told any names. The row renders a label it was handed.
@@ -269,6 +280,13 @@ export default async function ApprovalsPage({
 
       <ApprovalsBoard
         bills={rows}
+        emptyText={
+          active.key === 'pending'
+            ? 'Nothing is waiting on you.'
+            : active.key === 'questions'
+              ? 'You have no open questions.'
+              : 'You have not decided anything yet.'
+        }
         totalLabel={
           active.key === 'pending'
             ? 'waiting on you'

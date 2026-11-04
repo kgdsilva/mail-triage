@@ -47,6 +47,8 @@ export type PanelBill = {
   /** The reply to the question on this bill, once somebody has written one. */
   answeredBy?: string | null
   answerNote?: string | null
+  /** Who asked the question, when it was not the person reading. Null means you. */
+  askedBy?: string | null
 }
 
 export const STATUS_LABEL: Record<PanelBill['status'], string> = {

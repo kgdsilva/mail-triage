@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { ArrowRight, Check, HelpCircle, Reply } from 'lucide-react'
 import { approveBill, approveSelected } from '@/server/actions/approvals'
@@ -73,6 +74,7 @@ export function ApprovalsBoard({
   showCompany,
   showStatus,
   totalLabel,
+  emptyText,
 }: {
   bills: BoardBill[]
   canDecide: boolean
@@ -80,7 +82,10 @@ export function ApprovalsBoard({
   showStatus: boolean
   /** What this list is, for the one line of money above it. */
   totalLabel: string
+  /** What to say when it is empty — each tab is empty for a different reason. */
+  emptyText: string
 }) {
+  const router = useRouter()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirming, setConfirming] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
@@ -142,8 +147,19 @@ export function ApprovalsBoard({
     setError(null)
     startTransition(async () => {
       const res = await fn()
-      if (!res.ok) setError(res.error ?? 'That did not go through.')
-      else setWent(res.went ?? null)
+      if (!res.ok) {
+        setError(res.error ?? 'That did not go through.')
+        return
+      }
+      setWent(res.went ?? null)
+      /*
+       * Asked for explicitly, because the action's own revalidatePath did not reach
+       * this list: the bill was approved, the counts on the server changed, and the row
+       * sat there looking undecided until somebody reloaded. A screen that says "sent to
+       * Chris" while still showing the thing it sent is the "where did it go" problem
+       * this whole week was about, caused by the fix for it.
+       */
+      router.refresh()
     })
   }
 
@@ -231,9 +247,12 @@ export function ApprovalsBoard({
     startTransition(async () => {
       const res = await approveSelected([...selected])
       if (!res.ok) setError(res.error ?? 'Could not approve those.')
-      // The count is the truth of what moved, and it is not always what was ticked —
-      // so it is said out loud rather than echoing the selection back.
-      else setWent(`${res.count ?? 0} approved. ${res.went ?? ''}`.trim())
+      else {
+        // The count is the truth of what moved, and it is not always what was ticked —
+        // so it is said out loud rather than echoing the selection back.
+        setWent(`${res.count ?? 0} approved. ${res.went ?? ''}`.trim())
+        router.refresh()
+      }
       setSelected(new Set())
       setConfirming(false)
     })
@@ -279,7 +298,7 @@ export function ApprovalsBoard({
       )}
 
       {bills.length === 0 ? (
-        <Empty />
+        <Empty what={emptyText} />
       ) : (
         <div className="mt-3 space-y-5">
           {BUCKETS.map((bucket) => {
@@ -516,7 +535,15 @@ function Row({
               <span className="mt-1 flex items-start gap-1.5 text-[12px] text-amber-800">
                 <HelpCircle className="mt-px size-3.5 flex-none" aria-hidden />
                 <span className="min-w-0">
-                  <span className="font-semibold">You asked:</span>{' '}
+                  {/*
+                    Whose question it was. An administrator sees every approver's bills,
+                    and the row told them "You asked" about a question Eric had asked —
+                    which is wrong in the one way that matters, because the next thing
+                    they do is try to remember asking it.
+                  */}
+                  <span className="font-semibold">
+                    {bill.askedBy ? `${bill.askedBy} asked:` : 'You asked:'}
+                  </span>{' '}
                   {bill.note?.trim() ? bill.note : 'waiting on an answer'}
                 </span>
               </span>
@@ -659,16 +686,13 @@ function Row({
 
 
 
-function Empty() {
+function Empty({ what }: { what: string }) {
   return (
     <div className="mt-3 rounded-xl border border-dashed border-line bg-surface/60 px-6 py-14 text-center">
       <span className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-teal-100 text-teal-700">
         <Check className="size-6" strokeWidth={1.8} aria-hidden />
       </span>
-      <h3 className="text-[15px] font-bold text-navy-900">No bills waiting for your approval.</h3>
-      <p className="mx-auto mt-1 max-w-sm text-[13px] text-muted">
-        When a bill is marked as needing payment, it appears here with the invoice attached.
-      </p>
+      <h3 className="text-[15px] font-bold text-navy-900">{what}</h3>
     </div>
   )
 }

@@ -78,7 +78,23 @@ export async function signReceiptUpload(filename: string, contentType: string, s
  * entity and the vendor. A payment that referenced another tenant's entity would be
  * invisible to both of them.
  */
-export async function recordPayment(input: PaymentInput, formData?: FormData) {
+/**
+ * The answer, as a result rather than an exception.
+ *
+ * Every refusal here is something a person has to read and act on — a missing amount, a
+ * card number, and above all "you approved this, so somebody else has to pay it", which
+ * is the one control this workflow exists to keep. Thrown, that last one reached the
+ * screen as nothing at all: the button sat on "Recording…" for ever and the accountant
+ * was given no reason. A rule nobody can read is a rule nobody can follow.
+ */
+export type PaymentResult =
+  | { ok: true; id: string; hasReceipt: boolean }
+  | { ok: false; error: string }
+
+export async function recordPayment(
+  input: PaymentInput,
+  formData?: FormData,
+): Promise<PaymentResult> {
   /*
    * A server action's arguments arrive from the browser, so the self-settle bypass is
    * cleared here and can be set only by code inside this module. A control the client
@@ -87,7 +103,7 @@ export async function recordPayment(input: PaymentInput, formData?: FormData) {
   return settle({ ...input, selfSettleAllowed: false }, formData)
 }
 
-async function settle(input: PaymentInput, formData?: FormData) {
+async function settle(input: PaymentInput, formData?: FormData): Promise<PaymentResult> {
   /*
    * Recording a payment is the accountant's job and the office's; it is not the
    * approver's. The one control this workflow has is that the person who clears a bill
@@ -107,12 +123,16 @@ async function settle(input: PaymentInput, formData?: FormData) {
     },
     select: { id: true, code: true },
   })
-  if (!entity) throw new Error('Choose which company paid this')
+  if (!entity) return { ok: false, error: 'Choose which company paid this.' }
 
   const amount = Number(String(input.amount).replace(/[^0-9.-]/g, ''))
-  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Enter an amount greater than zero')
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, error: 'Enter an amount greater than zero.' }
+  }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.paidOn)) throw new Error('Enter the date it was paid')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.paidOn)) {
+    return { ok: false, error: 'Enter the date it was paid.' }
+  }
 
   const document = input.documentId
     ? await prisma.document.findFirst({
@@ -131,7 +151,9 @@ async function settle(input: PaymentInput, formData?: FormData) {
         },
       })
     : null
-  if (input.documentId && !document) throw new Error('Document not found')
+  if (input.documentId && !document) {
+    return { ok: false, error: 'That bill could not be found — it may have moved.' }
+  }
 
   /*
    * Nobody settles a bill they cleared themselves.
@@ -152,10 +174,12 @@ async function settle(input: PaymentInput, formData?: FormData) {
     document?.approvalDecidedByUserId &&
     document.approvalDecidedByUserId === session.userId
   ) {
-    throw new Error(
-      'You approved this bill, so somebody else has to record its payment. ' +
+    return {
+      ok: false,
+      error:
+        'You approved this bill, so somebody else has to record its payment. ' +
         'Approving and paying the same bill is the one thing this workflow keeps apart.',
-    )
+    }
   }
 
   /*
@@ -240,7 +264,7 @@ async function settle(input: PaymentInput, formData?: FormData) {
      value this must never hold. See src/lib/reference.ts.
   */
   if (input.reference && looksLikeCardNumber(input.reference)) {
-    return { ok: false as const, error: CARD_NUMBER_REFUSED }
+    return { ok: false, error: CARD_NUMBER_REFUSED }
   }
 
   const payment = await prisma.$transaction(async (tx) => {
@@ -295,7 +319,7 @@ async function settle(input: PaymentInput, formData?: FormData) {
   })
 
   revalidatePath('/', 'layout')
-  return { id: payment.id, hasReceipt: Boolean(receipt) }
+  return { ok: true, id: payment.id, hasReceipt: Boolean(receipt) }
 }
 
 /**

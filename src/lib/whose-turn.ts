@@ -134,10 +134,10 @@ export function whoseTurn(s: TurnState): Turn {
  */
 export const wentTo = {
   approved: (settler: string | null) =>
-    `Approved — now with ${settler ?? 'accounting'} to pay. It is on your Approved tab until the money goes out.`,
+    `Approved — now with ${settler ?? 'accounting'} to pay. You will find it under Decided.`,
 
   denied: (returnee: string | null) =>
-    `Denied — sent back to ${returnee ?? 'the office'}, with your reason. You will find it under Denied.`,
+    `Denied — sent back to ${returnee ?? 'the office'}, with your reason. You will find it under Decided.`,
 
   asked: (returnee: string | null) =>
     `Question sent to ${returnee ?? 'the office'}. It stays on your list, under Your questions, until they answer.`,
