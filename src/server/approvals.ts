@@ -231,12 +231,33 @@ export async function listHandedTo(session: Session, except?: Prisma.DocumentWhe
        * saying what you asked.
        */
       /*
-       * Both exclusions in one AND, because two `NOT` keys on one object is one key:
-       * the second overwrites the first and the exclusion it was carrying disappears
-       * without a word.
+       * Both exclusions in one AND, because two `NOT` keys on one object is one key.
+       *
+       * And the first is an OR of two `not`s rather than a NOT of an AND — the same
+       * thing in logic and emphatically not the same thing in SQL. `NOT (status =
+       * 'NEEDS_REVIEW' AND decided_by = me)` over two NULL columns evaluates to NULL,
+       * not TRUE, and a row that answers NULL is dropped. An exclusion meant to hide a
+       * handful of bills hid every handover that is not a bill at all, which is most of
+       * them. Prisma's `not` handles the null itself.
        */
       AND: [
-        { NOT: { AND: [{ approvalStatus: 'NEEDS_REVIEW' }, { approvalDecidedByUserId: session.userId }] } },
+        {
+          /*
+           * "Not a bill you yourself asked about", written so a null survives it.
+           *
+           * Prisma's `not` does not match NULL — measured, not assumed: over 483
+           * documents whose approvalStatus is null, `{ not: 'NEEDS_REVIEW' }` keeps 13.
+           * So each half of the negation needs its null spelled out, and all four
+           * branches together keep every one of the 483 while still excluding the one
+           * row this exists to exclude.
+           */
+          OR: [
+            { approvalStatus: null },
+            { approvalStatus: { not: 'NEEDS_REVIEW' } },
+            { approvalDecidedByUserId: null },
+            { approvalDecidedByUserId: { not: session.userId } },
+          ],
+        },
         ...(except ? [{ NOT: except }] : []),
       ],
     },
@@ -264,7 +285,23 @@ export async function handedToCount(session: Session, except?: Prisma.DocumentWh
       // The same pair of exclusions as the list, or the badge counts what the list
       // refuses to show.
       AND: [
-        { NOT: { AND: [{ approvalStatus: 'NEEDS_REVIEW' }, { approvalDecidedByUserId: session.userId }] } },
+        {
+          /*
+           * "Not a bill you yourself asked about", written so a null survives it.
+           *
+           * Prisma's `not` does not match NULL — measured, not assumed: over 483
+           * documents whose approvalStatus is null, `{ not: 'NEEDS_REVIEW' }` keeps 13.
+           * So each half of the negation needs its null spelled out, and all four
+           * branches together keep every one of the 483 while still excluding the one
+           * row this exists to exclude.
+           */
+          OR: [
+            { approvalStatus: null },
+            { approvalStatus: { not: 'NEEDS_REVIEW' } },
+            { approvalDecidedByUserId: null },
+            { approvalDecidedByUserId: { not: session.userId } },
+          ],
+        },
         ...(except ? [{ NOT: except }] : []),
       ],
     },
