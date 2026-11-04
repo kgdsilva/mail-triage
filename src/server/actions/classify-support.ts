@@ -90,11 +90,17 @@ export async function getSuggestion(input: {
   return { verdict, filename, folderId: folder?.id ?? null, folderPath: folder?.pathCache ?? null }
 }
 
-/** Creates a vendor inline from the classify screen, or returns the existing match. */
+/**
+ * Creates a vendor inline from the classify screen, or returns the existing match.
+ *
+ * Null for an empty name rather than a throw: the caller is a combobox, the empty case
+ * is somebody pressing enter on nothing, and an exception there becomes an unhandled
+ * rejection with no message — in production, not even a message worth reading.
+ */
 export async function findOrCreateVendor(name: string) {
   const session = await requireSession()
   const trimmed = name.trim()
-  if (!trimmed) throw new Error('Vendor name is required.')
+  if (!trimmed) return null
 
   const existing = await prisma.vendor.findFirst({
     where: { companyGroupId: session.companyGroupId, name: { equals: trimmed, mode: 'insensitive' } },

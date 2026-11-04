@@ -617,26 +617,48 @@ export async function beginUpload(
  * Signs one upload. The key is chosen here, never by the browser, so an upload cannot
  * be written outside the caller's company group prefix or over an existing document.
  */
+/**
+ * The answer, rather than an exception — because in production an exception has no words.
+ *
+ * Next replaces an error thrown in a server action with a generic one before it reaches
+ * the browser: the message is stripped on purpose, so the screen's `catch` shows
+ * something true in development and something useless everywhere that matters. A file
+ * that is too big, or of a kind nothing can open, is an ordinary thing to do by accident
+ * and the person has to be told which.
+ */
+export type SignedUpload =
+  | { ok: true; key: string; url: string }
+  | { ok: false; error: string }
+
 export async function signUpload(
   batchId: string,
   filename: string,
   contentType: string,
   size: number,
-): Promise<{ key: string; url: string }> {
+): Promise<SignedUpload> {
   const session = await requireTriage()
 
   const batch = await prisma.batch.findFirst({
     where: { id: batchId, companyGroupId: session.companyGroupId },
     select: { id: true },
   })
-  if (!batch) throw new Error('Batch not found')
+  if (!batch) return { ok: false, error: 'That batch could not be found — start a new one.' }
 
-  if (!Number.isFinite(size) || size <= 0) throw new Error('Empty file')
-  if (size > MAX_BYTES) throw new Error('Over 50 MB')
-  if (!ALLOWED.has(contentType)) throw new Error(`${contentType} not accepted`)
+  if (!Number.isFinite(size) || size <= 0) {
+    return { ok: false, error: 'That file is empty.' }
+  }
+  if (size > MAX_BYTES) {
+    return {
+      ok: false,
+      error: `That file is ${(size / 1024 / 1024).toFixed(1)} MB and the limit is 50 MB. Scan it at a lower resolution, or split it.`,
+    }
+  }
+  if (!ALLOWED.has(contentType)) {
+    return { ok: false, error: `${contentType} is not a kind this can open. PDF, JPG, PNG or TIFF.` }
+  }
 
   const key = buildKey(session.companyGroupId, path.extname(filename))
-  return { key, url: await presignPut(key, contentType) }
+  return { ok: true, key, url: await presignPut(key, contentType) }
 }
 
 /**

@@ -161,6 +161,7 @@ export function ClassifyForm({
 
   async function commitVendor(name: string) {
     const v = await findOrCreateVendor(name)
+    if (!v) return
     setForm((f) => ({ ...f, vendorId: v.id }))
     setVendorQuery(v.name)
     setVendorOpen(false)

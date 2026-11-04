@@ -105,7 +105,12 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
           const contentType = file.type || 'application/pdf'
 
           try {
-            const { key, url } = await signUpload(batchId, file.name, contentType, file.size)
+            const signed = await signUpload(batchId, file.name, contentType, file.size)
+            if (!signed.ok) {
+              skipped.push(`${file.name} — ${signed.error}`)
+              continue
+            }
+            const { key, url } = signed
 
             const put = await fetch(url, {
               method: 'PUT',
