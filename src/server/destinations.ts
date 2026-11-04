@@ -23,16 +23,32 @@ const display = (u: { name: string | null; email: string } | null) =>
  * office with no accountant gets null and the caller says "accounting" instead, which is
  * true and vague rather than false and specific.
  */
-export async function settlerName(companyGroupId: string): Promise<string | null> {
+export async function settler(
+  companyGroupId: string,
+): Promise<{ userId: string; name: string } | null> {
   for (const role of SETTLE_CHAIN) {
     const member = await prisma.membership.findFirst({
       where: { companyGroupId, role, isActive: true },
       orderBy: { createdAt: 'asc' },
-      select: { user: { select: { name: true, email: true } } },
+      select: { userId: true, user: { select: { name: true, email: true } } },
     })
-    if (member) return display(member.user)
+    if (member) {
+      const name = display(member.user)
+      if (name) return { userId: member.userId, name }
+    }
   }
   return null
+}
+
+/**
+ * The same person, when only the name is wanted.
+ *
+ * The id comes back too because "is this me?" has to be asked of the person, not of
+ * their display name — two people called Danny would otherwise be the same person to
+ * any screen that compared the words.
+ */
+export async function settlerName(companyGroupId: string): Promise<string | null> {
+  return (await settler(companyGroupId))?.name ?? null
 }
 
 /** Who a refused bill lands on, by name — the same chain `returnTo` assigns it to. */

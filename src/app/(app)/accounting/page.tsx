@@ -19,7 +19,7 @@ import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
 import { RecurringLine, type Row as RecurringRow } from '@/components/recurring-line'
 import { periodOf, previousPeriod, recurringFor } from '@/server/recurring'
-import { approverIndex, settlerName } from '@/server/destinations'
+import { approverIndex, settler as settlerOf } from '@/server/destinations'
 import { whoseTurn } from '@/lib/whose-turn'
 import { nearDuplicatesFor } from '@/server/near-duplicates'
 
@@ -104,7 +104,7 @@ export default async function AccountingPage({
     }),
     billCounts(session, chosen),
     visibleEntities(session),
-    settlerName(session.companyGroupId),
+    settlerOf(session.companyGroupId),
     approverIndex(session.companyGroupId),
   ])
 
@@ -115,14 +115,29 @@ export default async function AccountingPage({
    * Waiting on approval and Denied cannot describe the same bill differently — which is
    * exactly what they did before, by each naming a status in its own words.
    */
+  /*
+   * One walk of a document's events, not one per field. The answer is a single object
+   * and reading it twice is two chances for the two halves of one sentence to disagree.
+   */
+  const answeredOn = (d: Parameters<typeof exchange>[0]) => exchange(d).answered
+
   const turnOf = (d: (typeof bills)[number]) =>
     whoseTurn({
       approvalStatus: d.approvalStatus,
       settled: d.status === 'DONE',
       holder: d.assignedTo?.name?.trim() || d.assignedTo?.email || null,
       isYou: d.assignedTo?.id === session.userId,
-      settler,
-      settlerIsYou: canSettle(session.role),
+      settler: settler?.name ?? null,
+      /*
+       * Whether *you* are the one who pays, not whether you are allowed to.
+       *
+       * canSettle is true for the owner, both administrators and every operator, so the
+       * rows read "Approved — with you to pay" to four people who do not pay anything —
+       * in the colour that means it is on you. The name on the line is the accountant's,
+       * so the test is against that same person, by id rather than by what they are
+       * called.
+       */
+      settlerIsYou: settler?.userId === session.userId,
       approver: approverFor(d.entityId),
     })
 
@@ -358,7 +373,11 @@ export default async function AccountingPage({
         <ChecksTable rows={checkRows} />
       ) : active === 'decide' ? (
         <ToDecideList
-          rows={decideRows.map((d) => ({
+          rows={decideRows.map((d) => {
+            // Each read once, because both are two halves of one sentence.
+            const handed = handoff(d, session.userId)
+            const answered = answeredOn(d)
+            return {
             id: d.id,
             title: d.finalFilename ?? d.originalFilename,
             vendorName: d.vendor?.name ?? null,
@@ -372,12 +391,13 @@ export default async function AccountingPage({
             categoryName: d.category?.name ?? null,
             summary: d.summaryNote,
             hasFile: Boolean(d.storageKey),
-            handedBy: handoff(d, session.userId)?.by ?? null,
-            handNote: handoff(d, session.userId)?.note ?? null,
-            answeredBy: exchange(d).answered?.by ?? null,
-            answerNote: exchange(d).answered?.note ?? null,
+            handedBy: handed?.by ?? null,
+            handNote: handed?.note ?? null,
+            answeredBy: answered?.by ?? null,
+            answerNote: answered?.note ?? null,
             duplicates: duplicates.get(d.id) ?? [],
-          }))}
+            }
+          })}
           people={handoverPeople.map((m) => ({
             id: m.user.id,
             name: m.user.name ?? m.user.email,

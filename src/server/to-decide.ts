@@ -75,7 +75,21 @@ const SELECT = {
    * only its note is the message they meant to leave.
    */
   events: {
-    where: { action: { in: ['routed', 'note_added'] } },
+    /*
+     * The handoff and the reply to it, and nothing else.
+     *
+     * `note_added` is written by the accounting note path too, and taking the ten newest
+     * events of both kinds meant a busy document could push its own `routed` event out
+     * of the window — the question would vanish from the card, silently, on exactly the
+     * documents that have had the most said about them. Narrowing the filter to the two
+     * kinds anybody reads makes ten plenty.
+     */
+    where: {
+      OR: [
+        { action: 'routed' },
+        { action: 'note_added', toValue: { path: ['by'], equals: 'handover-answer' } },
+      ],
+    },
     orderBy: { createdAt: 'desc' },
     take: 10,
     select: {

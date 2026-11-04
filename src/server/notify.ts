@@ -281,9 +281,27 @@ export async function waitingFor(member: Member, limit = 8): Promise<WaitingItem
 
       for (const answer of answers) {
         if (!asked.has(answer.documentId)) continue
-        if (items.some((i) => i.documentId === answer.documentId)) continue
 
         const who = answer.actor?.name?.trim() || answer.actor?.email || 'Somebody'
+
+        /*
+         * Upgraded rather than skipped when the document is already on the list.
+         *
+         * Which it almost always is, and that was the bug: the accountant asks about a
+         * document in his own money queue, so the section above has already added it as
+         * "needs deciding". Skipping meant the one new fact — somebody answered — was
+         * dropped, and with it the `since` that was the only reason the email would go
+         * out at all for a document mentioned days earlier. The feature never fired for
+         * the case it was written for.
+         */
+        const already = items.find((i) => i.documentId === answer.documentId)
+        if (already) {
+          already.what = `${who} answered your question`
+          already.href = askerHref(member.role)
+          already.since = answer.createdAt
+          continue
+        }
+
         items.push({
           documentId: answer.documentId,
           what: `${who} answered your question`,

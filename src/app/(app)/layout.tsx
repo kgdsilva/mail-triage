@@ -11,6 +11,7 @@ import {
   canSearchArchive,
   canSeeWholeLog,
   canSettle,
+  canTriagePayments,
   canTriage,
   canUpload,
   canWork,
@@ -60,7 +61,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
      * are a queue he works through, not an arrival, and adding them would have made the
      * badge a number that is never zero.
      */
-    canSettle(session.role)
+    /*
+     * Only for the people who can act on that queue.
+     *
+     * canSettle is wider than it looks — owner, both administrators and every operator —
+     * but the buttons on the tab it counts are gated by canTriagePayments, so for an
+     * operator the badge was a number that is not theirs and that nothing they do will
+     * ever reduce. That is the same mistake this file rejects one line above for the
+     * shared board.
+     */
+    canTriagePayments(session.role)
       ? Promise.all([
           countToDecide(session),
           handedToCount(session, toDecideWhere(session.companyGroupId)),
