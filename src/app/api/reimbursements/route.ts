@@ -277,8 +277,16 @@ export async function POST(request: Request) {
     },
   })
 
-  // The other receipts, filed beside the bill and pointed at it — the same shape Add a
-  // bill uses, so one reimbursement reads identically whichever door it came through.
+  /*
+   * The other receipts, filed beside the bill and pointed at it — the same shape Add a
+   * bill uses, so one reimbursement reads identically whichever door it came through.
+   *
+   * One that fails is named in the reply rather than swallowed. The submitter is on the
+   * HQ site with the file still in front of them, and that is the only moment at which
+   * re-attaching costs nothing; by the time the shortfall is visible here it is the
+   * accountant holding a cheque for a total with a receipt missing from under it.
+   */
+  const dropped: string[] = []
   for (const extra of rest) {
     try {
       const extraType = extra.type || 'application/pdf'
@@ -316,9 +324,21 @@ export async function POST(request: Request) {
         },
       })
     } catch {
-      // The bill stands. A receipt that did not attach shows as one fewer in the list.
+      dropped.push(extra.name)
     }
   }
 
-  return NextResponse.json({ ok: true, documentId: doc.id, receipts: receipts.length })
+  return NextResponse.json({
+    ok: true,
+    documentId: doc.id,
+    // What is actually filed against the bill, not what was sent — those differ exactly
+    // when somebody needs to know they differ.
+    receipts: receipts.length - dropped.length,
+    ...(dropped.length > 0
+      ? {
+          warning: `The report was recorded, but ${dropped.length === 1 ? 'one receipt' : `${dropped.length} receipts`} did not attach: ${dropped.join(', ')}. Send them again, or add them to the bill in Mail Triage.`,
+          droppedReceipts: dropped,
+        }
+      : {}),
+  })
 }

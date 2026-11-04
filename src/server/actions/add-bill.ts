@@ -234,10 +234,17 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
      * carry no type either — a receipt is evidence, not a kind of mail.
      *
      * A failure here does not undo the bill. The bill is the thing that has to exist;
-     * a receipt that did not attach is a missing file, which the panel shows by not
-     * listing it, and which can be uploaded again. Losing the approval over it would be
-     * the worse trade.
+     * a receipt that did not attach can be uploaded again, and losing the approval over
+     * it would be the worse trade.
+     *
+     * But it is said out loud. This used to swallow the failure on the reasoning that
+     * "the panel shows it by not listing it" — which is only true for somebody who
+     * knows how many receipts there should have been. Everyone downstream sees a bill
+     * with one receipt and no reason to doubt it, and the accountant pays the full
+     * amount against half the evidence. A dropped receipt is now named, on the screen
+     * of the person who just attached it, while they still have the file open.
      */
+    const dropped: string[] = []
     for (const extra of extras) {
       try {
         const extraType = extra.type || 'application/pdf'
@@ -287,7 +294,7 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
           },
         })
       } catch {
-        // Logged by the platform; the bill stands either way.
+        dropped.push(extra.name)
       }
     }
 
@@ -309,13 +316,19 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
     })
 
     revalidatePath('/', 'layout')
+
+    const waiting =
+      approvers.length > 0
+        ? `Added, and it is now waiting on ${someoneOf(approvers.map((a) => a.name?.trim() || a.email))}.`
+        : `Added — but ${entity.code} has nobody who can approve it, so it is waiting on no one. Assign an approver in Settings → Members.`
+
     return {
       ok: true,
       documentId: doc.id,
       went:
-        approvers.length > 0
-          ? `Added, and it is now waiting on ${someoneOf(approvers.map((a) => a.name?.trim() || a.email))}.`
-          : `Added — but ${entity.code} has nobody who can approve it, so it is waiting on no one. Assign an approver in Settings → Members.`,
+        dropped.length > 0
+          ? `${waiting} ${dropped.length === 1 ? 'One receipt' : `${dropped.length} receipts`} did not attach — ${dropped.join(', ')}. Add ${dropped.length === 1 ? 'it' : 'them'} to the bill before it is paid.`
+          : waiting,
     }
   } catch (err) {
     // Never leave an orphan object when the row could not be written.

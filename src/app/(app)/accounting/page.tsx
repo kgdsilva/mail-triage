@@ -264,6 +264,10 @@ export default async function AccountingPage({
     approvalNote: d.approvalNote,
     turn: turnOf(d),
     duplicates: duplicates.get(d.id) ?? [],
+    receipts: d.linksTo.map((l) => ({
+      id: l.fromDocument.id,
+      name: l.fromDocument.originalFilename,
+    })),
     refusal:
       d.approvalStatus === 'DENIED'
         ? {

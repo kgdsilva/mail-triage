@@ -39,6 +39,16 @@ export type AccountingBill = {
   turn: Turn
   /** Others that might be this same bill. Shown, never acted on. */
   duplicates: NearMatch[]
+  /**
+   * The other receipts behind one cheque.
+   *
+   * This screen never loaded them, which was the worse half of an oversight: the
+   * approver's panel listed them and the accountant's row did not, so the person who
+   * actually writes the cheque was the one person who could not see what the amount was
+   * made of. A reimbursement for a trip is one bill and several receipts by design —
+   * on this screen that looked like a bill with one receipt and a number to trust.
+   */
+  receipts: { id: string; name: string }[]
 }
 
 /**
@@ -277,7 +287,33 @@ function Row({
       )}
 
       {open && (
-        <div className="border-t border-line-soft p-3">
+        <div className="space-y-3 border-t border-line-soft p-3">
+          {/*
+            What else is behind this amount, above the invoice rather than below it:
+            somebody about to pay $1,351.91 for a trip needs to know there are three
+            receipts before they read the first one, not after.
+          */}
+          {bill.receipts.length > 0 && (
+            <div className="rounded-lg border border-line bg-canvas px-3 py-2">
+              <p className="text-[12px] font-bold uppercase tracking-wide text-subtle">
+                Filed with this bill · {bill.receipts.length}
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {bill.receipts.map((r) => (
+                  <li key={r.id}>
+                    <a
+                      href={`/api/files/${r.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[12.5px] font-semibold text-navy-700 underline"
+                    >
+                      {r.name}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <PdfFrame id={bill.id} title={bill.title} hasFile={bill.hasFile} />
         </div>
       )}
