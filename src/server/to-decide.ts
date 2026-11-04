@@ -29,7 +29,7 @@ import { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/server/db/client'
 import { moneyWhere } from '@/server/money'
 import { entityWhere, visibleEntityIds } from '@/server/scope'
-import type { Session } from '@/server/session'
+import { APPROVE_ROLES, type Session } from '@/server/session'
 
 /**
  * Undecided: still UNREVIEWED, or handed to somebody as a question rather than as a
@@ -249,7 +249,10 @@ export async function countToDecide(session: Session, entityId?: string | null) 
  */
 export async function approversFor(companyGroupId: string, entityId: string) {
   const memberships = await prisma.membership.findMany({
-    where: { companyGroupId, isActive: true, role: 'APPROVER' },
+    // Everybody who can approve, not everybody who holds the approver role: an owner
+    // and an administrator can clear a bill, and asking only for APPROVER reported a
+    // company as having nobody while three people who could were signed in.
+    where: { companyGroupId, isActive: true, role: { in: [...APPROVE_ROLES] } },
     orderBy: { createdAt: 'asc' },
     select: { entityScope: true, user: { select: { id: true, name: true, email: true } } },
   })

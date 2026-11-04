@@ -1,5 +1,6 @@
 import { prisma } from '@/server/db/client'
 import { configuredReturnRole, returnChain } from '@/server/returns'
+import { APPROVE_ROLES } from '@/server/session'
 
 /**
  * Who the next person actually is, by name.
@@ -88,7 +89,10 @@ export async function nameOf(userId: string): Promise<string | null> {
  */
 export async function approverIndex(companyGroupId: string) {
   const memberships = await prisma.membership.findMany({
-    where: { companyGroupId, isActive: true, role: 'APPROVER' },
+    // Everybody who can approve, not everybody who holds the approver role: an owner
+    // and an administrator can clear a bill, and asking only for APPROVER reported a
+    // company as having nobody while three people who could were signed in.
+    where: { companyGroupId, isActive: true, role: { in: [...APPROVE_ROLES] } },
     orderBy: { createdAt: 'asc' },
     select: { entityScope: true, user: { select: { name: true, email: true } } },
   })

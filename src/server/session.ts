@@ -183,7 +183,14 @@ const UPLOAD_ROLES = ['OWNER', 'ADMIN', 'OPERATOR', 'UPLOADER'] as const
  * go to see what needs to be paid" — and it is also what makes the approval mean
  * something, since somebody who could edit the document could change what they approved.
  */
-const APPROVE_ROLES = ['OWNER', 'ADMIN', 'APPROVER'] as const
+/**
+ * Exported, because "who can approve this?" is asked in two other places and both of
+ * them were answering it with the single role APPROVER. An owner and an administrator
+ * approve too — `canApprove` says so three lines below — so a company whose only
+ * approvers were administrators was reported as having none, and every route into it
+ * was refused on behalf of people who were standing right there.
+ */
+export const APPROVE_ROLES = ['OWNER', 'ADMIN', 'APPROVER'] as const
 
 export function canApprove(role: string) {
   return (APPROVE_ROLES as readonly string[]).includes(role)
