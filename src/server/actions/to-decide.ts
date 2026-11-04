@@ -51,14 +51,12 @@ export async function markNeedsPayment(documentId: string, note?: string): Promi
     return { ok: false, error: 'Put the amount on it first — an approver needs to know what they are clearing.' }
   }
 
+  /*
+   * Same as Add a bill: this is a warning, not a wall. Deciding that something has to be
+   * paid is a fact about the document, and refusing to record it because the next desk
+   * is empty leaves the bill in the one queue nobody is responsible for.
+   */
   const approvers = await approversFor(session.companyGroupId, doc.entityId)
-  if (approvers.length === 0) {
-    return {
-      ok: false,
-      error:
-        'That company has no approver yet, so this would wait on nobody. Ask for an approver to be assigned in Settings → Members first.',
-    }
-  }
 
   await quickDecide(session.companyGroupId, documentId, session.userId, 'PAY')
 
@@ -83,7 +81,10 @@ export async function markNeedsPayment(documentId: string, note?: string): Promi
   revalidatePath('/', 'layout')
   return {
     ok: true,
-    went: wentTo.needsPayment(approvers.map((a) => a.name?.trim() || a.email)),
+    went:
+      approvers.length > 0
+        ? wentTo.needsPayment(approvers.map((a) => a.name?.trim() || a.email))
+        : 'Marked as needing payment — but nobody can approve for that company yet, so it is waiting on no one. Ask for an approver in Settings → Members.',
   }
 }
 

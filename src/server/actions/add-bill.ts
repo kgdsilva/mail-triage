@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { prisma } from '@/server/db/client'
 import { recordEvent } from '@/server/documents'
 import { approversFor } from '@/server/to-decide'
+import { someoneOf } from '@/lib/whose-turn'
 import { visibleEntityIds } from '@/server/scope'
 import { requireBillAdder } from '@/server/session'
 import { buildKey, deleteObject, putObject } from '@/server/storage'
@@ -40,7 +41,13 @@ import { buildKey, deleteObject, putObject } from '@/server/storage'
 const MAX_BYTES = 4 * 1024 * 1024
 const ALLOWED = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff'])
 
-export type AddBillResult = { ok: boolean; error?: string; documentId?: string }
+export type AddBillResult = {
+  ok: boolean
+  error?: string
+  documentId?: string
+  /** Where it went, in words — including when the answer is "nobody, yet". */
+  went?: string
+}
 
 export async function addBill(formData: FormData): Promise<AddBillResult> {
   const session = await requireBillAdder()
@@ -88,13 +95,21 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
   })
   if (!entity) return { ok: false, error: 'That is not one of your companies.' }
 
+  /*
+   * No approver is a warning, not a wall.
+   *
+   * This used to refuse the whole thing: no approver, no bill. The reasoning was that a
+   * bill waiting on nobody looks exactly like a bill waiting on somebody slow — which is
+   * true, and is an argument for saying so, not for turning the bill away. The money is
+   * owed either way. Refusing the record does not make the bill stop existing; it keeps
+   * it in somebody's inbox instead of in the one place the office looks, which is the
+   * failure this whole system exists to prevent.
+   *
+   * The visible half is already built: a bill with nobody to clear it reads "Waiting on
+   * approval — no approver is assigned", in red, on the row. So it is recorded, and the
+   * screen says plainly what it is waiting for.
+   */
   const approvers = await approversFor(session.companyGroupId, entity.id)
-  if (approvers.length === 0) {
-    return {
-      ok: false,
-      error: `${entity.code} has no approver yet, so this would wait on nobody. Ask for one to be assigned in Settings → Members first.`,
-    }
-  }
 
   /*
    * The vendor is matched, never invented. Vendors carry autopay rules and a typo that
@@ -176,7 +191,14 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
     })
 
     revalidatePath('/', 'layout')
-    return { ok: true, documentId: doc.id }
+    return {
+      ok: true,
+      documentId: doc.id,
+      went:
+        approvers.length > 0
+          ? `Added, and it is now waiting on ${someoneOf(approvers.map((a) => a.name?.trim() || a.email))}.`
+          : `Added — but ${entity.code} has nobody who can approve it, so it is waiting on no one. Assign an approver in Settings → Members.`,
+    }
   } catch (err) {
     // Never leave an orphan object when the row could not be written.
     await deleteObject(stored.key, stored.bucket)

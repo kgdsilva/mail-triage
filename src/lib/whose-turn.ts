@@ -132,6 +132,20 @@ export function whoseTurn(s: TurnState): Turn {
  * — "under Approved" rather than "it has moved". Somebody who was told the tab can go
  * and look; somebody who was told it moved can only trust.
  */
+/**
+ * A list of people, as a sentence rather than a queue of names.
+ *
+ * Any one of them can clear the bill, so all of them are true — but "waiting on kg or
+ * Megan or Eric or Eric Demo or Danny Demo" is a banner nobody finishes reading, and the
+ * two names that matter are the first two.
+ */
+export function someoneOf(names: string[]): string {
+  if (names.length === 0) return 'nobody yet'
+  if (names.length === 1) return names[0]
+  if (names.length === 2) return `${names[0]} or ${names[1]}`
+  return `${names[0]}, ${names[1]} or ${names.length - 2} other${names.length - 2 === 1 ? '' : 's'}`
+}
+
 export const wentTo = {
   approved: (settler: string | null) =>
     `Approved — now with ${settler ?? 'accounting'} to pay. You will find it under Decided.`,
@@ -143,7 +157,7 @@ export const wentTo = {
     `Question sent to ${returnee ?? 'the office'}. It stays on your list, under Your questions, until they answer.`,
 
   needsPayment: (approvers: string[]) =>
-    `Sent to ${approvers.length ? approvers.join(' and ') : 'the approver'} to approve. It moves to Waiting on approval.`,
+    `Sent to ${approvers.length ? someoneOf(approvers) : 'the approver'} to approve. It moves to Waiting on approval.`,
 
   notABill: 'Filed. Nothing is owed on it, and it stays findable in the Master log.',
 

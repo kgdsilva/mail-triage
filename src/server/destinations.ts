@@ -1,6 +1,7 @@
 import { prisma } from '@/server/db/client'
 import { configuredReturnRole, returnChain } from '@/server/returns'
 import { APPROVE_ROLES } from '@/server/session'
+import { someoneOf } from '@/lib/whose-turn'
 
 /**
  * Who the next person actually is, by name.
@@ -105,11 +106,8 @@ export async function approverIndex(companyGroupId: string) {
       .map((m) => display(m.user))
       .filter((n): n is string => Boolean(n))
 
-    /*
-     * "or", not "and": any one of them can clear the bill, and "Eric and Eric Demo"
-     * reads as both signatures being needed. Approval here is single-signature by
-     * design — two names are two routes to the same yes.
-     */
-    return names.length ? names.join(' or ') : null
+    // "or", not "and": any one of them can clear the bill, and "Eric and Eric Demo"
+    // reads as both signatures being needed. Approval here is single-signature.
+    return names.length ? someoneOf(names) : null
   }
 }

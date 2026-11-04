@@ -41,7 +41,8 @@ export function AddBill({
         return
       }
       form.current?.reset()
-      setDone('Added, and it is now waiting on the approver.')
+      // The server's own sentence, because only it knows whether anybody can clear it.
+      setDone(res.went ?? 'Added, and it is now waiting on the approver.')
       setOpen(false)
       router.refresh()
     })
