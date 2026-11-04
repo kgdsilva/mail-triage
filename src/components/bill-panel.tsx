@@ -49,6 +49,8 @@ export type PanelBill = {
   askedBy?: string | null
   /** Anything filed with this bill — the receipts behind one reimbursement. */
   receipts?: { id: string; name: string }[]
+  /** What the document says it is, and on a report what the total is made of. */
+  summary?: string | null
 }
 
 export const STATUS_LABEL: Record<PanelBill['status'], string> = {
@@ -188,6 +190,20 @@ export function BillPanel({
               <X className="size-4" aria-hidden />
             </button>
           </div>
+
+          {/*
+            What it is, in the words of whoever put it there.
+
+            An expense report arrives as one figure — $183.40 — and the breakdown is the
+            only thing that says what that figure is. Approving a total you cannot see
+            the parts of is the thing this screen is supposed to prevent, and until now
+            the note was written, stored, and shown on every screen except this one.
+          */}
+          {bill.summary?.trim() && (
+            <p className="mt-3 whitespace-pre-line rounded-lg bg-navy-50 px-3 py-2 text-[12.5px] leading-relaxed text-navy-900">
+              {bill.summary}
+            </p>
+          )}
 
           {/*
             What was filed with it, above the buttons.
