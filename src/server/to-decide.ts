@@ -175,9 +175,24 @@ export function handoff(
   doc: { assignedTo: { id: string } | null; events: EventRow[] },
   viewerId: string,
 ): { by: string; note: string | null } | null {
-  // The list now carries answers as well as handoffs, so the handoff is looked up by
-  // action rather than taken as "the most recent event".
-  const event = doc.events.find((e) => e.action === 'routed')
+  /*
+   * A handoff, and not a claim.
+   *
+   * Taking an item off the shared board records a `routed` event too — same action, same
+   * actor shape — so reading "the most recent routed event" made the card announce
+   * "kg@colabservice.com passed this to you" to the person who had just pressed "I'll
+   * take it". You did not pass it to yourself; you picked it up.
+   */
+  const event = doc.events.find(
+    (e) =>
+      e.action === 'routed' &&
+      !(
+        e.toValue &&
+        typeof e.toValue === 'object' &&
+        'via' in e.toValue &&
+        (e.toValue as { via?: unknown }).via === 'claimed'
+      ),
+  )
   if (!event) return null
   // Only when it was handed to *this* person: a document routed to somebody else is
   // not a message to the reader.

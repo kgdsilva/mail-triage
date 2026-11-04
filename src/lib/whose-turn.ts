@@ -52,6 +52,8 @@ export type TurnState = {
   settler?: string | null
   /** True when that payer is the person reading this screen. */
   settlerIsYou?: boolean
+  /** Somebody has written a reply to the question on this document. */
+  answered?: boolean
   /** Who approves for this company, while it is waiting on them. */
   approver?: string | null
 }
@@ -84,6 +86,13 @@ export function whoseTurn(s: TurnState): Turn {
       }
 
     case 'NEEDS_REVIEW':
+      /*
+       * The reply changes whose turn it is, and the chip was the last thing still
+       * saying otherwise: "waiting on the office" stayed on a bill the office had
+       * already answered, which is the one sentence on the row that would send the
+       * approver away again.
+       */
+      if (s.answered) return { label: 'Answered — back with you', tone: 'you' }
       return s.isYou
         ? { label: 'Waiting on your answer', tone: 'you' }
         : { label: `Question asked — waiting on ${s.holder ?? 'the office'}`, tone: 'office' }

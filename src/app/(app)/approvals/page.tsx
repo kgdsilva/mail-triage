@@ -162,6 +162,7 @@ export default async function ApprovalsPage({
       // "waiting on you" is the true label and the generic "with the approver" is not.
       isYou: d.approvalStatus === 'PENDING' || d.assignedTo?.id === session.userId,
       settler,
+      answered: Boolean(answered),
     }),
     }
   })

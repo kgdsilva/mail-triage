@@ -78,6 +78,7 @@ export function DocumentCard({
   canDecide: boolean
 }) {
   const [handingOff, setHandingOff] = useState(false)
+  const [closing, setClosing] = useState(false)
   const [paying, setPaying] = useState(false)
   const [open, setOpen] = useState(false)
   const Icon = documentTypeIcon(doc.typeCode)
@@ -247,6 +248,30 @@ export function DocumentCard({
                 </form>
               )}
 
+              {/*
+                ---- the three rare answers, behind one word ------------------
+                The card offered six: mark paid, hand off, I'll take it, done with no
+                payment, just filing, spam. Three of them are the common day and three
+                are exceptions — a bill settled somewhere else, a notice that only wanted
+                filing, a solicitation — and six controls of equal weight made the reader
+                choose between all six every time.
+
+                They are not hidden, they are one click in, behind a word that says what
+                they have in common: nothing is owed and nobody has to do anything.
+              */}
+              <button
+                type="button"
+                onClick={() => setClosing((v) => !v)}
+                aria-expanded={closing}
+                className="ml-auto text-[12px] font-semibold text-subtle underline transition-colors hover:text-navy-700"
+              >
+                {closing ? 'Never mind' : 'Nothing to pay?'}
+              </button>
+            </div>
+          )}
+
+          {canDecide && closing && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-lg bg-canvas px-2.5 py-2">
               {doc.actionKind === 'PAY' && (
                 <form action={resolveDocument.bind(null, doc.id)}>
                   <button className={BTN.quiet} title="Finish it without recording a payment">
@@ -255,26 +280,18 @@ export function DocumentCard({
                   </button>
                 </form>
               )}
-
-              {/*
-                "It needed nothing" pushed to the right and quiet. It is the least
-                common answer and the one that removes an item from everybody's view, so
-                it should not sit under the thumb next to the button people press all day.
-              */}
-              <span className="ml-auto flex items-center gap-1.5">
-                <form action={undoAction.bind(null, doc.id, 'ARCHIVE')}>
-                  <button className={BTN.quiet} title="Real, but nothing to do — just file it">
-                    <FolderInput className="size-3.5" aria-hidden />
-                    Just filing
-                  </button>
-                </form>
-                <form action={undoAction.bind(null, doc.id, 'SPAM')}>
-                  <button className={BTN.danger} title="A solicitation dressed up as a notice">
-                    <Ban className="size-3.5" aria-hidden />
-                    Spam
-                  </button>
-                </form>
-              </span>
+              <form action={undoAction.bind(null, doc.id, 'ARCHIVE')}>
+                <button className={BTN.quiet} title="Real, but nothing to do — just file it">
+                  <FolderInput className="size-3.5" aria-hidden />
+                  Just filing
+                </button>
+              </form>
+              <form action={undoAction.bind(null, doc.id, 'SPAM')}>
+                <button className={BTN.danger} title="A solicitation dressed up as a notice">
+                  <Ban className="size-3.5" aria-hidden />
+                  Spam
+                </button>
+              </form>
             </div>
           )}
         </div>
