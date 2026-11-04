@@ -425,6 +425,7 @@ export default async function AccountingPage({
             id: m.user.id,
             name: m.user.name ?? m.user.email,
           }))}
+          canAct={canTriagePayments(session.role)}
           />
         </>
       ) : active === 'waiting' ? (

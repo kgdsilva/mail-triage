@@ -61,10 +61,21 @@ const WHY = [
 export function ToDecideList({
   rows,
   people,
+  canAct,
 }: {
   rows: DecideRow[]
   /** Who a document can be handed to. */
   people: { id: string; name: string }[]
+  /**
+   * Whether this reader may actually answer the question this screen asks.
+   *
+   * Opening Accounting is wider than deciding on it — an operator or a member can read
+   * the queue, and only the accountant and the administrators can rule on it. The three
+   * buttons were drawn for everybody, and pressing one as an operator did not fail with
+   * a message: `requirePaymentTriage` redirects, so the screen simply vanished and
+   * dropped them on the home page with no idea why.
+   */
+  canAct: boolean
 }) {
   if (rows.length === 0) {
     return (
@@ -80,13 +91,21 @@ export function ToDecideList({
   return (
     <ul className="space-y-2">
       {rows.map((row) => (
-        <Row key={row.id} row={row} people={people} />
+        <Row key={row.id} row={row} people={people} canAct={canAct} />
       ))}
     </ul>
   )
 }
 
-function Row({ row, people }: { row: DecideRow; people: { id: string; name: string }[] }) {
+function Row({
+  row,
+  people,
+  canAct,
+}: {
+  row: DecideRow
+  people: { id: string; name: string }[]
+  canAct: boolean
+}) {
   const router = useRouter()
   const [pending, start] = useTransition()
   const [asking, setAsking] = useState<'why' | 'who' | null>(null)
@@ -179,31 +198,39 @@ function Row({ row, people }: { row: DecideRow; people: { id: string; name: stri
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-line-soft px-3 py-2">
-        <button
-          type="button"
-          className={BTN.done}
-          disabled={pending}
-          onClick={() => act(() => markNeedsPayment(row.id))}
-        >
-          <Check className="size-3.5" aria-hidden />
-          Needs payment
-        </button>
-        <button
-          type="button"
-          className={BTN.secondary}
-          onClick={() => setAsking((v) => (v === 'why' ? null : 'why'))}
-        >
-          <Ban className="size-3.5" aria-hidden />
-          Not a bill
-        </button>
-        <button
-          type="button"
-          className={BTN.secondary}
-          onClick={() => setAsking((v) => (v === 'who' ? null : 'who'))}
-        >
-          <Share2 className="size-3.5" aria-hidden />
-          Needs other action
-        </button>
+        {canAct ? (
+          <>
+            <button
+              type="button"
+              className={BTN.done}
+              disabled={pending}
+              onClick={() => act(() => markNeedsPayment(row.id))}
+            >
+              <Check className="size-3.5" aria-hidden />
+              Needs payment
+            </button>
+            <button
+              type="button"
+              className={BTN.secondary}
+              onClick={() => setAsking((v) => (v === 'why' ? null : 'why'))}
+            >
+              <Ban className="size-3.5" aria-hidden />
+              Not a bill
+            </button>
+            <button
+              type="button"
+              className={BTN.secondary}
+              onClick={() => setAsking((v) => (v === 'who' ? null : 'who'))}
+            >
+              <Share2 className="size-3.5" aria-hidden />
+              Needs other action
+            </button>
+          </>
+        ) : (
+          <span className="text-[12px] text-subtle">
+            Waiting on the accountant to say what this is.
+          </span>
+        )}
 
         {/*
           Preview stays a button: on this screen you often cannot answer "is it a bill?"
