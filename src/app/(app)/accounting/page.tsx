@@ -98,7 +98,7 @@ export default async function AccountingPage({
   const statuses: ApprovalStatus[] =
     active === 'waiting' ? ['PENDING', 'NEEDS_REVIEW'] : ['APPROVED']
 
-  const [bills, refused, counts, entities, settler, approverFor] = await Promise.all([
+  const [bills, refused, counts, entities, settler, approverFor, categories] = await Promise.all([
     listBills(session, {
       statuses,
       entityId: chosen,
@@ -117,6 +117,12 @@ export default async function AccountingPage({
     visibleEntities(session),
     settlerOf(session.companyGroupId),
     approverIndex(session.companyGroupId),
+    /* What the money was for, for the Add a bill form's own picker. */
+    prisma.category.findMany({
+      where: { companyGroupId: session.companyGroupId, isActive: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    }),
   ])
 
   /*
@@ -380,7 +386,7 @@ export default async function AccountingPage({
       </div>
 
       {/* The way in for a bill that did not arrive as post. */}
-      {canAddBill(session.role) && <AddBill entities={entities} />}
+      {canAddBill(session.role) && <AddBill entities={entities} categories={categories} />}
 
       {active === 'checks' ? (
         <ChecksTable rows={checkRows} />

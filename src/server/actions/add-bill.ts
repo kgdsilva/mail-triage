@@ -97,6 +97,7 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
 
   const contentType = file.type || 'application/pdf'
 
+  const categoryId = String(formData.get('categoryId') ?? '').trim()
   const entityId = String(formData.get('entityId') ?? '').trim()
   const vendorName = String(formData.get('vendorName') ?? '').trim()
   const amountRaw = String(formData.get('amount') ?? '').replace(/[^0-9.]/g, '')
@@ -155,6 +156,18 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
     select: { id: true },
   })
 
+  /*
+   * Checked against this group's own categories rather than trusted from the form: the
+   * id arrives from a browser, and a category belonging to another workspace would file
+   * the bill under a name nobody here can see.
+   */
+  const category = categoryId
+    ? await prisma.category.findFirst({
+        where: { id: categoryId, companyGroupId: session.companyGroupId, isActive: true },
+        select: { id: true },
+      })
+    : null
+
   const billType = await prisma.documentType.findFirst({
     where: { companyGroupId: session.companyGroupId, code: 'BILL' },
     select: { id: true },
@@ -191,6 +204,7 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
         entityId: entity.id,
         documentTypeId: billType?.id ?? null,
         vendorId: vendor?.id ?? null,
+        categoryId: category?.id ?? null,
         amount: amount.toFixed(2),
         dueDate: dueDate ? new Date(`${dueDate}T00:00:00Z`) : null,
         // Straight into the approval queue: whoever added it already knows it is a bill.

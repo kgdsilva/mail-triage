@@ -9,6 +9,7 @@ import { AddBill } from '@/components/add-bill'
 import { ApprovalsBoard, type BoardBill } from '@/components/approvals-board'
 import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
+import { prisma } from '@/server/db/client'
 import { settlerName } from '@/server/destinations'
 import { whoseTurn } from '@/lib/whose-turn'
 import { exchange } from '@/server/to-decide'
@@ -93,7 +94,7 @@ export default async function ApprovalsPage({
   // the first tab: one place that answers "what is waiting on me".
   const showsHandovers = active.key === 'pending'
 
-  const [bills, counts, entities, handed, handedCount, settler] = await Promise.all([
+  const [bills, counts, entities, handed, handedCount, settler, categories] = await Promise.all([
     listBills(session, {
       statuses: [...active.statuses],
       entityId: chosen,
@@ -106,6 +107,12 @@ export default async function ApprovalsPage({
     showsHandovers ? listHandedTo(session) : Promise.resolve([]),
     handedToCount(session),
     settlerName(session.companyGroupId),
+    /* What the money was for, for the Add a bill form's own picker. */
+    prisma.category.findMany({
+      where: { companyGroupId: session.companyGroupId, isActive: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    }),
   ])
 
   const handovers: Handover[] = handed.map((d) => ({
@@ -206,7 +213,7 @@ export default async function ApprovalsPage({
             post; before this his only route was forwarding them to somebody with an
             upload button. Adding is not approving — the history records who did which.
           */}
-          {canAddBill(session.role) && <AddBill entities={entities} />}
+          {canAddBill(session.role) && <AddBill entities={entities} categories={categories} />}
           {/*
             Said here as well as on the Members screen, because this is where somebody
             finds out — an approver with no companies sees an empty list, and an empty

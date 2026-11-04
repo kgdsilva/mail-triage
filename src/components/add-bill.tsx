@@ -20,8 +20,11 @@ import { BTN } from '@/lib/theme'
  */
 export function AddBill({
   entities,
+  categories,
 }: {
   entities: { id: string; code: string; legalName: string }[]
+  /** What the money was for. Optional, and the reason Eric asked for this field. */
+  categories: { id: string; name: string }[]
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -108,6 +111,22 @@ export function AddBill({
 
         <Field label="Due date" hint="Leave blank if it does not say">
           <input name="dueDate" type="date" className={INPUT} />
+        </Field>
+
+        {/*
+          What the money was for, set when the bill is added rather than guessed later.
+          An expense reimbursement is the case this was asked for: it is not a vendor
+          invoice and the person paying needs to see which it is before writing a cheque.
+        */}
+        <Field label="What it is for" hint="Optional — Reimbursement, Travel, Legal…">
+          <select name="categoryId" className={INPUT} defaultValue="">
+            <option value="">Not set</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
         </Field>
       </div>
 
