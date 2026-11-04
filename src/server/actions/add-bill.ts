@@ -52,18 +52,50 @@ export type AddBillResult = {
 export async function addBill(formData: FormData): Promise<AddBillResult> {
   const session = await requireBillAdder()
 
-  const file = formData.get('file')
-  if (!(file instanceof File) || file.size === 0) {
+  /*
+   * One bill, several pieces of paper.
+   *
+   * "If I travel and pay for food, a hotel and an Uber, it is all one reimbursement
+   * cheque but it is from three receipts." That is one thing to approve and one cheque
+   * to write, evidenced by three files — so the first file is the bill and the rest are
+   * filed beside it and linked to it. They are real documents, kept and searchable, and
+   * they are archived on arrival so none of them turns up in a queue asking to be
+   * decided: there is nothing to decide about a receipt that belongs to a bill.
+   */
+  const files = formData.getAll('file').filter((f): f is File => f instanceof File && f.size > 0)
+  const [file, ...extras] = files
+
+  if (!file) {
     return { ok: false, error: 'Attach the invoice. A link is not enough — it dies with the account.' }
   }
-  if (file.size > MAX_BYTES) {
-    return { ok: false, error: 'That file is over 4 MB. Save it smaller, or ask for it to be uploaded as a batch.' }
+
+  for (const f of files) {
+    if (f.size > MAX_BYTES) {
+      return {
+        ok: false,
+        error: `“${f.name}” is over 4 MB. Save it smaller, or ask for it to be uploaded as a batch.`,
+      }
+    }
+    const type = f.type || 'application/pdf'
+    if (!ALLOWED.has(type)) {
+      return { ok: false, error: `${type} is not a document the reader can open.` }
+    }
+  }
+
+  /*
+   * The ceiling is the platform's, not ours: a server action's whole body is capped at
+   * 4.5 MB, and three photographs of receipts reach that easily. Said as a total, with
+   * the number, because "upload failed" sends somebody back to try the same thing again.
+   */
+  const total = files.reduce((sum, f) => sum + f.size, 0)
+  if (total > MAX_BYTES) {
+    return {
+      ok: false,
+      error: `Those ${files.length} files come to ${(total / 1024 / 1024).toFixed(1)} MB together, and the limit is 4 MB. Add the invoice here and upload the rest as a batch.`,
+    }
   }
 
   const contentType = file.type || 'application/pdf'
-  if (!ALLOWED.has(contentType)) {
-    return { ok: false, error: `${contentType} is not a document the reader can open.` }
-  }
 
   const entityId = String(formData.get('entityId') ?? '').trim()
   const vendorName = String(formData.get('vendorName') ?? '').trim()
@@ -174,6 +206,71 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
       select: { id: true },
     })
 
+    /*
+     * The other receipts, filed beside the bill and pointed at it.
+     *
+     * Archived on creation, with no amount: the total is on the bill, and repeating each
+     * receipt's own figure here would double it in every report that sums the log. They
+     * carry no type either — a receipt is evidence, not a kind of mail.
+     *
+     * A failure here does not undo the bill. The bill is the thing that has to exist;
+     * a receipt that did not attach is a missing file, which the panel shows by not
+     * listing it, and which can be uploaded again. Losing the approval over it would be
+     * the worse trade.
+     */
+    for (const extra of extras) {
+      try {
+        const extraType = extra.type || 'application/pdf'
+        const extraBytes = Buffer.from(await extra.arrayBuffer())
+        const extraKey = buildKey(session.companyGroupId, path.extname(extra.name) || '.pdf')
+        const extraStored = await putObject(extraKey, extraBytes, extraType)
+
+        const receipt = await prisma.document.create({
+          data: {
+            companyGroupId: session.companyGroupId,
+            originalFilename: extra.name,
+            storageKey: extraStored.key,
+            storageBucket: extraStored.bucket,
+            mimeType: extraType,
+            byteSize: extraStored.byteSize,
+            sha256: extraStored.sha256,
+            entityId: entity.id,
+            disposition: 'ARCHIVE',
+            dispositionReason: 'OTHER',
+            status: 'DONE',
+            summaryNote: `Receipt filed with ${file.name}.`,
+            reviewedByUserId: session.userId,
+            reviewedAt: new Date(),
+          },
+          select: { id: true },
+        })
+
+        await prisma.documentLink.create({
+          data: {
+            fromDocumentId: receipt.id,
+            toDocumentId: doc.id,
+            relation: 'RELATED_TO',
+            createdByUserId: session.userId,
+            note: 'Receipt for this bill',
+          },
+        })
+
+        await recordEvent({
+          documentId: receipt.id,
+          actorUserId: session.userId,
+          action: 'added_by_hand',
+          toValue: {
+            originalFilename: extra.name,
+            entity: entity.code,
+            receiptFor: file.name,
+            addedBy: session.userName,
+          },
+        })
+      } catch {
+        // Logged by the platform; the bill stands either way.
+      }
+    }
+
     await recordEvent({
       documentId: doc.id,
       actorUserId: session.userId,
@@ -185,6 +282,7 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
         amount: amount.toFixed(2),
         dueDate: dueDate || null,
         note: note || null,
+        receipts: extras.length || undefined,
         // So the approval card can say who put it there, which is the control.
         addedBy: session.userName,
       },

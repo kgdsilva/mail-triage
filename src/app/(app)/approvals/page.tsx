@@ -156,6 +156,10 @@ export default async function ApprovalsPage({
     duplicates: duplicates.get(d.id) ?? [],
     answeredBy: answered?.by ?? null,
     answerNote: answered?.note ?? null,
+    receipts: d.linksTo.map((l) => ({
+      id: l.fromDocument.id,
+      name: l.fromDocument.originalFilename,
+    })),
     askedBy:
       d.approvalDecidedByUserId && d.approvalDecidedByUserId !== session.userId
         ? (d.approvalDecidedBy?.name?.trim() || d.approvalDecidedBy?.email || null)

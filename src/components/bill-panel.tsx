@@ -47,6 +47,8 @@ export type PanelBill = {
   answerNote?: string | null
   /** Who asked the question, when it was not the person reading. Null means you. */
   askedBy?: string | null
+  /** Anything filed with this bill — the receipts behind one reimbursement. */
+  receipts?: { id: string; name: string }[]
 }
 
 export const STATUS_LABEL: Record<PanelBill['status'], string> = {
@@ -186,6 +188,33 @@ export function BillPanel({
               <X className="size-4" aria-hidden />
             </button>
           </div>
+
+          {/*
+            What was filed with it, above the buttons.
+            An approver asked to clear one cheque for three receipts has to be able to
+            see the three, and the panel is where a decision is made.
+          */}
+          {bill.receipts && bill.receipts.length > 0 && (
+            <div className="mt-3 rounded-lg border border-line bg-canvas px-3 py-2">
+              <p className="text-[12px] font-bold uppercase tracking-wide text-subtle">
+                Filed with this bill · {bill.receipts.length}
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {bill.receipts.map((r) => (
+                  <li key={r.id}>
+                    <a
+                      href={`/api/files/${r.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[12.5px] font-semibold text-navy-700 underline"
+                    >
+                      {r.name}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Above the buttons, because it is the one thing that should be read before
               the Approve key is pressed — and this panel is where that happens. */}

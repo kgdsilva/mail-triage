@@ -29,6 +29,17 @@ export const BILL_INCLUDE = {
     take: 1,
   },
   /*
+   * Whatever was filed with this bill — the three receipts behind one reimbursement
+   * cheque. The bill is the `to` side of the link, so these are the documents pointing
+   * at it, and an approver can open each one before saying yes to the total.
+   */
+  linksTo: {
+    where: { relation: 'RELATED_TO' as const },
+    orderBy: { createdAt: 'asc' as const },
+    take: 20,
+    select: { fromDocument: { select: { id: true, originalFilename: true } } },
+  },
+  /*
    * The reply to a question the approver asked.
    *
    * Without it his own screen was the one place the answer never reached: he asks, the

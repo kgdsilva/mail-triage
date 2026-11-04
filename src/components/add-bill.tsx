@@ -113,14 +113,15 @@ export function AddBill({
 
       <div className="mt-3">
         <Field
-          label="The invoice"
-          hint="PDF, or a screenshot if the page has no download. Never just a link — it dies with the account."
+          label="The invoice, or the receipts"
+          hint="Several files are fine — one reimbursement from three receipts is one bill, one approval and one cheque. The first is the invoice; the rest are filed beside it. Never just a link: it dies with the account."
         >
           <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-line bg-surface px-3 py-2.5 text-[13px] text-muted hover:border-navy-500">
             <Paperclip className="size-4 flex-none" aria-hidden />
             <input
               name="file"
               type="file"
+              multiple
               required
               accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff"
               className="min-w-0 flex-1 text-[12.5px] file:mr-3 file:rounded file:border-0 file:bg-navy-100 file:px-2 file:py-1 file:text-[12px] file:font-semibold file:text-navy-900"
