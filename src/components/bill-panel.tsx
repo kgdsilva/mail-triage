@@ -5,10 +5,8 @@ import {
   Ban,
   Check,
   CircleHelp,
-  CreditCard,
   Download,
   History,
-  StickyNote,
   X,
 } from 'lucide-react'
 import {
@@ -55,7 +53,7 @@ export const STATUS_LABEL: Record<PanelBill['status'], string> = {
   PENDING: 'Pending approval',
   APPROVED: 'Approved',
   DENIED: 'Denied',
-  NEEDS_REVIEW: 'Needs review',
+  NEEDS_REVIEW: 'Question asked',
 }
 
 export const STATUS_TONE: Record<PanelBill['status'], string> = {
@@ -210,41 +208,13 @@ export function BillPanel({
                   Approve
                 </button>
               )}
-              {/*
-                Approving stays one click. The note is a second, quieter button rather
-                than a field in the way, because most approvals have nothing to say and
-                the ones that do are the exception worth a deliberate press.
-              */}
-              {bill.status !== 'APPROVED' && (
-                <button
-                  type="button"
-                  className={BTN.quiet}
-                  onClick={() => setAsking((v) => (v === 'APPROVE_NOTE' ? null : 'APPROVE_NOTE'))}
-                  title="Approve, and tell whoever pays it something"
-                >
-                  <StickyNote className="size-3.5" aria-hidden />
-                  Approve with a note
-                </button>
-              )}
-              {/* Already charged at the till: approving and paying are one act. */}
-              {bill.status !== 'APPROVED' && (
-                <button
-                  type="button"
-                  className={BTN.quiet}
-                  onClick={() => setAsking((v) => (v === 'CARD' ? null : 'CARD'))}
-                  title="For a bill already paid on a card"
-                >
-                  <CreditCard className="size-3.5" aria-hidden />
-                  Already paid by card
-                </button>
-              )}
               <button
                 type="button"
                 className={BTN.secondary}
                 onClick={() => setAsking((v) => (v === 'NEEDS_REVIEW' ? null : 'NEEDS_REVIEW'))}
               >
                 <CircleHelp className="size-3.5" aria-hidden />
-                Needs review
+                Ask
               </button>
               <button
                 type="button"
@@ -268,6 +238,34 @@ export function BillPanel({
                 History
               </a>
             </div>
+          )}
+
+          {/*
+            The two approvals that are not the ordinary one, as words under the row.
+
+            Approving stays one click, and these are the exceptions: a note for whoever
+            pays it, and a bill already charged to a card at the till. As buttons beside
+            Approve they made a row of five things that all began with the same verb, and
+            an approver reading it had to tell three kinds of yes apart before pressing
+            any of them.
+          */}
+          {canDecide && bill.status !== 'APPROVED' && (
+            <p className="mt-2 flex flex-wrap items-center gap-x-3 text-[12px] text-subtle">
+              <button
+                type="button"
+                onClick={() => setAsking((v) => (v === 'APPROVE_NOTE' ? null : 'APPROVE_NOTE'))}
+                className="font-semibold text-navy-700 underline"
+              >
+                Approve with a note
+              </button>
+              <button
+                type="button"
+                onClick={() => setAsking((v) => (v === 'CARD' ? null : 'CARD'))}
+                className="font-semibold text-navy-700 underline"
+              >
+                Already paid by card
+              </button>
+            </p>
           )}
 
           {/* Approve, with something to say to whoever pays it. Note optional. */}
@@ -382,7 +380,7 @@ export function BillPanel({
                     )
                   }
                 >
-                  {pending ? 'Sending…' : 'Send back'}
+                  {pending ? 'Sending…' : 'Send the question'}
                 </button>
                 <button type="button" className={BTN.quiet} onClick={() => setAsking(null)}>
                   Cancel

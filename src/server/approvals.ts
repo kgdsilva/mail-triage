@@ -221,7 +221,24 @@ export async function listHandedTo(session: Session, except?: Prisma.DocumentWhe
       // A bill routed for payment reaches them through the approval tabs instead; this
       // is the other kind of handover, where somebody wants something answered.
       actionKind: 'REVIEW',
-      ...(except ? { NOT: except } : {}),
+      /*
+       * Not your own question coming back at you.
+       *
+       * Sending a bill back assigns it to whoever reads the post — and when that is you,
+       * every bill you asked about turned up here as though somebody had asked *you*,
+       * under the heading "Questions for you", with "No question was written down"
+       * where your own question was. It is already on your list, under Your questions,
+       * saying what you asked.
+       */
+      /*
+       * Both exclusions in one AND, because two `NOT` keys on one object is one key:
+       * the second overwrites the first and the exclusion it was carrying disappears
+       * without a word.
+       */
+      AND: [
+        { NOT: { AND: [{ approvalStatus: 'NEEDS_REVIEW' }, { approvalDecidedByUserId: session.userId }] } },
+        ...(except ? [{ NOT: except }] : []),
+      ],
     },
     include: BILL_INCLUDE,
     orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
@@ -244,7 +261,12 @@ export async function handedToCount(session: Session, except?: Prisma.DocumentWh
       status: { in: [...OPEN] },
       assignedToUserId: session.userId,
       actionKind: 'REVIEW',
-      ...(except ? { NOT: except } : {}),
+      // The same pair of exclusions as the list, or the badge counts what the list
+      // refuses to show.
+      AND: [
+        { NOT: { AND: [{ approvalStatus: 'NEEDS_REVIEW' }, { approvalDecidedByUserId: session.userId }] } },
+        ...(except ? [{ NOT: except }] : []),
+      ],
     },
   })
 }

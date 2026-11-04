@@ -143,7 +143,12 @@ export function ApprovalsBoard({
     [shown],
   )
 
-  function decide(id: string, fn: () => Promise<{ ok: boolean; error?: string; went?: string }>) {
+  /*
+   * Memoised because the keyboard effect depends on it, and a function rebuilt every
+   * render would re-bind the window listener on every keystroke.
+   */
+  const decide = useCallback(
+    (id: string, fn: () => Promise<{ ok: boolean; error?: string; went?: string }>) => {
     setError(null)
     startTransition(async () => {
       const res = await fn()
@@ -161,7 +166,9 @@ export function ApprovalsBoard({
        */
       router.refresh()
     })
-  }
+    },
+    [router],
+  )
 
   /*
    * ---------------------------------------------------------------------------
@@ -240,7 +247,7 @@ export function ApprovalsBoard({
 
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [shown, cursor, open, openId, canDecide, nextAfter])
+  }, [shown, cursor, open, openId, canDecide, nextAfter, decide])
 
   function runBulk() {
     setError(null)
@@ -377,6 +384,9 @@ export function ApprovalsBoard({
             setAsking(null)
             setWent(said ?? null)
             setOpenId(nextAfter(open.id))
+            // The same refresh the row buttons needed: deciding from the panel left the
+            // list behind it showing the bill as though nothing had happened.
+            router.refresh()
           }}
         />
       )}
