@@ -32,7 +32,11 @@ const SAID: Record<string, string> = {
   'file-attached': 'Invoice attached',
   approved: 'Approved',
   denied: 'Denied',
-  needs_review: 'Sent back for review',
+  needs_review: 'Question asked',
+  added_by_hand: 'Added by hand',
+  note_added: 'Note added',
+  categorised: 'Categorised',
+  recategorised: 'Recategorised',
   removed_from_log: 'Removed from the log',
   restored_to_log: 'Restored to the log',
 }
@@ -56,6 +60,23 @@ function said(action: string, toValue: unknown): string {
     if (action === 'approved') return 'Approved and paid'
   }
   if (action === 'status_changed' && via === 'payment-recorded') return 'Paid'
+
+  /*
+   * An expense report did not arrive by hand — somebody filled in a form on the HQ site
+   * and this was told about it. The action is the same one Add a bill writes, because
+   * what lands is the same bill; only the door was different, and the history is the one
+   * place that difference is worth saying.
+   */
+  if (action === 'added_by_hand' && via === 'reimbursement-webhook') {
+    return 'Submitted from HQ'
+  }
+
+  /* A reply to a question is not a note somebody left in passing. */
+  const by =
+    toValue && typeof toValue === 'object' && 'by' in toValue
+      ? String((toValue as { by?: unknown }).by ?? '')
+      : ''
+  if (action === 'note_added' && by === 'handover-answer') return 'Question answered'
 
   return SAID[action] ?? action
 }
