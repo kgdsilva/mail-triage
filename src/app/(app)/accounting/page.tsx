@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { PageHelp } from '@/components/page-help'
+import { FlowStrip } from '@/components/flow-strip'
 import { Clock } from 'lucide-react'
 import type { ApprovalStatus } from '@/generated/prisma/enums'
 import { billCounts, listBills, listHandedTo } from '@/server/approvals'
@@ -340,6 +341,8 @@ export default async function AccountingPage({
           them.
         </p>
       </header>
+
+      <FlowStrip current={active === 'decide' ? 'decide' : active === 'done' ? 'paid' : 'pay'} />
 
       {/* One per tab: the six answer six different questions. */}
       <PageHelp topic={`accounting.${active}`} />

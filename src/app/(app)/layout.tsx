@@ -21,6 +21,7 @@ import { listWorkspaces } from '@/server/workspace'
 import { NavMenu, type NavGroup } from '@/components/nav-menu'
 import { WorkspaceSwitcher } from '@/components/workspace-switcher'
 import { ViewAsBanner, ViewAsMenu } from '@/components/view-as-menu'
+import { FindBox } from '@/components/find-box'
 import { viewableMembers } from '@/server/actions/view-as'
 import { VIEW_AS_COOKIE } from '@/server/view-as'
 
@@ -298,7 +299,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
           <NavMenu groups={groups} />
 
-          <div className="ml-3 hidden items-center gap-2.5 md:flex">
+          {/*
+            The way out of "it is not in this queue, so where is it?".
+            Beside the queues rather than inside one of them, because the question is
+            asked from whichever screen turned out to be the wrong one.
+          */}
+          {canSearchArchive(session.role) && (
+            <div className="ml-auto mr-3">
+              <FindBox />
+            </div>
+          )}
+
+          <div className={`${canSearchArchive(session.role) ? '' : 'ml-auto '}hidden items-center gap-2.5 md:flex`}>
             <ViewAsMenu
               members={viewables}
               viewing={

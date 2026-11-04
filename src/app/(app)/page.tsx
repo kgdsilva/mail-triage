@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { PageHelp } from '@/components/page-help'
+import { FlowStrip } from '@/components/flow-strip'
 import { ArrowRight, CircleAlert, Inbox, Wallet } from 'lucide-react'
 import { prisma } from '@/server/db/client'
 import { boardCounts, listBoard, type BoardScope } from '@/server/board'
@@ -103,6 +104,8 @@ export default async function Board({
           can act on it.
         </p>
       </header>
+
+      <FlowStrip current="decide" />
 
       <PageHelp topic="board" />
 

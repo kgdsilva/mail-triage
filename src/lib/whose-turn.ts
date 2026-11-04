@@ -56,6 +56,15 @@ export type TurnState = {
   answered?: boolean
   /** Who approves for this company, while it is waiting on them. */
   approver?: string | null
+  /**
+   * Filed rather than owed: a receipt, a statement, a cheque stub.
+   *
+   * Without this the log said "With nobody yet — anyone can take it", in red, about
+   * four hundred documents that are exactly where they should be. A red badge on a
+   * settled thing teaches people to ignore red badges, which costs more than the badge
+   * was ever worth.
+   */
+  archived?: boolean
 }
 
 /**
@@ -67,6 +76,9 @@ export type TurnState = {
  */
 export function whoseTurn(s: TurnState): Turn {
   if (s.settled) return { label: 'Paid — nothing left to do', tone: 'done' }
+  // Before the approval switch: an archived document has no approval state to read,
+  // and nothing is owed on it by anybody.
+  if (s.archived) return { label: 'Filed — nothing owed', tone: 'done' }
 
   switch (s.approvalStatus) {
     case 'APPROVED':

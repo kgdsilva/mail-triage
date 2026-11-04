@@ -6,6 +6,8 @@ import { documentTypeIcon, documentTypeInk } from '@/lib/theme'
 import { LogFilters } from '@/components/log-filters'
 import { parseFilters } from '@/lib/filters'
 import { prisma } from '@/server/db/client'
+import { approverIndex, settlerName } from '@/server/destinations'
+import { TURN_TONE, whoseTurn } from '@/lib/whose-turn'
 import { countByEntity, countByType, listDocuments } from '@/server/documents'
 import { deleteDocument, restoreDocument } from '@/server/actions/documents'
 import { redirect } from 'next/navigation'
@@ -92,7 +94,7 @@ export default async function LogPage({
     level === 2 ? await countByType(session.companyGroupId, entityIdFor(entitySel), filters) : null
   const listing = level === 3 ? await listDocuments(session.companyGroupId, filters) : null
 
-  const [entities, types, vendors, categories] = await Promise.all([
+  const [entities, types, vendors, categories, approverFor, payer] = await Promise.all([
     /*
      * Scoped, like the documents are.
      *
@@ -138,7 +140,45 @@ export default async function LogPage({
       orderBy: { sortOrder: 'asc' },
       select: { id: true, name: true },
     }),
+    /*
+     * Who approves and who pays, so a row in the log can name them.
+     *
+     * Two small queries for the whole page, not one per row — and only the names, which
+     * is all the sentence needs.
+     */
+    approverIndex(session.companyGroupId),
+    settlerName(session.companyGroupId),
   ])
+
+  /*
+   * The same sentence the queues use, on the one screen that holds everything.
+   *
+   * This is the answer to "where is it?" — a question the app could not answer from
+   * anywhere, because each queue only knew about its own contents and the log, which
+   * knew about all of them, only said ACTION or ARCHIVE. Somebody looking for a bill
+   * found the row and still had to guess whether it was with the approver, with the
+   * accountant, already paid, or waiting on nobody at all.
+   *
+   * Written from `whoseTurn` rather than in words of its own, so the log cannot describe
+   * a bill differently from the screen the bill is sitting on.
+   */
+  const turnOf = (d: {
+    disposition: string | null
+    approvalStatus: 'PENDING' | 'APPROVED' | 'DENIED' | 'NEEDS_REVIEW' | null
+    status: string | null
+    entityId: string | null
+    assignedTo: { name: string | null; email: string } | null
+    assignedToUserId: string | null
+  }) =>
+    whoseTurn({
+      approvalStatus: d.approvalStatus,
+      archived: d.disposition === 'ARCHIVE',
+      settled: d.status === 'DONE',
+      holder: d.assignedTo?.name?.trim() || d.assignedTo?.email || null,
+      isYou: d.assignedToUserId === session.userId,
+      settler: payer,
+      approver: d.entityId ? approverFor(d.entityId) : null,
+    })
 
   /*
    * Who may correct a category: whoever may triage. The question "what was this money
@@ -439,6 +479,21 @@ export default async function LogPage({
                           {d.summaryNote}
                         </span>
                       )}
+                      {/*
+                        Whose turn it is, under the filename — the thing somebody
+                        searching the log actually came to find out. A filename tells
+                        you the document exists; this tells you where it stopped.
+                      */}
+                      {(() => {
+                        const turn = turnOf(d)
+                        return (
+                          <span
+                            className={`mt-1 inline-block w-fit rounded-full px-2 py-0.5 text-[11px] font-bold ${TURN_TONE[turn.tone]}`}
+                          >
+                            {turn.label}
+                          </span>
+                        )
+                      })()}
                       {/* The same file arriving twice is a normal accident during an
                           import. Saying so here is what stops it being decided twice. */}
                       {d.linksFrom[0] && (

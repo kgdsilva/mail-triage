@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { PageHelp } from '@/components/page-help'
+import { FlowStrip } from '@/components/flow-strip'
 import type { ApprovalStatus } from '@/generated/prisma/enums'
 import { billCounts, handedToCount, listBills, listHandedTo } from '@/server/approvals'
 import { HandedToYou, type Handover } from '@/components/handed-to-you'
@@ -235,6 +236,11 @@ export default async function ApprovalsPage({
           Open the invoice, then approve, deny or ask a question about it.
         </p>
       </header>
+
+      {/* Approving is the middle of a line, not the end of one — which is the thing an
+          approver most needs to see, because "I approved it, where does it go?" was
+          asked in the meeting this screen came out of. */}
+      <FlowStrip current="approve" unreachable={canConfigure(session.role) ? [] : ['arrives']} />
 
       <PageHelp topic="approvals" />
 
