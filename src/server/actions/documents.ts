@@ -343,16 +343,30 @@ export async function setStatus(documentId: string, status: 'WAITING' | 'IN_PROG
  * the audit trail rather than lingering as a second open assignment. That keeps a
  * person's dashboard honest — it only ever shows what is theirs right now.
  */
-export async function handOffDocument(documentId: string, formData: FormData) {
+/**
+ * The result, rather than an exception.
+ *
+ * This was a form action that threw, and a thrown error in a form action does not reach
+ * the form: Next renders its error boundary, the half-filled fields are gone, and the
+ * person is looking at a crash instead of at "choose who this goes to". Every refusal
+ * here is something somebody can fix in the three seconds after reading it, which is
+ * exactly the kind that has to be shown rather than raised.
+ */
+export type HandOffResult = { ok: boolean; error?: string; went?: string }
+
+export async function handOffDocument(
+  documentId: string,
+  formData: FormData,
+): Promise<HandOffResult> {
   const session = await requireDecider()
 
   const toUserId = String(formData.get('toUserId') ?? '').trim()
   const actionKind = String(formData.get('actionKind') ?? '').trim()
   const note = String(formData.get('note') ?? '').trim()
 
-  if (!toUserId) throw new Error('Choose who this goes to.')
+  if (!toUserId) return { ok: false, error: 'Choose who this goes to.' }
   if (!['PAY', 'CONFIRM', 'REVIEW'].includes(actionKind)) {
-    throw new Error('Choose what the next person needs to do.')
+    return { ok: false, error: 'Choose what the next person needs to do.' }
   }
   /*
    * The question is the point of the handoff, so it is required.
@@ -364,7 +378,10 @@ export async function handOffDocument(documentId: string, formData: FormData) {
    * sent it. A handoff nobody can act on is worse than none: it looks handled.
    */
   if (note.length < 3) {
-    throw new Error('Say what you need from them — a handoff with no question cannot be answered.')
+    return {
+      ok: false,
+      error: 'Say what you need from them — a handoff with no question cannot be answered.',
+    }
   }
 
   const before = await prisma.document.findFirst({
@@ -375,9 +392,9 @@ export async function handOffDocument(documentId: string, formData: FormData) {
     },
     select: { assignedToUserId: true, actionKind: true, disposition: true },
   })
-  if (!before) throw new Error('Document not found')
+  if (!before) return { ok: false, error: 'That document could not be found — it may have moved.' }
   if (before.disposition !== 'ACTION') {
-    throw new Error('Only an action item can be handed off.')
+    return { ok: false, error: 'Only something waiting on a person can be handed on.' }
   }
 
   // The recipient has to be a real, active member of this group — otherwise the
@@ -386,7 +403,7 @@ export async function handOffDocument(documentId: string, formData: FormData) {
     where: { userId: toUserId, companyGroupId: session.companyGroupId, isActive: true },
     select: { userId: true },
   })
-  if (!recipient) throw new Error('That person is not an active member.')
+  if (!recipient) return { ok: false, error: 'That person is not an active member here.' }
 
   await prisma.$transaction(async (tx) => {
     await tx.document.update({
@@ -410,7 +427,16 @@ export async function handOffDocument(documentId: string, formData: FormData) {
     )
   })
 
+  const to = await prisma.user.findUnique({
+    where: { id: toUserId },
+    select: { name: true, email: true },
+  })
+
   revalidatePath('/', 'layout')
+  return {
+    ok: true,
+    went: `Handed to ${to?.name?.trim() || to?.email || 'them'}. It is on their own screen now, with your question.`,
+  }
 }
 
 /**

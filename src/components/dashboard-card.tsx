@@ -79,6 +79,9 @@ export function DocumentCard({
 }) {
   const [handingOff, setHandingOff] = useState(false)
   const [closing, setClosing] = useState(false)
+  const [handOffError, setHandOffError] = useState<string | null>(null)
+  const [handedOff, setHandedOff] = useState<string | null>(null)
+  const [, startHandOff] = useTransition()
   const [paying, setPaying] = useState(false)
   const [open, setOpen] = useState(false)
   const Icon = documentTypeIcon(doc.typeCode)
@@ -336,7 +339,28 @@ export function DocumentCard({
 
       {handingOff && (
         <form
-          action={handOffDocument.bind(null, doc.id)}
+          /*
+           * Submitted by hand so the refusal can be read.
+           *
+           * As a plain form action a thrown error took the whole screen — Next's error
+           * boundary, the half-filled fields gone, and a crash where "choose who this
+           * goes to" belonged. The action returns its answer now, and this shows it
+           * where the person is already looking.
+           */
+          onSubmit={(e) => {
+            e.preventDefault()
+            const data = new FormData(e.currentTarget)
+            setHandOffError(null)
+            startHandOff(async () => {
+              const result = await handOffDocument(doc.id, data)
+              if (!result.ok) {
+                setHandOffError(result.error ?? 'That did not go through.')
+                return
+              }
+              setHandedOff(result.went ?? 'Handed on.')
+              setHandingOff(false)
+            })
+          }}
           className="mt-3.5 flex flex-wrap items-center gap-2 border-t border-line-soft pt-3.5"
         >
           <span className="text-[12.5px] text-muted">To</span>
@@ -364,7 +388,16 @@ export function DocumentCard({
             className="min-w-32 flex-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[12.5px] outline-none transition-colors placeholder:text-subtle focus:border-navy-500"
           />
           <button className={BTN.secondary}>Send</button>
+          {handOffError && (
+            <p className="w-full text-[12px] font-semibold text-danger-700">{handOffError}</p>
+          )}
         </form>
+      )}
+
+      {handedOff && (
+        <p className="mt-3 rounded-lg bg-ok-100 px-2.5 py-1.5 text-[12.5px] font-semibold text-ok-700">
+          {handedOff}
+        </p>
       )}
     </div>
   )
