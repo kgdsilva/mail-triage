@@ -298,7 +298,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           visible, a 48px sliver that reads as a dead button. The bar cannot overflow
           horizontally anyway: the nav wraps instead of growing wider.
         */}
-        <div className="mx-auto flex max-w-[1600px] items-center gap-7 px-6">
+        {/* Wraps rather than overlapping. Before this the bar was a single non-wrapping
+            row, and on an administrator's account — four menus, a workspace switcher and
+            the search box — the items were compressed past their own text and printed on
+            top of each other. A second line is not pretty; unreadable is worse. */}
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-7 gap-y-1 px-6">
           <Link href="/" className="flex flex-none items-center gap-2.5 py-3.5">
             <span className="h-5 w-2 rounded-sm bg-gold-500" aria-hidden />
             <span className="text-[15px] font-extrabold tracking-tight text-white">
@@ -318,7 +322,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             asked from whichever screen turned out to be the wrong one.
           */}
           {canSearchArchive(session.role) && (
-            <div className="ml-auto mr-3">
+            <div className="ml-auto mr-3 min-w-0 flex-1 basis-40 sm:max-w-[22rem]">
               <FindBox />
             </div>
           )}

@@ -31,7 +31,7 @@ export function FindBox() {
         const term = q.trim()
         if (term) router.push(`/log?q=${encodeURIComponent(term)}`)
       }}
-      className="relative hidden min-w-0 sm:block"
+      className="relative hidden w-full min-w-0 sm:block"
       role="search"
     >
       <Search
@@ -45,7 +45,10 @@ export function FindBox() {
            "find a bill" is what the person came to do. */
         placeholder="Find a bill, receipt or cheque…"
         aria-label="Find a document, anywhere in the app"
-        className="w-44 rounded-lg border border-navy-700 bg-navy-900/60 py-1.5 pl-8 pr-2.5 text-[12.5px] text-white placeholder:text-navy-100/70 outline-none transition-[width] focus:w-64 focus:border-gold-500 lg:w-56 lg:focus:w-80"
+        /* Fills whatever the bar has left rather than claiming a fixed width: an
+           administrator's bar carries four menus, and a box that insisted on 14rem
+           pushed them into each other. */
+        className="w-full rounded-lg border border-navy-700 bg-navy-900/60 py-1.5 pl-8 pr-2.5 text-[12.5px] text-white placeholder:text-navy-100/70 outline-none focus:border-gold-500"
       />
     </form>
   )
