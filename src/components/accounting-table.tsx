@@ -296,9 +296,20 @@ function Row({
           {bill.receipts.length > 0 && (
             <div className="rounded-lg border border-line bg-canvas px-3 py-2">
               <p className="text-[12px] font-bold uppercase tracking-wide text-subtle">
-                Filed with this bill · {bill.receipts.length}
+                Attached · {bill.receipts.length + 1}
               </p>
               <ul className="mt-1 space-y-0.5">
+                <li>
+                  <a
+                    href={`/api/files/${bill.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[12.5px] font-semibold text-navy-700 underline"
+                  >
+                    {bill.title}
+                  </a>
+                  <span className="ml-1.5 text-[11.5px] text-subtle">the invoice</span>
+                </li>
                 {bill.receipts.map((r) => (
                   <li key={r.id}>
                     <a

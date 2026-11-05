@@ -210,12 +210,36 @@ export function BillPanel({
             An approver asked to clear one cheque for three receipts has to be able to
             see the three, and the panel is where a decision is made.
           */}
+          {/*
+            Every file, counted the way the person who attached them counts.
+
+            This listed only the extras, under "Filed with this bill · 1" — because the
+            first file attached becomes the bill's own document and the rest are filed
+            beside it. That is right, and the heading made it read as wrong: somebody
+            who attached two receipts saw the number 1 and a single name that was not
+            the one they were looking at, and concluded a file had been lost. We spent
+            an afternoon on exactly that reading, about a bill where nothing was wrong.
+
+            So the invoice is named here too, first, and said to be the invoice. Two
+            files attached now say two.
+          */}
           {bill.receipts && bill.receipts.length > 0 && (
             <div className="mt-3 rounded-lg border border-line bg-canvas px-3 py-2">
               <p className="text-[12px] font-bold uppercase tracking-wide text-subtle">
-                Filed with this bill · {bill.receipts.length}
+                Attached · {bill.receipts.length + 1}
               </p>
               <ul className="mt-1 space-y-0.5">
+                <li>
+                  <a
+                    href={`/api/files/${bill.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[12.5px] font-semibold text-navy-700 underline"
+                  >
+                    {bill.title}
+                  </a>
+                  <span className="ml-1.5 text-[11.5px] text-subtle">the invoice</span>
+                </li>
                 {bill.receipts.map((r) => (
                   <li key={r.id}>
                     <a

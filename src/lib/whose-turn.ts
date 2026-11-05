@@ -75,10 +75,17 @@ export type TurnState = {
  * been paid and then denied by a stale click is still paid.
  */
 export function whoseTurn(s: TurnState): Turn {
-  if (s.settled) return { label: 'Paid — nothing left to do', tone: 'done' }
-  // Before the approval switch: an archived document has no approval state to read,
-  // and nothing is owed on it by anybody.
+  /*
+   * Filed first, paid second — and the order is the whole point.
+   *
+   * A receipt filed beside a bill is stored with status DONE, because it is finished;
+   * so is a bill that has been paid. Reading `settled` first called the receipt "Paid —
+   * nothing left to do", which is a sentence about money that never moved, on a
+   * document that is not a payable at all. In a log somebody searches to find out what
+   * happened to a thing, that is not a cosmetic slip: it is the log asserting a payment.
+   */
   if (s.archived) return { label: 'Filed — nothing owed', tone: 'done' }
+  if (s.settled) return { label: 'Paid — nothing left to do', tone: 'done' }
 
   switch (s.approvalStatus) {
     case 'APPROVED':
