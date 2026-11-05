@@ -77,14 +77,52 @@ export async function healthReport(companyGroupId: string): Promise<Finding[]> {
     }),
   ])
 
+  const base = { companyGroupId, deletedAt: null }
+  const days = (n: number) => new Date(Date.now() - n * 864e5)
+
   const covers = (entityId: string) =>
     approvers.some((m) => m.entityScope.length === 0 || m.entityScope.includes(entityId))
 
-  const orphanEntities = entities.filter((e) => !covers(e.id))
-  const orphanIds = orphanEntities.map((e) => e.id)
+  const uncovered = entities.filter((e) => !covers(e.id))
 
-  const base = { companyGroupId, deletedAt: null }
-  const days = (n: number) => new Date(Date.now() - n * 864e5)
+  /*
+   * A company that has never had a bill is not missing an approver.
+   *
+   * Not every company here pays anything. One of them exists to hold paperwork — it has
+   * thirty-one documents and will never have a payable — and reporting it as a problem
+   * every time somebody opens this screen is how a list of real problems becomes a list
+   * people scroll past. A check that cries about a thing nobody will ever fix trains
+   * the reader to distrust the rest of it.
+   *
+   * So the question is not "does this company have an approver" but "does this company
+   * take bills and have nobody to clear them". A filing company answers no to the first
+   * half and drops out.
+   *
+   * Nothing is lost by waiting. The day such a company does receive its first payable,
+   * two other things fire at once: the person adding it is told, in the form, that it
+   * is waiting on no one — and the next check on this page lists the bill itself.
+   */
+  const withPayables =
+    uncovered.length === 0
+      ? []
+      : await prisma.document.groupBy({
+          by: ['entityId'],
+          where: {
+            ...base,
+            entityId: { in: uncovered.map((e) => e.id) },
+            OR: [
+              { disposition: 'ACTION', actionKind: 'PAY' },
+              { approvalStatus: { not: null } },
+              { payments: { some: {} } },
+            ],
+          },
+        })
+
+  const payableEntityIds = new Set(
+    withPayables.map((g) => g.entityId).filter((id): id is string => id !== null),
+  )
+  const orphanEntities = uncovered.filter((e) => payableEntityIds.has(e.id))
+  const orphanIds = orphanEntities.map((e) => e.id)
 
   const [
     waitingOnNobody,
@@ -196,9 +234,9 @@ export async function healthReport(companyGroupId: string): Promise<Finding[]> {
   return [
     {
       key: 'no-approver',
-      title: 'Companies with nobody who can approve',
+      title: 'Companies that take bills and have nobody to approve them',
       because:
-        'A bill for one of these has nowhere to go. It is recorded, it is owed, and no screen will ever put it in front of a person who can clear it.',
+        'A bill for one of these has nowhere to go. It is recorded, it is owed, and no screen will ever put it in front of a person who can clear it. Companies that only hold paperwork are not counted — they have no bills to clear.',
       fix: 'Settings → Members: tick the company for whoever approves it.',
       count: orphanEntities.length,
       examples: orphanEntities.map((e) => `${e.code} — ${e.legalName}`),
