@@ -47,19 +47,41 @@ const fail = (status: number, error: string) => NextResponse.json({ ok: false, e
  * one that does not — nobody notices the first kind. The same rule the forwarding
  * address follows.
  */
+/**
+ * Surrounding quotes survive a copy out of a settings field or a snippet, on either
+ * side of this handshake, and they are legal header characters — so a quoted secret
+ * does not fail loudly, it fails as a mismatch that looks like the wrong secret
+ * entirely. The storage credentials in this codebase already strip them for the same
+ * reason. Nothing about a secret is changed by removing a quote it never contained.
+ */
+const unquote = (v: string) => v.trim().replace(/^(['"])([\s\S]*)\1$/, '$2').trim()
+
 function authorise(headers: Headers): Fail | null {
-  const expected = process.env.REIMBURSEMENT_SECRET?.trim()
+  const expected = unquote(process.env.REIMBURSEMENT_SECRET ?? '')
   if (!expected) {
     return { status: 503, error: 'REIMBURSEMENT_SECRET is not set, so this refuses to run.' }
   }
 
-  const offered = (headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
+  const offered = unquote((headers.get('authorization') ?? '').replace(/^Bearer\s+/i, ''))
   if (!offered) return { status: 401, error: 'Missing Authorization: Bearer <secret>.' }
 
   const a = Buffer.from(offered)
   const b = Buffer.from(expected)
   if (a.length !== b.length || !timingSafeEqual(a, b)) {
-    return { status: 401, error: 'That secret is not the one configured here.' }
+    /*
+     * Named causes rather than a bare "wrong secret".
+     *
+     * The sending side reports this as "Receiving system returned HTTP 401" and stops,
+     * and the person reading that has no way to tell a genuinely wrong value from a
+     * right one that lost its last character to a copy. These are the three ways a
+     * correct secret arrives wrong, and saying them costs nothing: an attacker learns
+     * only that their guess failed, which they already knew.
+     */
+    return {
+      status: 401,
+      error:
+        'That secret is not the one configured here. If you believe it is the same, check for a trailing character lost in a copy (base64 secrets end in "="), for surrounding quotes, and for a line break inside the value.',
+    }
   }
   return null
 }
