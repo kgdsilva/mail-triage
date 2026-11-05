@@ -21,7 +21,7 @@ const DEMO_DOMAIN = '@demo.invalid'
 type Person = {
   email: string
   name: string
-  role: 'APPROVER' | 'ACCOUNTANT'
+  role: 'APPROVER' | 'ACCOUNTANT' | 'ADMIN'
   /** Entity codes they approve. Empty for the accountant, who sees all but the separate. */
   codes: string[]
 }
@@ -31,6 +31,15 @@ const PEOPLE: Person[] = [
   { email: `eric${DEMO_DOMAIN}`, name: 'Eric Demo', role: 'APPROVER', codes: ['CCS', 'MMT', 'CP'] },
   { email: `danny${DEMO_DOMAIN}`, name: 'Danny Demo', role: 'APPROVER', codes: ['MM'] },
   { email: `chris${DEMO_DOMAIN}`, name: 'Chris Demo', role: 'ACCOUNTANT', codes: [] },
+  /*
+   * An administrator, because three of the four roles could be demonstrated and the
+   * fourth could not. Settings, Members and the Health screen are all behind
+   * `requireAdmin`, so the screens that say whether the workspace is set up correctly
+   * were the only ones nobody could open with a demo account — which is to say, the
+   * screens most worth looking at before handing the system to somebody were the ones
+   * that could not be looked at.
+   */
+  { email: `admin${DEMO_DOMAIN}`, name: 'Admin Demo', role: 'ADMIN', codes: [] },
 ]
 
 type Spec = {
@@ -292,7 +301,7 @@ async function main() {
 
   console.log(`Demo ready: ${made} bills, ${PEOPLE.length} accounts.`)
   console.log('Sign in as:', PEOPLE.map((p) => p.email).join(', '))
-  console.log('Password for all three:', password)
+  console.log('Password for all of them:', password)
   console.log('Remove it all with: npm run demo:purge')
 }
 

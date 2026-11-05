@@ -259,6 +259,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 blurb: 'Companies, document types, vendors, autopay and members.',
                 icon: 'settings' as const,
               },
+              /*
+               * Beside Settings rather than in a place of its own, because it is not a
+               * queue: nobody works from it, and a badge counting problems would be a
+               * number nobody reaches zero on in an afternoon. It is the screen you open
+               * to find out whether anything is quietly broken — a question that until
+               * now was answered by somebody complaining.
+               */
+              {
+                href: '/health',
+                label: 'Health',
+                blurb: 'What is wrong right now, that nothing else would tell you.',
+                icon: 'health' as const,
+              },
             ],
           },
         ]

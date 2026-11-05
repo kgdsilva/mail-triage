@@ -15,6 +15,7 @@ import {
   ListChecks,
   Receipt,
   Settings,
+  Stethoscope,
   Table2,
   Upload,
   Wallet,
@@ -37,6 +38,7 @@ const ICONS: Record<string, LucideIcon> = {
   approvals: BadgeCheck,
   accounting: Calculator,
   settings: Settings,
+  health: Stethoscope,
 }
 
 export type NavItem = {
