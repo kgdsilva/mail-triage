@@ -62,21 +62,34 @@ export const dynamic = 'force-dynamic'
  * What is left is the three things an approver actually asks: what is on me, what am I
  * waiting on an answer for, and what did I already do.
  */
+/*
+ * Each tab carries the one line that says what is in it.
+ *
+ * The subtitle under the title described the first tab and stayed put while the tabs
+ * changed, so on two of the three it was quietly wrong — "everything waiting on you"
+ * over a list of bills already decided. A sentence that is wrong on a third of the
+ * screens it appears on teaches people not to read any of them.
+ */
 const TABS = [
   {
     key: 'pending',
     label: 'Waiting on you',
     statuses: ['PENDING', 'NEEDS_REVIEW'] as ApprovalStatus[],
+    blurb: 'Open the invoice, then approve it, refuse it, or ask a question about it.',
   },
   {
     key: 'questions',
     label: 'Your questions',
     statuses: ['NEEDS_REVIEW'] as ApprovalStatus[],
+    blurb:
+      'Bills you asked about. They stay yours — the answer comes back here, and then you decide.',
   },
   {
     key: 'decided',
     label: 'Decided',
     statuses: ['APPROVED', 'DENIED'] as ApprovalStatus[],
+    blurb:
+      'What you already approved or refused. Kept because you are allowed to change your mind.',
   },
 ] as const
 
@@ -233,10 +246,8 @@ export default async function ApprovalsPage({
           )}
         </div>
         <p className="mt-1 text-sm text-muted">
-          {entities.length === 1
-            ? `Everything waiting on you for ${entities[0].legalName}.`
-            : 'Everything waiting on you, for the companies you approve.'}{' '}
-          Open the invoice, then approve, deny or ask a question about it.
+          {entities.length === 1 ? `For ${entities[0].legalName}. ` : ''}
+          {active.blurb}
         </p>
       </header>
 

@@ -67,12 +67,41 @@ type Tab = (typeof TABS)[number]
  * decision" and two screens whose names both mean "somebody must decide" is the thing
  * that made this confusing. The tab is named after the question it answers.
  */
+/*
+ * The same words the rows use.
+ *
+ * "Waiting on approval" named a state; the chip on every row in it says "With Eric to
+ * approve". Two names for one thing, on the same screen, is how somebody comes to think
+ * they are two things — and the tab's real job is to say *not yours*, which naming the
+ * person does and naming the state does not.
+ *
+ * "Done" held both the paid and the refused and said neither. A tab nobody can predict
+ * the contents of is a tab nobody opens.
+ */
 const LABELS: Record<Tab, string> = {
   decide: 'Is it a bill?',
   ready: 'Ready to pay',
-  waiting: 'Waiting on approval',
-  done: 'Done',
+  waiting: 'With the approver',
+  done: 'Paid or refused',
   checks: 'Checks received',
+}
+
+/**
+ * What this tab is, in one line, always visible.
+ *
+ * It replaces a paragraph under the title that described all five tabs at once — which
+ * is a thing nobody reads, and which could not say the one sentence that matters on
+ * each: whether what you are looking at is waiting on you.
+ */
+const BLURBS: Record<Tab, string> = {
+  decide:
+    'Mail that mentions money, before anyone has said whether it has to be paid. This one is yours to decide.',
+  ready:
+    'Approved and cleared. These are yours to pay — nothing here is waiting on anybody else.',
+  waiting:
+    'With the approver, not with you. Here so you can see what is coming, and how long it has been sitting.',
+  done: 'What went out, and what an approver stopped. Both are finished; only one cost money.',
+  checks: 'Money that came in — cheques received, not bills going out.',
 }
 
 /** Whole days since a date, for "waiting 5 days". */
@@ -336,14 +365,26 @@ export default async function AccountingPage({
     <div className="mx-auto max-w-6xl space-y-4">
       <header>
         <h1 className="text-[26px] font-bold tracking-tight text-navy-900">Accounting</h1>
-        <p className="mt-1 text-sm text-muted">
-          What is cleared to pay, what an approver refused, what is still waiting on one,
-          and the history of what went out. Payments are made in QuickBooks; this records
-          them.
-        </p>
+        <p className="mt-1 text-sm text-muted">{BLURBS[active]}</p>
       </header>
 
-      <FlowStrip current={active === 'decide' ? 'decide' : active === 'done' ? 'paid' : 'pay'} />
+      {/*
+        The step this tab actually is.
+        'waiting' pointed at Payment, which is the one tab on this screen where the
+        money is explicitly *not* at the payment step — the strip and the tab were
+        contradicting each other on the same screen, which is worse than neither.
+      */}
+      <FlowStrip
+        current={
+          active === 'decide'
+            ? 'decide'
+            : active === 'waiting'
+              ? 'approve'
+              : active === 'done' || active === 'checks'
+                ? 'paid'
+                : 'pay'
+        }
+      />
 
       {/* One per tab: the six answer six different questions. */}
       <PageHelp topic={`accounting.${active}`} />
