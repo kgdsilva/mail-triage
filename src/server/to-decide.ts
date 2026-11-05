@@ -43,7 +43,27 @@ export function toDecideWhere(companyGroupId: string): Prisma.DocumentWhereInput
     entityId: { not: null },
     approvalStatus: null,
     payments: { none: {} },
-    OR: [{ disposition: 'UNREVIEWED' }, { disposition: 'ACTION', actionKind: 'REVIEW' }],
+    /*
+     * Null-safe on purpose, and it matters somewhere else.
+     *
+     * `actionKind = 'REVIEW'` is NULL — not false — for a document whose actionKind is
+     * unset, and this predicate is used twice: positively here, where NULL and false
+     * behave identically, and negated on the shared board, where they do not. There,
+     * `NOT (… AND NULL)` is NULL, the row fails the WHERE, and a document waiting on a
+     * person vanishes from the one screen that was supposed to list it. It shows up on
+     * no other screen either, because every other queue excludes it by its own rules.
+     *
+     * Spelling the null branch out costs nothing in this direction and is the whole
+     * difference in the other. The same trap took six of the approver's questions off
+     * his screen earlier in this same codebase; this is that bug in a second place.
+     */
+    OR: [
+      { disposition: 'UNREVIEWED' },
+      {
+        disposition: 'ACTION',
+        AND: [{ actionKind: { not: null } }, { actionKind: 'REVIEW' }],
+      },
+    ],
     AND: [moneyWhere()],
   }
 }

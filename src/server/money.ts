@@ -65,8 +65,16 @@ export const NOT_MONEY_TYPE_CODES = ['CHECK', 'SPAM'] as const
 export function moneyWhere(): Prisma.DocumentWhereInput {
   return {
     OR: [
-      // Already on its way to being paid, however it got there.
-      { actionKind: 'PAY' },
+      /*
+       * Already on its way to being paid, however it got there.
+       *
+       * Written with the null branch spelled out because this fragment is negated by
+       * the shared board: `actionKind = 'PAY'` yields NULL rather than false for a
+       * document with no actionKind, and a NULL inside a NOT drops the row from the
+       * result entirely. Read positively — which is every other use — this is the same
+       * query it has always been.
+       */
+      { AND: [{ actionKind: { not: null } }, { actionKind: 'PAY' }] },
       { approvalStatus: { not: null } },
       // Money by kind.
       { documentType: { code: { in: [...MONEY_TYPE_CODES] } } },
