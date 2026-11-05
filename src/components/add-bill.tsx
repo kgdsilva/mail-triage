@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useRef, useState, useTransition } from 'react'
 import { Paperclip, Plus, X } from 'lucide-react'
-import { addBill } from '@/server/actions/add-bill'
+import { addBill, signBillUpload } from '@/server/actions/add-bill'
 import { BTN } from '@/lib/theme'
 
 /**
@@ -21,10 +21,19 @@ import { BTN } from '@/lib/theme'
 export function AddBill({
   entities,
   categories,
+  direct = false,
 }: {
   entities: { id: string; code: string; legalName: string }[]
   /** What the money was for. Optional, and the reason Eric asked for this field. */
   categories: { id: string; name: string }[]
+  /**
+   * Whether the browser can upload to object storage itself.
+   *
+   * It is the difference between a 4 MB form and a 50 MB one, and it is not a
+   * preference: a server action's body is capped at 4.5 MB by the platform, so when
+   * this is false the small limit is a wall and the form has to say so.
+   */
+  direct?: boolean
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -34,8 +43,15 @@ export function AddBill({
   const [chosen, setChosen] = useState<File[]>([])
   const form = useRef<HTMLFormElement>(null)
 
+  const [sending, setSending] = useState<string | null>(null)
+
   const totalBytes = chosen.reduce((sum, f) => sum + f.size, 0)
-  const tooBig = totalBytes > MAX_BYTES
+  const limit = direct ? MAX_DIRECT : MAX_INLINE
+  // Direct uploads go one file at a time, so the ceiling is per file; posting the bytes
+  // puts them all in one request, so there the ceiling is the sum.
+  const tooBig = direct
+    ? chosen.some((f) => f.size > MAX_DIRECT)
+    : totalBytes > MAX_INLINE
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -57,13 +73,64 @@ export function AddBill({
      * to spend a minute uploading something that cannot be accepted.
      */
     if (tooBig) {
+      const over = chosen.find((f) => f.size > MAX_DIRECT)
       setError(
-        `Those ${chosen.length} files come to ${mb(totalBytes)} together, and the limit is ${mb(MAX_BYTES)}. Add the invoice here and upload the rest from Upload, or photograph them at a lower resolution.`,
+        direct
+          ? `“${over?.name}” is ${mb(over?.size ?? 0)} and the limit is ${mb(MAX_DIRECT)}. Scan it at a lower resolution, or split it.`
+          : `Those ${chosen.length} files come to ${mb(totalBytes)} together, and the limit here is ${mb(MAX_INLINE)}. Upload them as a batch instead.`,
       )
       return
     }
 
     start(async () => {
+      /*
+       * The receipts go straight from this browser to storage, and only their keys are
+       * posted here.
+       *
+       * Not an optimisation. The platform rejects a server action body over 4.5 MB
+       * before any of our code runs, so two photographs of hotel receipts could not
+       * arrive at all — they failed in transit, silently, and an approver went away
+       * believing a bill had been recorded. The batch upload has always taken this
+       * road; this form simply never did.
+       */
+      if (direct && chosen.length > 0) {
+        const uploads: { key: string; name: string; type: string; sha256: string | null }[] = []
+
+        for (const [i, f] of chosen.entries()) {
+          setSending(
+            chosen.length === 1 ? `Uploading ${f.name}…` : `Uploading ${i + 1} of ${chosen.length}…`,
+          )
+          const type = f.type || 'application/pdf'
+          try {
+            const signed = await signBillUpload(f.name, type, f.size)
+            if (!signed.ok) {
+              setSending(null)
+              setError(signed.error)
+              return
+            }
+            const put = await fetch(signed.url, {
+              method: 'PUT',
+              body: f,
+              headers: { 'Content-Type': type },
+            })
+            if (!put.ok) throw new Error(`storage refused it (${put.status})`)
+            uploads.push({ key: signed.key, name: f.name, type, sha256: await hashFile(f) })
+          } catch (err) {
+            setSending(null)
+            setError(
+              `“${f.name}” did not upload — ${err instanceof Error ? err.message : 'it failed'}. Nothing was added; try again.`,
+            )
+            return
+          }
+        }
+
+        // The bytes must not also travel in the request they were uploaded to avoid.
+        data.delete('file')
+        data.set('uploads', JSON.stringify(uploads))
+      }
+
+      setSending(null)
+
       /*
        * A rejected request is still an answer.
        *
@@ -201,7 +268,7 @@ export function AddBill({
               className={`mt-1 text-[11.5px] ${tooBig ? 'font-semibold text-danger-700' : 'text-subtle'}`}
             >
               {chosen.length === 1 ? '1 file' : `${chosen.length} files`} · {mb(totalBytes)}
-              {tooBig ? ` — over the ${mb(MAX_BYTES)} limit, this will not send` : ''}
+              {tooBig ? ` — over the ${mb(limit)} limit, this will not send` : ''}
             </p>
           )}
         </Field>
@@ -221,7 +288,7 @@ export function AddBill({
 
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="submit" className={BTN.primary} disabled={pending || tooBig}>
-          {pending ? 'Adding…' : 'Add and send for approval'}
+          {sending ?? (pending ? 'Adding…' : 'Add and send for approval')}
         </button>
         <button type="button" className={BTN.quiet} onClick={() => setOpen(false)}>
           Cancel
@@ -232,13 +299,40 @@ export function AddBill({
 }
 
 /**
- * The platform's ceiling on a server action's whole body is 4.5 MB, and it rejects a
- * larger request before any of our code runs. Four leaves room for the form's own
- * fields, and matches the number the server refuses on.
+ * Two ceilings, and only one of them is ours.
+ *
+ * `MAX_INLINE` is the platform's: a server action's whole body is capped at 4.5 MB and
+ * a larger request is rejected before any of our code runs, so when the bytes travel in
+ * the request this cannot be raised by wishing. Four leaves room for the form's fields.
+ *
+ * `MAX_DIRECT` applies when the browser uploads to storage itself — the same road the
+ * batch upload takes, and the reason it has always accepted 50 MB while this form
+ * silently refused two receipts.
  */
-const MAX_BYTES = 4 * 1024 * 1024
+const MAX_INLINE = 4 * 1024 * 1024
+const MAX_DIRECT = 50 * 1024 * 1024
 
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
+
+/**
+ * SHA-256 of the file, for spotting one that is already here.
+ *
+ * Computed in the browser because with a direct upload the bytes never pass through the
+ * server, which makes it a hint rather than a guarantee: a wrong value costs a missed
+ * duplicate warning and nothing more. Needs a secure context; on plain http it returns
+ * null and the document is stored without a hash.
+ */
+async function hashFile(file: File): Promise<string | null> {
+  if (!globalThis.crypto?.subtle) return null
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+    return Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+  } catch {
+    return null
+  }
+}
 
 const INPUT =
   'w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[13px] outline-none focus:border-navy-500'

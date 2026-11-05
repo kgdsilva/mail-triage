@@ -10,6 +10,7 @@ import { prisma } from '@/server/db/client'
 import { countToDecide, exchange, handoff, listToDecide, toDecideWhere } from '@/server/to-decide'
 import { canAddBill, canTriagePayments } from '@/server/session'
 import { AddBill } from '@/components/add-bill'
+import { supportsDirectUpload } from '@/server/storage'
 import { AccountingTable, type AccountingBill } from '@/components/accounting-table'
 import { ToDecideList } from '@/components/to-decide-list'
 import { HandedToYou, type Handover } from '@/components/handed-to-you'
@@ -393,7 +394,9 @@ export default async function AccountingPage({
       </div>
 
       {/* The way in for a bill that did not arrive as post. */}
-      {canAddBill(session.role) && <AddBill entities={entities} categories={categories} />}
+      {canAddBill(session.role) && (
+        <AddBill entities={entities} categories={categories} direct={supportsDirectUpload()} />
+      )}
 
       {active === 'checks' ? (
         <ChecksTable rows={checkRows} />

@@ -8,7 +8,15 @@ import { approversFor } from '@/server/to-decide'
 import { someoneOf } from '@/lib/whose-turn'
 import { visibleEntityIds } from '@/server/scope'
 import { requireBillAdder } from '@/server/session'
-import { buildKey, deleteObject, putObject } from '@/server/storage'
+import {
+  buildKey,
+  deleteObject,
+  headObject,
+  presignPut,
+  putObject,
+  storageBucket,
+  supportsDirectUpload,
+} from '@/server/storage'
 
 /**
  * A bill that did not arrive as post.
@@ -38,8 +46,76 @@ import { buildKey, deleteObject, putObject } from '@/server/storage'
  *     is often the whole point, so it is visible rather than blocked.
  */
 
-const MAX_BYTES = 4 * 1024 * 1024
+/**
+ * Two ceilings, because there are two ways in.
+ *
+ * `MAX_INLINE` is not ours. A server action's whole request body is capped at 4.5 MB on
+ * every Vercel plan, and a larger one is rejected at the edge before any of this runs —
+ * so a form that posts the bytes can never carry more, whatever we write here.
+ *
+ * `MAX_DIRECT` is the real limit, and it applies when the browser uploads to object
+ * storage itself and sends only the keys. That is the same road the batch upload has
+ * always taken; this form simply never took it, which is why attaching two photographs
+ * of hotel receipts failed while attaching the same two to a batch did not.
+ */
+const MAX_INLINE = 4 * 1024 * 1024
+const MAX_DIRECT = 50 * 1024 * 1024
 const ALLOWED = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/tiff'])
+
+export type SignedBillUpload =
+  | { ok: true; key: string; url: string }
+  | { ok: false; error: string }
+
+/**
+ * A short-lived URL the browser can PUT one receipt to, bypassing this server.
+ *
+ * Gated by the same permission as adding the bill itself, and the key is built here so
+ * it cannot be written outside the caller's own company group.
+ */
+export async function signBillUpload(
+  filename: string,
+  contentType: string,
+  size: number,
+): Promise<SignedBillUpload> {
+  const session = await requireBillAdder()
+
+  if (!supportsDirectUpload()) {
+    return { ok: false, error: 'Direct upload is not configured here.' }
+  }
+  if (!Number.isFinite(size) || size <= 0) return { ok: false, error: 'That file is empty.' }
+  if (size > MAX_DIRECT) {
+    return {
+      ok: false,
+      error: `“${filename}” is ${(size / 1024 / 1024).toFixed(1)} MB and the limit is 50 MB. Scan it at a lower resolution, or split it.`,
+    }
+  }
+  if (!ALLOWED.has(contentType)) {
+    return { ok: false, error: `${contentType} is not a document the reader can open.` }
+  }
+
+  const key = buildKey(session.companyGroupId, path.extname(filename) || '.pdf')
+  return { ok: true, key, url: await presignPut(key, contentType) }
+}
+
+/** One receipt that already reached storage, as the form reports it back. */
+type Uploaded = { key: string; name: string; type: string; sha256: string | null }
+
+function readUploaded(raw: string): Uploaded[] | null {
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return null
+    return parsed
+      .filter((u) => u && typeof u.key === 'string' && typeof u.name === 'string')
+      .map((u) => ({
+        key: String(u.key),
+        name: String(u.name),
+        type: typeof u.type === 'string' && u.type ? String(u.type) : 'application/pdf',
+        sha256: typeof u.sha256 === 'string' && u.sha256 ? String(u.sha256) : null,
+      }))
+  } catch {
+    return null
+  }
+}
 
 export type AddBillResult = {
   ok: boolean
@@ -62,40 +138,83 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
    * they are archived on arrival so none of them turns up in a queue asking to be
    * decided: there is nothing to decide about a receipt that belongs to a bill.
    */
-  const files = formData.getAll('file').filter((f): f is File => f instanceof File && f.size > 0)
-  const [file, ...extras] = files
+  /*
+   * One list, whichever road the files came by.
+   *
+   * When the browser could upload to storage itself it has already done so and sends
+   * back keys; when it could not, the bytes are in this request. Everything after this
+   * point is written once and does not care which happened — the only difference is
+   * where the object comes from, and `place` is the one function that knows.
+   */
+  const uploadedRaw = String(formData.get('uploads') ?? '').trim()
+  const uploaded = uploadedRaw ? readUploaded(uploadedRaw) : null
+  if (uploadedRaw && !uploaded) {
+    return { ok: false, error: 'The upload could not be read. Choose the files again.' }
+  }
 
-  if (!file) {
+  type Part = { name: string; type: string; file?: File; key?: string; sha256?: string | null }
+
+  let parts: Part[]
+  if (uploaded && uploaded.length > 0) {
+    for (const u of uploaded) {
+      // Signed for this group, but checked again rather than trusted from the round trip.
+      if (!u.key.startsWith(`${session.companyGroupId}/`)) {
+        return { ok: false, error: 'That upload does not belong to this workspace.' }
+      }
+      if (!ALLOWED.has(u.type)) {
+        return { ok: false, error: `${u.type} is not a document the reader can open.` }
+      }
+    }
+    parts = uploaded.map((u) => ({ name: u.name, type: u.type, key: u.key, sha256: u.sha256 }))
+  } else {
+    const files = formData.getAll('file').filter((f): f is File => f instanceof File && f.size > 0)
+    for (const f of files) {
+      const type = f.type || 'application/pdf'
+      if (!ALLOWED.has(type)) {
+        return { ok: false, error: `${type} is not a document the reader can open.` }
+      }
+    }
+    /*
+     * This branch only runs where the browser could not upload directly, and there the
+     * platform's 4.5 MB body cap is a wall we cannot move. Said as a total, with the
+     * number, because "upload failed" sends somebody back to try the same thing again.
+     */
+    const total = files.reduce((sum, f) => sum + f.size, 0)
+    if (total > MAX_INLINE) {
+      return {
+        ok: false,
+        error: `Those ${files.length} files come to ${(total / 1024 / 1024).toFixed(1)} MB together, and the limit here is 4 MB. Upload them as a batch instead.`,
+      }
+    }
+    parts = files.map((f) => ({ name: f.name, type: f.type || 'application/pdf', file: f }))
+  }
+
+  const [first, ...extras] = parts
+
+  if (!first) {
     return { ok: false, error: 'Attach the invoice. A link is not enough — it dies with the account.' }
   }
 
-  for (const f of files) {
-    if (f.size > MAX_BYTES) {
+  /** Where the object actually is, however it got there. */
+  const place = async (part: Part) => {
+    if (part.key) {
+      const head = await headObject(part.key)
+      if (!head) throw new Error(`“${part.name}” did not arrive in storage.`)
       return {
-        ok: false,
-        error: `“${f.name}” is over 4 MB. Save it smaller, or ask for it to be uploaded as a batch.`,
+        key: part.key,
+        bucket: storageBucket(),
+        byteSize: head.byteSize,
+        // Hashed in the browser: with a direct upload the bytes never pass through
+        // here, so this is a duplicate hint rather than a guarantee.
+        sha256: part.sha256 ?? null,
       }
     }
-    const type = f.type || 'application/pdf'
-    if (!ALLOWED.has(type)) {
-      return { ok: false, error: `${type} is not a document the reader can open.` }
-    }
+    const bytes = Buffer.from(await part.file!.arrayBuffer())
+    return putObject(buildKey(session.companyGroupId, path.extname(part.name) || '.pdf'), bytes, part.type)
   }
 
-  /*
-   * The ceiling is the platform's, not ours: a server action's whole body is capped at
-   * 4.5 MB, and three photographs of receipts reach that easily. Said as a total, with
-   * the number, because "upload failed" sends somebody back to try the same thing again.
-   */
-  const total = files.reduce((sum, f) => sum + f.size, 0)
-  if (total > MAX_BYTES) {
-    return {
-      ok: false,
-      error: `Those ${files.length} files come to ${(total / 1024 / 1024).toFixed(1)} MB together, and the limit is 4 MB. Add the invoice here and upload the rest as a batch.`,
-    }
-  }
-
-  const contentType = file.type || 'application/pdf'
+  const file = { name: first.name }
+  const contentType = first.type
 
   const categoryId = String(formData.get('categoryId') ?? '').trim()
   const entityId = String(formData.get('entityId') ?? '').trim()
@@ -173,17 +292,17 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
     select: { id: true },
   })
 
-  const bytes = Buffer.from(await file.arrayBuffer())
-  const key = buildKey(session.companyGroupId, path.extname(file.name) || '.pdf')
-  const stored = await putObject(key, bytes, contentType)
+  const stored = await place(first)
 
   try {
     // Same content already here? Say so rather than quietly making a second copy of a
     // bill somebody is about to approve twice.
-    const twin = await prisma.document.findFirst({
-      where: { companyGroupId: session.companyGroupId, sha256: stored.sha256, deletedAt: null },
-      select: { id: true, originalFilename: true },
-    })
+    const twin = stored.sha256
+      ? await prisma.document.findFirst({
+          where: { companyGroupId: session.companyGroupId, sha256: stored.sha256, deletedAt: null },
+          select: { id: true, originalFilename: true },
+        })
+      : null
     if (twin) {
       await deleteObject(stored.key, stored.bucket)
       return {
@@ -247,10 +366,8 @@ export async function addBill(formData: FormData): Promise<AddBillResult> {
     const dropped: string[] = []
     for (const extra of extras) {
       try {
-        const extraType = extra.type || 'application/pdf'
-        const extraBytes = Buffer.from(await extra.arrayBuffer())
-        const extraKey = buildKey(session.companyGroupId, path.extname(extra.name) || '.pdf')
-        const extraStored = await putObject(extraKey, extraBytes, extraType)
+        const extraType = extra.type
+        const extraStored = await place(extra)
 
         const receipt = await prisma.document.create({
           data: {

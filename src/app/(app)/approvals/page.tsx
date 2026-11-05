@@ -7,6 +7,7 @@ import { HandedToYou, type Handover } from '@/components/handed-to-you'
 import { narrowEntityChoice, visibleEntities, visibleEntityIds } from '@/server/scope'
 import { canAddBill, canApprove, canConfigure, requireApprover } from '@/server/session'
 import { AddBill } from '@/components/add-bill'
+import { supportsDirectUpload } from '@/server/storage'
 import { ApprovalsBoard, type BoardBill } from '@/components/approvals-board'
 import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
@@ -215,7 +216,9 @@ export default async function ApprovalsPage({
             post; before this his only route was forwarding them to somebody with an
             upload button. Adding is not approving — the history records who did which.
           */}
-          {canAddBill(session.role) && <AddBill entities={entities} categories={categories} />}
+          {canAddBill(session.role) && (
+        <AddBill entities={entities} categories={categories} direct={supportsDirectUpload()} />
+      )}
           {/*
             Said here as well as on the Members screen, because this is where somebody
             finds out — an approver with no companies sees an empty list, and an empty
