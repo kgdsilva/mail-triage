@@ -15,7 +15,25 @@ import {
 import { DUPLICATE_NOTE, duplicateGroups } from '@/server/duplicates'
 import { parseIncomingFilename } from '@/server/filename-parse'
 import { visibleEntityIds } from '@/server/scope'
-import { canSeeWholeLog, requireDecider, requireSession, requireTriage } from '@/server/session'
+/*
+ * The scanner's own actions ask for `requireUpload`, not `requireTriage`.
+ *
+ * UPLOADER exists for one person and one job — putting the day's post in — and it is
+ * deliberately the narrowest role here: no board, no classifying, no deleting. But the
+ * four functions that actually take a file all demanded triage rights, which UPLOADER
+ * does not have, so the only role whose entire purpose is uploading was the one role
+ * that could not upload.
+ *
+ * It went unnoticed because it was invisible until the roles started working. Until
+ * late October a bug on the Members screen meant nobody could be set to anything but
+ * OPERATOR or MEMBER, and the scanner, as an OPERATOR, had triage rights by accident.
+ * The day she was given the role that describes her job, her job stopped working.
+ *
+ * What she saw was not a refusal. `requireTriage` redirects, the board redirects a
+ * narrow role onward, and the upload simply vanished — which she reported as "it
+ * disappeared and logged me out".
+ */
+import { canSeeWholeLog, requireDecider, requireSession, requireTriage, requireUpload } from '@/server/session'
 import {
   buildKey,
   deleteObject,
@@ -48,7 +66,7 @@ export type UploadResult = {
  * folder is told rather than left to wonder why the count is short.
  */
 export async function uploadBatch(formData: FormData): Promise<UploadResult> {
-  const session = await requireTriage()
+  const session = await requireUpload()
   const files = formData.getAll('files').filter((f): f is File => f instanceof File)
   const label = String(formData.get('label') || '').trim() || defaultBatchLabel()
 
@@ -594,7 +612,7 @@ export async function refineArchiveReason(documentId: string, formData: FormData
 export async function beginUpload(
   label: string,
 ): Promise<{ batchId: string | null; direct: boolean }> {
-  const session = await requireTriage()
+  const session = await requireUpload()
 
   // Only the direct path needs a batch up front, to hang each signed upload on. The
   // fallback path lets uploadBatch create its own — creating one here too would leave
@@ -636,7 +654,7 @@ export async function signUpload(
   contentType: string,
   size: number,
 ): Promise<SignedUpload> {
-  const session = await requireTriage()
+  const session = await requireUpload()
 
   const batch = await prisma.batch.findFirst({
     where: { id: batchId, companyGroupId: session.companyGroupId },
@@ -677,7 +695,7 @@ export async function attachUpload(input: {
   contentType: string
   sha256: string | null
 }): Promise<{ ok: boolean; error?: string; duplicate?: boolean }> {
-  const session = await requireTriage()
+  const session = await requireUpload()
 
   const batch = await prisma.batch.findFirst({
     where: { id: input.batchId, companyGroupId: session.companyGroupId },

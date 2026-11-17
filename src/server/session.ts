@@ -332,7 +332,16 @@ export function canSeeWholeLog(role: string) {
  */
 export async function requireTriage(): Promise<Session> {
   const session = await requireSession()
-  if (!canTriage(session.role)) redirect('/')
+  /*
+   * Home, not the board.
+   *
+   * Sending a narrow role to `/` sends it somewhere it is also not allowed, which
+   * redirects again — and a person watching two redirects go past does not read it as
+   * "you may not do that", they read it as having been thrown out. The scanner reported
+   * exactly that: "it disappeared and logged me out." `requireWorker` already sends
+   * people to their own home for this reason; this one did not.
+   */
+  if (!canTriage(session.role)) redirect(homeFor(session.role))
   return session
 }
 
