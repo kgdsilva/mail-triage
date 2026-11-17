@@ -41,6 +41,82 @@ async function toJpegIfHeic(file: File): Promise<File> {
   return new File([blob], renamed, { type: 'image/jpeg', lastModified: file.lastModified })
 }
 
+/** What the server will take, once this form has finished preparing things. */
+const KEEP = /\.(pdf|jpe?g|png|tiff?|heic|heif)$/i
+const MIME: Record<string, string> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  tif: 'image/tiff',
+  tiff: 'image/tiff',
+  heic: 'image/heic',
+  heif: 'image/heif',
+}
+
+const isZip = (f: File) =>
+  /\.zip$/i.test(f.name) || /^application\/(x-)?zip(-compressed)?$/i.test(f.type)
+
+/**
+ * A scan dropped in as one archive, opened here rather than refused.
+ *
+ * The scanner was zipping the day's post and dropping the archive in, which is the
+ * obvious thing to do with fifty files and was the one thing this form could not take.
+ * Every file inside was refused individually, by a server that had never been told what
+ * a zip is — and the result said so in a green box, so nobody read it.
+ *
+ * Opened in the browser, so what reaches the server is what it already understands: one
+ * file per document, each through the same path, with the same duplicate check and the
+ * same history. Nothing downstream knows an archive was involved, which is the point —
+ * a zip is how the post arrived, not a kind of document.
+ *
+ * `fflate` is imported only when an archive actually turns up, the same bargain the
+ * HEIC converter makes: a decompressor costs nothing until it is the only thing that
+ * helps.
+ */
+async function expandArchives(files: File[]): Promise<{ files: File[]; ignored: string[] }> {
+  if (!files.some(isZip)) return { files, ignored: [] }
+
+  const { unzipSync } = await import('fflate')
+  const out: File[] = []
+  const ignored: string[] = []
+
+  for (const file of files) {
+    if (!isZip(file)) {
+      out.push(file)
+      continue
+    }
+
+    const entries = unzipSync(new Uint8Array(await file.arrayBuffer()))
+    for (const [path, bytes] of Object.entries(entries)) {
+      const name = path.split('/').pop() ?? path
+
+      /*
+       * Folders, and the metadata a Mac puts beside every file it compresses. Without
+       * this, zipping on a Mac produces a second, empty copy of every document named
+       * "._invoice.pdf", and the person is told their fifty-file archive held a hundred.
+       */
+      if (bytes.length === 0 || path.endsWith('/')) continue
+      if (path.startsWith('__MACOSX/') || name.startsWith('._') || name === '.DS_Store') continue
+
+      if (!KEEP.test(name)) {
+        ignored.push(`${name} — not a document this can open`)
+        continue
+      }
+
+      const ext = name.split('.').pop()?.toLowerCase() ?? ''
+      out.push(
+        new File([bytes as BlobPart], name, {
+          type: MIME[ext] ?? 'application/octet-stream',
+          lastModified: file.lastModified,
+        }),
+      )
+    }
+  }
+
+  return { files: out, ignored }
+}
+
 export function UploadForm({ canClassify }: { canClassify: boolean }) {
   const router = useRouter()
   const formRef = useRef<HTMLFormElement>(null)
@@ -78,9 +154,38 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
        * and everything downstream see a format they can actually open.
        */
       setProgress({ done: 0, total: files.length, name: 'Preparing…' })
+
+      /*
+       * Archives first, phone photos second — an archive can hold phone photos, and
+       * converting before opening would miss every one of them.
+       */
+      let opened: File[]
+      let ignoredInArchive: string[] = []
+      try {
+        const expanded = await expandArchives(files)
+        opened = expanded.files
+        ignoredInArchive = expanded.ignored
+      } catch {
+        setError('That archive could not be opened. It may be damaged, or password-protected.')
+        setBusy(false)
+        setProgress(null)
+        return
+      }
+
+      if (opened.length === 0) {
+        setError(
+          ignoredInArchive.length > 0
+            ? `Nothing in that archive is a document this can open. It held ${ignoredInArchive.length} other file${ignoredInArchive.length === 1 ? '' : 's'}.`
+            : 'That archive is empty.',
+        )
+        setBusy(false)
+        setProgress(null)
+        return
+      }
+
       let ready: File[]
       try {
-        ready = await Promise.all(files.map(toJpegIfHeic))
+        ready = await Promise.all(opened.map(toJpegIfHeic))
       } catch {
         setError('That iPhone photo could not be converted. Export it as JPEG and try again.')
         setBusy(false)
@@ -94,7 +199,11 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
         const fd = new FormData()
         fd.set('label', label)
         ready.forEach((f) => fd.append('files', f))
-        setResult(await uploadBatch(fd))
+        /* The archive's own refusals belong in the result on this path too — it is
+           the one that runs wherever object storage is not configured, and a file
+           quietly dropped on the way in is the thing this screen keeps getting wrong. */
+        const batchResult = await uploadBatch(fd)
+        setResult({ ...batchResult, skipped: [...ignoredInArchive, ...batchResult.skipped] })
       } else {
         const skipped: string[] = []
         const duplicates: string[] = []
@@ -134,7 +243,7 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
           }
         }
 
-        setResult({ batchId, created, skipped, duplicates })
+        setResult({ batchId, created, skipped: [...ignoredInArchive, ...skipped], duplicates })
       }
 
       setFiles([])
@@ -185,23 +294,30 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
         </span>
         <p className="text-[14px] text-muted">
           Drop scans here, or{' '}
-          {/* The picker offers exactly what the server accepts. It offered HEIC and HEIF,
-              which the server refuses — so an iPhone photograph could be chosen,
-              uploaded, and then refused one by one, with nothing on screen to suggest
-              the format was the problem. */}
+          {/* HEIC and ZIP are offered because this form deals with both before anything
+              is sent: an iPhone photograph is converted to JPEG, and an archive is
+              opened and its contents uploaded one by one. The server never sees either
+              format, which is why its own list is shorter than this one.
+
+              Removing HEIC from here earlier today was a mistake: the converter has
+              been in this file since before I touched it, and taking the format out of
+              the picker broke a path that worked. */}
           <label className="cursor-pointer font-medium text-navy-700 underline">
             browse
             <input
               type="file"
               name="files"
               multiple
-              accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff"
+              accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.heic,.heif,.zip"
               className="hidden"
               onChange={(e) => setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])])}
             />
           </label>
         </p>
-        <p className="mt-1 text-[12.5px] text-subtle">PDF, JPG, PNG or TIFF · up to 50 MB each</p>
+        <p className="mt-1 text-[12.5px] text-subtle">
+          PDF, JPG, PNG, TIFF or an iPhone photo · up to 50 MB each. A .zip is opened
+          here and its documents uploaded one by one.
+        </p>
       </div>
 
       {files.length > 0 && (
