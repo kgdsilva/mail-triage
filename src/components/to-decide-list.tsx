@@ -108,7 +108,28 @@ function Row({
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
-  const [asking, setAsking] = useState<'why' | 'who' | null>(null)
+  const [asking, setAsking] = useState<'why' | 'who' | 'amount' | null>(null)
+  /*
+   * Suggested from the summary the reader wrote.
+   *
+   * The figure is usually in there — "total due $174.27 (principal $147.69 + collection
+   * fee $26.58)" — even when the reader would not commit it to the amount field,
+   * because a number inside a sentence is not the same as a number on a line marked
+   * Total. The largest one is the right guess for that example and for most of them,
+   * and it is offered for confirmation rather than filled in silently: the accountant
+   * is reading the document anyway, and the figure an approver clears should be one a
+   * person looked at.
+   */
+  const suggested = (() => {
+    const found = (row.summary ?? '').match(/\$\s?[0-9][0-9,]*(?:\.[0-9]{2})?/g)
+    if (!found) return ''
+    const best = found
+      .map((m) => Number(m.replace(/[^0-9.]/g, '')))
+      .filter((n) => Number.isFinite(n) && n > 0)
+      .sort((a, b) => b - a)[0]
+    return best ? best.toFixed(2) : ''
+  })()
+  const [amount, setAmount] = useState(suggested)
   const [note, setNote] = useState('')
   const [who, setWho] = useState(people[0]?.id ?? '')
   const [error, setError] = useState<string | null>(null)
@@ -200,11 +221,21 @@ function Row({
       <div className="flex flex-wrap items-center gap-2 border-t border-line-soft px-3 py-2">
         {canAct ? (
           <>
+            {/*
+              With no amount on the document, this asks for one instead of refusing.
+              It used to say "put the amount on it first" to the one person who could
+              not: the amount lives on the classify screen, which is triage, and this
+              desk is the accountant's.
+            */}
             <button
               type="button"
               className={BTN.done}
               disabled={pending}
-              onClick={() => act(() => markNeedsPayment(row.id))}
+              onClick={() =>
+                row.amount
+                  ? act(() => markNeedsPayment(row.id))
+                  : setAsking((v) => (v === 'amount' ? null : 'amount'))
+              }
             >
               <Check className="size-3.5" aria-hidden />
               Needs payment
@@ -250,6 +281,45 @@ function Row({
           History
         </Link>
       </div>
+
+      {asking === 'amount' && (
+        <div className="border-t border-line-soft bg-canvas px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[12px] font-semibold text-muted">How much is owed?</span>
+            <span className="text-[12.5px] text-subtle">$</span>
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && amount.trim()) {
+                  act(() => markNeedsPayment(row.id, undefined, amount))
+                }
+              }}
+              inputMode="decimal"
+              placeholder="174.27"
+              autoFocus
+              className="tabular w-28 rounded-lg border border-line bg-surface px-2 py-1.5 text-[13px]"
+            />
+            <button
+              type="button"
+              className={BTN.done}
+              disabled={pending || !amount.trim()}
+              onClick={() => act(() => markNeedsPayment(row.id, undefined, amount))}
+            >
+              <Check className="size-3.5" aria-hidden />
+              Send for approval
+            </button>
+            <button type="button" className={BTN.quiet} onClick={() => setAsking(null)}>
+              Cancel
+            </button>
+          </div>
+          <p className="mt-1.5 text-[11.5px] text-subtle">
+            {suggested
+              ? 'Read off the document. Check it against the invoice before sending — the approver clears this figure.'
+              : 'The approver clears this figure, so it has to be what is actually owed.'}
+          </p>
+        </div>
+      )}
 
       {asking === 'why' && (
         <div className="flex flex-wrap items-center gap-2 border-t border-line-soft bg-canvas px-3 py-2.5">

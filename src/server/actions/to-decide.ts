@@ -41,14 +41,77 @@ async function decidable(session: Awaited<ReturnType<typeof requirePaymentTriage
  * — produces a bill that is waiting on nobody and looks exactly like one waiting on
  * somebody slow, and the difference only shows up when it is overdue.
  */
-export async function markNeedsPayment(documentId: string, note?: string): Promise<Result> {
+export async function markNeedsPayment(
+  documentId: string,
+  note?: string,
+  /**
+   * The amount, when the document reached this desk without one.
+   *
+   * The accountant could read the figure and could not record it. Seventeen of the
+   * twenty-seven documents waiting on him have no amount — the reader finds the number
+   * inside a sentence ("total due $174.27, principal $147.69 plus a $26.58 fee") often
+   * enough to write it into the summary, and not reliably enough to fill the field. So
+   * the refusal "put the amount on it first" was addressed to somebody with no way to
+   * put it anywhere: setting an amount belongs to classification, which is triage, and
+   * he is the accountant. His only route was to message a colleague and ask them to
+   * type a number he was looking at.
+   *
+   * Deliberately the amount and nothing else. Company, vendor, category and the file
+   * stay with triage, so the separation that matters is untouched: he says what is
+   * owed, the approver sees that figure and clears it, and the history records that two
+   * different people did the two things.
+   */
+  amountInput?: string,
+): Promise<Result> {
   const session = await requirePaymentTriage()
 
   const doc = await decidable(session, documentId)
   if (!doc) return { ok: false, error: 'Not yours to decide — it may have moved.' }
   if (!doc.entityId) return { ok: false, error: 'Set the company on this first.' }
-  if (doc.amount === null) {
-    return { ok: false, error: 'Put the amount on it first — an approver needs to know what they are clearing.' }
+
+  let amount = doc.amount
+  const typed = amountInput?.trim()
+
+  if (typed && doc.amount === null) {
+    /*
+     * Only when the document has none. An amount already on the record was put there by
+     * classification or by the reader, and quietly overwriting it from this screen would
+     * make the figure an approver clears depend on which box somebody typed in last.
+     */
+    const cleaned = typed.replace(/[^0-9.]/g, '')
+    const value = Number(cleaned)
+    const wellFormed = /^[0-9]+(\.[0-9]{1,2})?$/.test(cleaned)
+
+    if (!wellFormed || !Number.isFinite(value) || value <= 0) {
+      return { ok: false, error: `“${typed}” is not an amount. Write it as 174.27.` }
+    }
+
+    const fixed = value.toFixed(2)
+    await prisma.$transaction(async (tx) => {
+      await tx.document.update({ where: { id: documentId }, data: { amount: fixed } })
+      await recordEvent(
+        {
+          documentId,
+          actorUserId: session.userId,
+          action: 'note_added',
+          fromValue: { amount: null },
+          toValue: {
+            amount: fixed,
+            by: 'accounting',
+            note: `Amount read off the document and recorded as ${fixed} before sending it for approval.`,
+          },
+        },
+        tx,
+      )
+    })
+    amount = fixed as unknown as typeof doc.amount
+  }
+
+  if (amount === null) {
+    return {
+      ok: false,
+      error: 'This has no amount yet. Type what is owed, and the approver will see that figure.',
+    }
   }
 
   /*
