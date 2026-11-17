@@ -143,6 +143,7 @@ export default async function ApprovalsPage({
      */
     question: exchange(d).asked?.note ?? null,
     receivedDate: d.createdAt.toISOString(),
+    hasFile: Boolean(d.storageKey),
   }))
 
   /*

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { FileText } from 'lucide-react'
+import { PdfFrame } from '@/components/pdf-peek'
 import { ArrowRight, HelpCircle, Loader2 } from 'lucide-react'
 import { answerHandover } from '@/server/actions/to-decide'
 
@@ -27,6 +29,19 @@ export type Handover = {
   companyCode: string | null
   question: string | null
   receivedDate: string
+  /**
+   * Whether there is a file to open.
+   *
+   * There was no way to open it at all. An approver was handed a question about a
+   * document, shown the filename and an answer box, and nothing else — "I can't view
+   * the document that you have a question on. This is all I can see." He assumed it
+   * was his access level; it was not, he could always have read the file. There was
+   * simply no button.
+   *
+   * Which makes the whole card an impossible request: answer a question about
+   * something you are not being shown.
+   */
+  hasFile: boolean
 }
 
 export function HandedToYou({ items }: { items: Handover[] }) {
@@ -51,6 +66,7 @@ export function HandedToYou({ items }: { items: Handover[] }) {
 }
 
 function HandoverRow({ item }: { item: Handover }) {
+  const [open, setOpen] = useState(false)
   const [answer, setAnswer] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [went, setWent] = useState<string | null>(null)
@@ -80,8 +96,40 @@ function HandoverRow({ item }: { item: Handover }) {
             {item.companyCode ? `${item.companyCode} · ` : ''}
             {item.title}
           </p>
+
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+            {item.hasFile ? (
+              <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-navy-700 underline"
+              >
+                <FileText className="size-3.5" aria-hidden />
+                {open ? 'Hide the document' : 'View the document'}
+              </button>
+            ) : (
+              <span className="text-[12px] text-subtle">No file is attached to this one.</span>
+            )}
+            {item.hasFile && (
+              <a
+                href={`/api/files/${item.id}?download=1`}
+                className="text-[12px] text-subtle underline"
+              >
+                Download
+              </a>
+            )}
+            <a href={`/history/${item.id}`} className="text-[12px] text-subtle underline">
+              History
+            </a>
+          </div>
         </div>
       </div>
+
+      {open && (
+        <div className="mt-3">
+          <PdfFrame id={item.id} title={item.title} hasFile={item.hasFile} height="h-[28rem]" />
+        </div>
+      )}
 
       <div className="mt-3 flex items-start gap-2">
         <textarea

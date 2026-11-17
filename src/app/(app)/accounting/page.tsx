@@ -243,6 +243,7 @@ export default async function AccountingPage({
      */
     question: exchange(d).asked?.note ?? null,
     receivedDate: d.createdAt.toISOString(),
+    hasFile: Boolean(d.storageKey),
   }))
 
   const count: Record<Tab, number> = {
