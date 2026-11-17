@@ -185,13 +185,17 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
         </span>
         <p className="text-[14px] text-muted">
           Drop scans here, or{' '}
+          {/* The picker offers exactly what the server accepts. It offered HEIC and HEIF,
+              which the server refuses — so an iPhone photograph could be chosen,
+              uploaded, and then refused one by one, with nothing on screen to suggest
+              the format was the problem. */}
           <label className="cursor-pointer font-medium text-navy-700 underline">
             browse
             <input
               type="file"
               name="files"
               multiple
-              accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.heic,.heif"
+              accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff"
               className="hidden"
               onChange={(e) => setFiles((prev) => [...prev, ...Array.from(e.target.files ?? [])])}
             />
@@ -222,21 +226,54 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
 
       {error && <p className="text-sm text-danger-700">{error}</p>}
 
+      {/*
+        Green only when something actually arrived.
+
+        This box was green whatever happened. The scanner dropped fifty-four files, every
+        one of them was refused, and she was shown a green panel reading "0 documents
+        added" with the reasons underneath in the smallest type on the page. She reported
+        it as "I uploaded 54 things", which is what the screen told her.
+
+        A result that is mostly failure is not a success with a footnote.
+      */}
       {result && (
-        <div className="rounded-lg bg-ok-100 px-3 py-2 text-sm text-emerald-900">
+        <div
+          className={`rounded-lg px-3 py-2 text-sm ${
+            result.created === 0 && result.skipped.length > 0
+              ? 'bg-danger-100 text-danger-700'
+              : result.skipped.length > 0
+                ? 'bg-gold-100 text-gold-800'
+                : 'bg-ok-100 text-emerald-900'
+          }`}
+        >
           {/*
             The scanner has no classify screen, so telling her to go there would be a
             link to a redirect. "Somebody will pick these up" is the true version of
             what happens next, and it is also the whole of her job description.
           */}
-          <p>
-            {result.created} document{result.created === 1 ? '' : 's'} added.{' '}
-            {canClassify ? (
-              <Link href="/classify" className="underline">
-                Start classifying
-              </Link>
+          <p className={result.created === 0 && result.skipped.length > 0 ? 'font-bold' : ''}>
+            {result.created === 0 && result.skipped.length > 0 ? (
+              <>
+                Nothing was added. {result.skipped.length} file
+                {result.skipped.length === 1 ? '' : 's'} were refused — the reason for
+                each is below.
+              </>
             ) : (
-              <span>Nothing else to do — these are now in the queue to be reviewed.</span>
+              <>
+                {result.created} document{result.created === 1 ? '' : 's'} added.{' '}
+                {result.skipped.length > 0 && (
+                  <>
+                    {result.skipped.length} refused.{' '}
+                  </>
+                )}
+                {canClassify ? (
+                  <Link href="/classify" className="underline">
+                    Start classifying
+                  </Link>
+                ) : (
+                  <span>Nothing else to do — these are now in the queue to be reviewed.</span>
+                )}
+              </>
             )}
           </p>
           {/*
@@ -256,10 +293,12 @@ export function UploadForm({ canClassify }: { canClassify: boolean }) {
               </Link>
             </p>
           )}
+          {/* The reasons, at a size somebody can read, because they are the content of
+              this message rather than a footnote to it. */}
           {result.skipped.length > 0 && (
-            <ul className="mt-1 text-xs">
+            <ul className="mt-2 space-y-0.5 text-[12.5px]">
               {result.skipped.map((s) => (
-                <li key={s}>Skipped {s}</li>
+                <li key={s}>{s}</li>
               ))}
             </ul>
           )}
