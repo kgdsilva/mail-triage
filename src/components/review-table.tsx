@@ -12,6 +12,7 @@ import {
   Sparkles,
   Trash2,
   TriangleAlert,
+  Calculator,
   Wallet,
 } from 'lucide-react'
 import { decideQuickly, deleteDocument, refineArchiveReason } from '@/server/actions/documents'
@@ -89,7 +90,7 @@ export function ReviewTable({
 
   const selected = all.find((r) => r.id === selectedId) ?? null
 
-  function decide(row: ReviewRow, decision: 'PAY' | 'ARCHIVE' | 'SPAM') {
+  function decide(row: ReviewRow, decision: 'TO_ACCOUNTING' | 'ARCHIVE' | 'SPAM') {
     setBusyId(row.id)
     startTransition(async () => {
       await decideQuickly(row.id, decision)
@@ -220,13 +221,22 @@ export function ReviewTable({
                             <EntityResolver row={row} entities={entities} disabled={busy} compact />
                           )}
                           <div className="flex flex-nowrap items-center justify-end gap-1.5">
+                            {/*
+                              "Send to accounting", not "Needs paying".
+                              Whoever is reading the post can tell a letter is about
+                              money. They often cannot tell whether anything is owed —
+                              a statement, a renewal and an invoice look alike at a
+                              glance — and the person who knows is the accountant.
+                              Asking here for an answer nobody has is how a statement
+                              reaches an approver as a bill.
+                            */}
                             <QuickButton
-                              label="Needs paying"
-                              short="Pay"
-                              icon={Wallet}
-                              active={row.disposition === 'ACTION'}
-                              proposed={proposedButton(row) === 'PAY'}
-                              onClick={() => decide(row, 'PAY')}
+                              label="Send to accounting to decide"
+                              short="Accounting"
+                              icon={Calculator}
+                              active={row.disposition === 'ACTION' && row.actionKind === 'REVIEW'}
+                              proposed={proposedButton(row) === 'TO_ACCOUNTING'}
+                              onClick={() => decide(row, 'TO_ACCOUNTING')}
                               disabled={busy}
                               tone="navy"
                             />
@@ -505,14 +515,14 @@ function parseDate(iso: string | null) {
  * personal insurance renewal both read as bills to pay, which is how a display detail
  * became a wrong recommendation.
  */
-function proposedButton(row: ReviewRow): 'PAY' | 'ARCHIVE' | 'SPAM' | null {
+function proposedButton(row: ReviewRow): 'TO_ACCOUNTING' | 'ARCHIVE' | 'SPAM' | null {
   if (row.disposition !== 'UNREVIEWED' || !row.ai) return null
   if (row.ai.ambiguous) return null
   if (row.ai.dispositionReason === 'SPAM_SOLICITATION') return 'SPAM'
   if (row.ai.disposition === 'ARCHIVE') return 'ARCHIVE'
   // Only an action the filing rules could name a reason for. Without one there is no
   // basis for choosing between paying it and merely looking at it.
-  if (row.ai.disposition === 'ACTION' && row.ai.dispositionReason) return 'PAY'
+  if (row.ai.disposition === 'ACTION' && row.ai.dispositionReason) return 'TO_ACCOUNTING'
   return null
 }
 

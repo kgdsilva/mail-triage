@@ -432,12 +432,32 @@ export async function classifyDocument(
  * a document decided here is decided but NOT yet filed. The review table shows that
  * difference rather than implying the work is finished.
  */
-export type QuickDecision = 'PAY' | 'ARCHIVE' | 'SPAM'
+export type QuickDecision = 'TO_ACCOUNTING' | 'PAY' | 'ARCHIVE' | 'SPAM'
 
 const QUICK_DECISIONS: Record<
   QuickDecision,
   { disposition: Disposition; dispositionReason: DispositionReason | null; actionKind: ActionKind | null; status: DocStatus }
 > = {
+  /*
+   * Sent to accounting, which is a different sentence from "this must be paid".
+   *
+   * The person reviewing the post can tell that a letter is about money. They often
+   * cannot tell whether anything is actually owed on it — a statement, a notice, a
+   * renewal and an invoice look much the same at a glance, and the one who knows is
+   * the accountant. Asking the reviewer to answer it anyway is how a statement reaches
+   * an approver as a bill.
+   *
+   * REVIEW rather than PAY, so `approvalFor` leaves the approval chain empty and it
+   * lands on the accountant's own "Is it a bill?" queue instead of in the approver's.
+   * MANUAL_INVOICE records that a person put it in the money flow by hand, which is
+   * also what distinguishes it from anything else carrying REVIEW.
+   */
+  TO_ACCOUNTING: {
+    disposition: 'ACTION',
+    dispositionReason: 'MANUAL_INVOICE',
+    actionKind: 'REVIEW',
+    status: 'WAITING',
+  },
   // Needs paying: it enters someone's queue, unassigned until routed.
   PAY: {
     disposition: 'ACTION',

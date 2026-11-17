@@ -88,6 +88,26 @@ export function moneyWhere(): Prisma.DocumentWhereInput {
         amount: { not: null },
         documentType: { is: { code: { notIn: [...NOT_MONEY_TYPE_CODES] } } },
       },
+      /*
+       * Or a person said so, which outranks every guess above it.
+       *
+       * Someone reviewing the post can press "Send to accounting" on a letter that has
+       * no amount on its face and no document type yet. Every other branch here is a
+       * heuristic for "does this look like money"; this one is a human answering the
+       * question directly, and it would be strange for the guesses to overrule them.
+       *
+       * Spelled with its null branches because this fragment is negated by the shared
+       * board: a comparison against a nullable column inside a NOT yields NULL, and a
+       * NULL there drops the row from every screen at once.
+       */
+      {
+        AND: [
+          { actionKind: { not: null } },
+          { actionKind: 'REVIEW' },
+          { dispositionReason: { not: null } },
+          { dispositionReason: 'MANUAL_INVOICE' },
+        ],
+      },
     ],
   }
 }
