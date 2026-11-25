@@ -105,7 +105,7 @@ export default async function Board({
         </p>
       </header>
 
-      <FlowStrip current="decide" />
+      <FlowStrip current="decide" role={session.role} />
 
       <PageHelp topic="board" />
 

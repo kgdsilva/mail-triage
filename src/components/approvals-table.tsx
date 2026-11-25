@@ -360,7 +360,9 @@ function Row({
   onToggle: () => void
   onOpen: () => void
 }) {
-  const due = describeDue(bill.dueDate)
+  /* Same rule as the board: once it is no longer on this person, the deadline is a
+     fact about the bill rather than a demand on them. */
+  const due = describeDue(bill.dueDate, bill.turn ? bill.turn.tone === 'you' : true)
 
   const cells: Record<string, React.ReactNode> = {
     select: canDecide ? (

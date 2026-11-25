@@ -385,6 +385,7 @@ export default async function AccountingPage({
                 ? 'paid'
                 : 'pay'
         }
+        role={session.role}
       />
 
       {/* One per tab: the six answer six different questions. */}

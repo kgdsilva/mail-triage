@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { canApprove, canSettle, canUpload, canWork } from '@/server/session'
 
 /**
  * The whole path, on every screen that is a part of it.
@@ -37,25 +38,47 @@ const STEPS: { key: FlowStep; label: string; who: string; href: string }[] = [
   { key: 'paid', label: 'Paid', who: 'filed, nothing owed', href: '/paid' },
 ]
 
+/**
+ * Which steps this person can actually open, worked out from the role rather than
+ * passed in.
+ *
+ * It was passed in, and the caller got it wrong. The approvals screen declared only
+ * "Arrives" unreachable, so an approver was shown four links, three of which bounced
+ * him off a screen he has no permission for and back to one he also has no permission
+ * for. He reported it as the navigation being confusing, and as the Paid tab never
+ * highlighting when he clicked it. Both were this.
+ *
+ * Deciding it here means a caller cannot be wrong about it. The guard on each page is
+ * the authority, and this reads the same predicates those guards use.
+ */
+const REACHABLE: Record<FlowStep, (role: string) => boolean> = {
+  arrives: canUpload,
+  decide: canWork,
+  approve: canApprove,
+  pay: canSettle,
+  paid: canWork,
+}
+
 export function FlowStrip({
   current,
   /**
-   * Steps this person cannot open. Shown anyway, as plain text rather than a link: the
-   * point is that they can see where their own work sits in a line that continues
-   * without them. Hiding the rest is how an approver comes to believe approving is the
-   * end of it.
+   * The role of the person reading it. Steps they cannot open are shown anyway, as
+   * plain text rather than a link: the point is that they see where their own work sits
+   * in a line that continues without them. Hiding the rest is how an approver comes to
+   * believe approving is the end of it — but a link that throws them out is worse than
+   * no link.
    */
-  unreachable = [],
+  role,
 }: {
   current: FlowStep
-  unreachable?: FlowStep[]
+  role: string
 }) {
   return (
     <nav aria-label="Where this screen sits in the process" className="mb-4 overflow-x-auto">
       <ol className="flex min-w-fit items-stretch gap-1">
         {STEPS.map((step, i) => {
           const here = step.key === current
-          const blocked = unreachable.includes(step.key)
+          const blocked = !REACHABLE[step.key](role)
           const body = (
             <>
               <span className="block text-[12px] font-bold leading-tight">{step.label}</span>

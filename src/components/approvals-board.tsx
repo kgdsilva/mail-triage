@@ -53,7 +53,18 @@ const BUCKETS: { key: Bucket; label: string; tone: string }[] = [
  * A bill with no due date is "Later": it is not urgent, and putting it in a bucket named
  * after a deadline it does not have would be a lie with a colour on it.
  */
+/** True while this bill is still waiting on the person reading the screen. */
+const onYou = (bill: BoardBill) => bill.turn.tone === 'you'
+
 function bucketOf(bill: BoardBill): Bucket {
+  /*
+   * A bill he has already decided is never filed under Overdue.
+   *
+   * The Decided tab was grouping approved bills under a red "Overdue" heading with a
+   * total beside it, which reads as a demand. It is not one: the deadline belongs to
+   * whoever pays it now, and this screen is a record of what he did.
+   */
+  if (!onYou(bill)) return 'later'
   const { days } = describeDue(bill.dueDate)
   if (days === null) return 'later'
   if (days < 0) return 'overdue'
@@ -468,7 +479,7 @@ function Row({
   onOpen: (mode?: 'DENIED' | 'NEEDS_REVIEW') => void
   onApprove: () => void
 }) {
-  const due = describeDue(bill.dueDate)
+  const due = describeDue(bill.dueDate, onYou(bill))
 
   return (
     <li

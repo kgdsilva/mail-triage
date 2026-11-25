@@ -32,8 +32,33 @@ function todayUtc() {
   return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
 }
 
-export function describeDue(iso: string | null): Due {
+/**
+ * A deadline is an alarm only while somebody still has to meet it.
+ *
+ * An approver was shown "43 days overdue", in red, on a bill he had approved, and
+ * "13 days overdue" on one that was already paid. Both numbers were arithmetically
+ * correct and neither was true in the sense he read them: nothing was late, because
+ * nothing was owed from him. He reported it as the counter needing to stop.
+ *
+ * So `stillOwed` is the second argument rather than something each screen remembers to
+ * check. Passing false keeps the date — a paid bill still has a due date and the Paid
+ * screen shows it — and drops the alarm: no red, no counting, no bucket named after a
+ * deadline that has already been met.
+ */
+export function describeDue(iso: string | null, stillOwed = true): Due {
   if (!iso) return { text: 'No due date', tone: 'none', exact: '', days: null }
+
+  if (!stillOwed) {
+    const settledAt = Date.parse(`${iso}T00:00:00Z`)
+    if (Number.isNaN(settledAt)) return { text: 'No due date', tone: 'none', exact: '', days: null }
+    const exact = new Intl.DateTimeFormat('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(settledAt)
+    return { text: `Was due ${exact}`, tone: 'none', exact, days: null }
+  }
 
   const due = Date.parse(`${iso}T00:00:00Z`)
   if (Number.isNaN(due)) return { text: 'No due date', tone: 'none', exact: '', days: null }

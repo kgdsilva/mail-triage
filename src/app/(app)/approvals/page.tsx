@@ -255,7 +255,7 @@ export default async function ApprovalsPage({
       {/* Approving is the middle of a line, not the end of one — which is the thing an
           approver most needs to see, because "I approved it, where does it go?" was
           asked in the meeting this screen came out of. */}
-      <FlowStrip current="approve" unreachable={canConfigure(session.role) ? [] : ['arrives']} />
+      <FlowStrip current="approve" role={session.role} />
 
       <PageHelp topic="approvals" />
 
