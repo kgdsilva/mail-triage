@@ -703,14 +703,29 @@ export function listForReview(
 }
 
 /** Incoming third-party checks, for reconciliation. Archived, so never in a queue. */
+/**
+ * Which documents are cheques, as one predicate both the list and its count read.
+ *
+ * The count used to be the length of the list, and the list was only fetched when its
+ * own tab was open — so the tab said zero until you opened it, which is the one number
+ * it exists to tell you before you do. Written once here so the two cannot disagree.
+ */
+function checksWhere(companyGroupId: string, entityId?: string | null) {
+  return {
+    companyGroupId,
+    deletedAt: null,
+    documentType: { code: 'CHECK' as const },
+    ...(entityId ? { entityId } : {}),
+  }
+}
+
+export function countChecks(companyGroupId: string, entityId?: string | null) {
+  return prisma.document.count({ where: checksWhere(companyGroupId, entityId) })
+}
+
 export function listChecks(companyGroupId: string, entityId?: string | null) {
   return prisma.document.findMany({
-    where: {
-      companyGroupId,
-      deletedAt: null,
-      documentType: { code: 'CHECK' },
-      ...(entityId ? { entityId } : {}),
-    },
+    where: checksWhere(companyGroupId, entityId),
     include: {
       entity: { select: { id: true, code: true, sortOrder: true } },
       vendor: { select: { name: true } },

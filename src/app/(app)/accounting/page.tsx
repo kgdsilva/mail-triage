@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { PageHelp } from '@/components/page-help'
 import { FlowStrip } from '@/components/flow-strip'
-import { Clock } from 'lucide-react'
 import type { ApprovalStatus } from '@/generated/prisma/enums'
 import { billCounts, listBills, listHandedTo } from '@/server/approvals'
 import { narrowEntityChoice, visibleEntities, visibleEntityIds } from '@/server/scope'
@@ -15,8 +14,7 @@ import { AccountingTable, type AccountingBill } from '@/components/accounting-ta
 import { ToDecideList } from '@/components/to-decide-list'
 import { HandedToYou, type Handover } from '@/components/handed-to-you'
 import { ChecksTable } from '@/components/checks-table'
-import { listChecks } from '@/server/documents'
-import { ApprovalsTable, type ApprovalBill } from '@/components/approvals-table'
+import { countChecks, listChecks } from '@/server/documents'
 import { CompanyPicker } from '@/components/company-picker'
 import { formatMoney } from '@/components/badges'
 import { RecurringLine, type Row as RecurringRow } from '@/components/recurring-line'
@@ -53,7 +51,19 @@ export const dynamic = 'force-dynamic'
  * Denied and Paid were two tabs for one question — what is finished — and the row says
  * which it was, in words, in its own colour. Nothing is owed on either.
  */
-const TABS = ['decide', 'ready', 'waiting', 'done', 'checks'] as const
+/*
+ * Five tabs, of which he worked two.
+ *
+ * "Waiting on approval" was a tab he never acted on — it was there to tell him what is
+ * coming, which is a sentence, not a queue. It is now the line under the list.
+ *
+ * "Paid or refused" held two different questions and could answer neither: what went
+ * out, and what was stopped. They are separate tabs.
+ *
+ * "Checks received" is money arriving, which is a different job from bills going out,
+ * and it has been empty. It appears when something is in it.
+ */
+const TABS = ['decide', 'ready', 'paid', 'refused', 'checks'] as const
 type Tab = (typeof TABS)[number]
 
 /*
@@ -80,9 +90,9 @@ type Tab = (typeof TABS)[number]
  */
 const LABELS: Record<Tab, string> = {
   decide: 'Is it a bill?',
-  ready: 'Ready to pay',
-  waiting: 'With the approver',
-  done: 'Paid or refused',
+  ready: 'To pay',
+  paid: 'Paid',
+  refused: 'Refused',
   checks: 'Checks received',
 }
 
@@ -98,15 +108,9 @@ const BLURBS: Record<Tab, string> = {
     'Mail that mentions money, before anyone has said whether it has to be paid. This one is yours to decide.',
   ready:
     'Approved and cleared. These are yours to pay — nothing here is waiting on anybody else.',
-  waiting:
-    'With the approver, not with you. Here so you can see what is coming, and how long it has been sitting.',
-  done: 'What went out, and what an approver stopped. Both are finished; only one cost money.',
+  paid: 'What went out, with the date, the method and the reference you recorded.',
+  refused: 'Bills an approver stopped, with the reason they gave. Do not pay these.',
   checks: 'Money that came in — cheques received, not bills going out.',
-}
-
-/** Whole days since a date, for "waiting 5 days". */
-function daysSince(iso: string) {
-  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 864e5))
 }
 
 export default async function AccountingPage({
@@ -126,22 +130,22 @@ export default async function AccountingPage({
   const scope = await visibleEntityIds(session)
   const chosen = narrowEntityChoice(entity, scope)
 
-  const statuses: ApprovalStatus[] =
-    active === 'waiting' ? ['PENDING', 'NEEDS_REVIEW'] : ['APPROVED']
-
   const [bills, refused, counts, entities, settler, approverFor, categories] = await Promise.all([
-    listBills(session, {
-      statuses,
-      entityId: chosen,
-      settled: active === 'done' ? true : false,
-    }),
+    /* Approved: the ones still to pay, or the ones already paid. */
+    active === 'refused'
+      ? Promise.resolve([])
+      : listBills(session, {
+          statuses: ['APPROVED'] as ApprovalStatus[],
+          entityId: chosen,
+          settled: active === 'paid',
+        }),
     /*
      * Refusals, read separately because they are the one thing on this screen that is
      * finished without money having moved — so they cannot share the `settled` filter
      * the paid bills need. A refusal is shown whether or not money ever moved: a denied
      * bill that somehow carries a payment is the one row somebody most needs to see.
      */
-    active === 'done'
+    active === 'refused'
       ? listBills(session, { statuses: ['DENIED'], entityId: chosen })
       : Promise.resolve([]),
     billCounts(session, chosen),
@@ -190,9 +194,12 @@ export default async function AccountingPage({
     })
 
   const thisPeriod = periodOf(new Date())
-  const [checkRows, decideRows, decideCount, handoverPeople, recurring, handed] =
+  const [checkRows, checksTotal, decideRows, decideCount, handoverPeople, recurring, handed] =
     await Promise.all([
     active === 'checks' ? listChecks(session.companyGroupId, chosen) : Promise.resolve([]),
+    /* Counted whichever tab is open, because the number is how somebody decides whether
+       to open it. The list is still fetched only when it is being shown. */
+    countChecks(session.companyGroupId, chosen),
     active === 'decide' ? listToDecide(session, chosen) : Promise.resolve([]),
     countToDecide(session, chosen),
     canTriagePayments(session.role)
@@ -249,10 +256,13 @@ export default async function AccountingPage({
   const count: Record<Tab, number> = {
     decide: decideCount,
     ready: counts.approvedUnpaid,
-    waiting: counts.pending + counts.needsReview,
-    done: counts.paid + counts.denied,
-    checks: checkRows.length,
+    paid: counts.paid,
+    refused: counts.denied,
+    checks: checksTotal,
   }
+
+  /** What is with an approver — a sentence under the list, not a queue of its own. */
+  const withApprover = counts.pending + counts.needsReview
 
   const readyTotal = bills.reduce((sum, b) => sum + Number(b.amount ?? 0), 0)
 
@@ -310,31 +320,6 @@ export default async function AccountingPage({
         : null,
   }))
 
-  /* The waiting tab reuses the approver's own table with its actions switched off, so
-     the accountant reads exactly what the approver sees — including the note on a bill
-     that was sent back, which is usually the answer to "why is this still here". */
-  const waitingRows: ApprovalBill[] = bills.map((d) => ({
-    id: d.id,
-    title: d.finalFilename ?? d.originalFilename,
-    vendorName: d.vendor?.name ?? d.payeeName ?? null,
-    invoiceNumber: d.invoiceNumber,
-    amount: d.amount === null ? null : formatMoney(d.amount),
-    amountValue: d.amount === null ? 0 : Number(d.amount.toString()),
-    companyCode: d.entity?.code ?? null,
-    companyName: d.entity?.legalName ?? null,
-    companyIndex: d.entity?.sortOrder ?? 0,
-    dueDate: d.dueDate ? d.dueDate.toISOString().slice(0, 10) : null,
-    receivedDate: d.createdAt.toISOString(),
-    categoryName: d.category?.name ?? d.documentType?.label ?? null,
-    status: d.approvalStatus ?? 'PENDING',
-    note: d.approvalNote,
-    decidedBy: d.approvalDecidedBy?.name ?? d.approvalDecidedBy?.email ?? null,
-    decidedAt: d.approvalDecidedAt?.toISOString() ?? null,
-    hasFile: Boolean(d.storageKey),
-    turn: turnOf(d),
-    duplicates: duplicates.get(d.id) ?? [],
-  }))
-
   const monthName = (period: string) =>
     new Date(`${period}-01T00:00:00Z`).toLocaleDateString('en-US', {
       month: 'long',
@@ -379,11 +364,9 @@ export default async function AccountingPage({
         current={
           active === 'decide'
             ? 'decide'
-            : active === 'waiting'
-              ? 'approve'
-              : active === 'done' || active === 'checks'
-                ? 'paid'
-                : 'pay'
+            : active === 'paid' || active === 'refused' || active === 'checks'
+              ? 'paid'
+              : 'pay'
         }
         role={session.role}
       />
@@ -397,7 +380,10 @@ export default async function AccountingPage({
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1 rounded-xl border border-line bg-surface p-1">
-          {TABS.map((t) => {
+          {/* Cheques coming in only earn a tab when something is in it, or when it is
+              the tab being read. Money arriving is a different job from bills going
+              out, and an empty one was taking a fifth of the row. */}
+          {TABS.filter((t) => t !== 'checks' || count.checks > 0 || active === 'checks').map((t) => {
             const on = t === active
             return (
               <Link
@@ -487,53 +473,26 @@ export default async function AccountingPage({
           canAct={canTriagePayments(session.role)}
           />
         </>
-      ) : active === 'waiting' ? (
-        <>
-          {/* How long each has been sitting, which is what turns this list into a
-              conversation with the approver rather than a wait. */}
-          <ul className="space-y-1">
-            {waitingRows.map((r) => {
-              const waited = daysSince(r.receivedDate)
-              const overdue =
-                r.dueDate && r.dueDate < new Date().toISOString().slice(0, 10)
-                  ? daysSince(`${r.dueDate}T00:00:00Z`)
-                  : 0
-              return (
-                <li
-                  key={`age-${r.id}`}
-                  className="flex flex-wrap items-center gap-2 px-1 text-[12.5px]"
-                >
-                  <Clock className="size-3.5 flex-none text-subtle" aria-hidden />
-                  <span className="font-semibold text-navy-900">
-                    {r.vendorName ?? r.title}
-                  </span>
-                  <span className="text-muted">
-                    waiting {waited} day{waited === 1 ? '' : 's'}
-                  </span>
-                  {overdue > 0 && (
-                    <span className="rounded-full bg-danger-100 px-2 py-0.5 text-[11.5px] font-bold text-danger-700">
-                      {overdue} day{overdue === 1 ? '' : 's'} overdue
-                    </span>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-          <ApprovalsTable
-            bills={waitingRows}
-            canDecide={false}
-            showCompany={entities.length > 1}
-            // Pending and needs-review are mixed here, so the status is the useful part.
-            showStatus
-          />
-        </>
       ) : (
         <AccountingTable
           bills={accountingRows}
-          mode={active === 'done' ? 'done' : 'ready'}
+          mode={active === 'ready' ? 'ready' : 'done'}
           entities={entities}
           canSettle={canSettle(session.role)}
         />
+      )}
+
+      {/*
+        What is with an approver, as a sentence.
+
+        It was a tab he never acted on — it existed to tell him what is coming, and a
+        queue is the wrong shape for that. One line, under the list he is actually
+        working, says the same thing without asking to be opened.
+      */}
+      {withApprover > 0 && active !== 'checks' && (
+        <p className="text-[12.5px] text-muted">
+          {withApprover} bill{withApprover === 1 ? ' is' : 's are'} with an approver.
+        </p>
       )}
 
       {canApprove(session.role) && (
