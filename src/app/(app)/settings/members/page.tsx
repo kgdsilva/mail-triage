@@ -31,7 +31,24 @@ const ROLE_HELP: Record<Role, string> = {
   ACCOUNTANT: 'Pays what has been approved; cannot approve',
 }
 
-const ROLES = ALL_ROLES.map((role) => ({ role, help: ROLE_HELP[role] }))
+/**
+ * Roles the system supports but this office has never used.
+ *
+ * Eight roles exist and five are held by somebody. The other three sit in every picker
+ * and in the help list, where their only effect is to make the choice harder for whoever
+ * is adding a colleague — three plausible-sounding options that nobody here has ever
+ * needed. They stay in the code, and in `ROLES`, because a role somebody holds must
+ * never silently stop existing: if one is ever assigned, by a seed or by hand, it
+ * reappears here on its own.
+ */
+const UNUSED: Role[] = ['OPERATOR', 'MEMBER', 'VIEWER']
+
+function offeredRoles(held: Set<string>) {
+  return ALL_ROLES.filter((role) => !UNUSED.includes(role) || held.has(role)).map((role) => ({
+    role,
+    help: ROLE_HELP[role],
+  }))
+}
 
 /** Colour by how much the role can do, so the list reads by weight before by word. */
 const ROLE_TONE: Record<string, string> = {
@@ -71,6 +88,10 @@ export default async function MembersPage() {
       },
     },
   })
+
+  /* An unused role reappears in the pickers the moment anybody actually holds it, so
+     nothing can silently stop existing while somebody is in it. */
+  const roles = offeredRoles(new Set(members.map((m) => m.role)))
 
   const active = members.filter((m) => m.isActive)
 
@@ -127,7 +148,7 @@ export default async function MembersPage() {
                       <MemberRole
                         membershipId={m.id}
                         role={m.role}
-                        roles={ROLES.map((r) => ({ role: r.role, help: r.help }))}
+                        roles={roles.map((r) => ({ role: r.role, help: r.help }))}
                         self={m.userId === session.userId}
                         tone={ROLE_TONE}
                       />
@@ -196,7 +217,7 @@ export default async function MembersPage() {
         </div>
       </div>
 
-      <AddMemberForm roles={ROLES.map((r) => ({ role: r.role, help: r.help }))} />
+      <AddMemberForm roles={roles.map((r) => ({ role: r.role, help: r.help }))} />
     </div>
   )
 }
