@@ -70,6 +70,14 @@ export type BillFilters = {
   entityId?: string | null
   /** Paid bills have left the queue; unpaid ones have not. Undefined means either. */
   settled?: boolean
+  /**
+   * Only decisions from this date onwards, for the approver's record of his own work.
+   *
+   * Twelve rows today and a few hundred within the year, which is a list nobody reads to
+   * the end. What he wants from it is "what happened to the ones I just decided"; the
+   * rest is a search, and the Archive answers that.
+   */
+  decidedWithinDays?: number
 }
 
 /**
@@ -110,6 +118,30 @@ function where(companyGroupId: string, ids: string[] | null, filters: BillFilter
     // A company chosen in the query string is narrowed to one in scope before it gets
     // here; this only ever further restricts.
     ...(filters.entityId ? { entityId: filters.entityId } : {}),
+    /*
+     * The window, with the undated kept rather than dropped.
+     *
+     * `approvalDecidedAt >= date` is NULL for a row that carries a decision and no date
+     * — imports have some — and a NULL there fails the WHERE, so the cut would silently
+     * delete those rows from the list instead of placing them outside the window. An old
+     * decision with no date is still a decision; it belongs in the list.
+     */
+    ...(filters.decidedWithinDays
+      ? {
+          AND: [
+            {
+              OR: [
+                {
+                  approvalDecidedAt: {
+                    gte: new Date(Date.now() - filters.decidedWithinDays * 864e5),
+                  },
+                },
+                { approvalDecidedAt: null },
+              ],
+            },
+          ],
+        }
+      : {}),
   }
 }
 
@@ -128,9 +160,21 @@ export async function listBills(session: Session, filters: BillFilters) {
  * The numbers on the tabs, counted independently of what is being shown — their job is
  * to say what you are not currently looking at.
  */
-export async function billCounts(session: Session, entityId?: string | null) {
+export async function billCounts(
+  session: Session,
+  entityId?: string | null,
+  /**
+   * Applied to the three decided counts only.
+   *
+   * A count that disagrees with the list it labels is worse than no count, because the
+   * number is read first and believed. If "Done" shows ninety days, its tab has to count
+   * ninety days; the open queues are not windowed at all.
+   */
+  decidedWithinDays?: number,
+) {
   const ids = await visibleEntityIds(session)
   const base = { entityId: entityId ?? null }
+  const decided = { ...base, decidedWithinDays }
 
   const [pending, approvedUnpaid, denied, needsReview, paid] = await Promise.all([
     prisma.document.count({
@@ -138,19 +182,19 @@ export async function billCounts(session: Session, entityId?: string | null) {
     }),
     prisma.document.count({
       where: where(session.companyGroupId, ids, {
-        ...base,
+        ...decided,
         statuses: ['APPROVED'],
         settled: false,
       }),
     }),
     prisma.document.count({
-      where: where(session.companyGroupId, ids, { ...base, statuses: ['DENIED'] }),
+      where: where(session.companyGroupId, ids, { ...decided, statuses: ['DENIED'] }),
     }),
     prisma.document.count({
       where: where(session.companyGroupId, ids, { ...base, statuses: ['NEEDS_REVIEW'] }),
     }),
     prisma.document.count({
-      where: where(session.companyGroupId, ids, { ...base, statuses: ['APPROVED'], settled: true }),
+      where: where(session.companyGroupId, ids, { ...decided, statuses: ['APPROVED'], settled: true }),
     }),
   ])
 

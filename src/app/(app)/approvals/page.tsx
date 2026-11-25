@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { PageHelp } from '@/components/page-help'
-import { FlowStrip } from '@/components/flow-strip'
 import type { ApprovalStatus } from '@/generated/prisma/enums'
 import { billCounts, handedToCount, listBills, listHandedTo } from '@/server/approvals'
 import { HandedToYou, type Handover } from '@/components/handed-to-you'
@@ -71,27 +70,41 @@ export const dynamic = 'force-dynamic'
  * screens it appears on teaches people not to read any of them.
  */
 const TABS = [
+  /*
+   * The first two tabs used to overlap, and that was the confusion.
+   *
+   * "Waiting on you" held PENDING and NEEDS_REVIEW; "Your questions" held NEEDS_REVIEW
+   * again. So a bill he had asked about appeared in both — on the first tab it looked
+   * like something he could clear today, when in fact he was waiting on somebody else.
+   *
+   * They are now split by whether the question has been answered, which is the fact that
+   * decides whose turn it is. An answered question returns to the actionable list on its
+   * own, rather than sitting in a second tab he has to remember to open.
+   */
   {
     key: 'pending',
-    label: 'Waiting on you',
+    label: 'To approve',
     statuses: ['PENDING', 'NEEDS_REVIEW'] as ApprovalStatus[],
     blurb: 'Open the invoice, then approve it, refuse it, or ask a question about it.',
   },
   {
     key: 'questions',
-    label: 'Your questions',
+    label: 'Waiting on an answer',
     statuses: ['NEEDS_REVIEW'] as ApprovalStatus[],
     blurb:
-      'Bills you asked about. They stay yours — the answer comes back here, and then you decide.',
+      'Bills you asked about, where nobody has answered yet. The moment somebody does, the bill moves back to To approve.',
   },
   {
     key: 'decided',
-    label: 'Decided',
+    label: 'Done',
     statuses: ['APPROVED', 'DENIED'] as ApprovalStatus[],
     blurb:
-      'What you already approved or refused. Kept because you are allowed to change your mind.',
+      'What you decided over the last 90 days, and what happened to it since. Anything older is in the Archive.',
   },
 ] as const
+
+/** How far back "Done" reaches. Older decisions are a search, not a list. */
+const DONE_DAYS = 90
 
 export default async function ApprovalsPage({
   searchParams,
@@ -109,15 +122,24 @@ export default async function ApprovalsPage({
   // the first tab: one place that answers "what is waiting on me".
   const showsHandovers = active.key === 'pending'
 
-  const [bills, counts, entities, handed, handedCount, settler, categories] = await Promise.all([
+  const [bills, openQuestions, counts, entities, handed, handedCount, settler, categories] =
+    await Promise.all([
     listBills(session, {
       statuses: [...active.statuses],
       entityId: chosen,
-      // A decided bill stays on Decided after it is paid; the first list is only what
-      // is still open.
-      settled: active.key === 'pending' ? false : undefined,
+      // A decided bill stays on Done after it is paid; the open queues are only what is
+      // still open.
+      settled: active.key === 'decided' ? undefined : false,
+      ...(active.key === 'decided' ? { decidedWithinDays: DONE_DAYS } : {}),
     }),
-    billCounts(session, chosen),
+    /*
+     * The open questions, fetched whichever tab is showing, because both of the first
+     * two tabs are counted from them: whether a question has been answered is the fact
+     * that decides which of the two it belongs in, and that fact lives in the events
+     * rather than in a column a count could filter on.
+     */
+    listBills(session, { statuses: ['NEEDS_REVIEW'], entityId: chosen, settled: false }),
+    billCounts(session, chosen, DONE_DAYS),
     visibleEntities(session),
     showsHandovers ? listHandedTo(session) : Promise.resolve([]),
     handedToCount(session),
@@ -211,13 +233,30 @@ export default async function ApprovalsPage({
    * counts — keeping a second, separate sum up here was how the top of the screen and
    * the middle of it ended up disagreeing about what "overdue" meant.
    */
-  // Each tab counts exactly what it shows, now that a question and a denial are no
-  // longer added together under one heading.
+  /*
+   * One rule, used for both the list and the number on the tab.
+   *
+   * A bill he asked about is waiting on somebody else until they answer, and is waiting
+   * on him again the moment they do. So "answered" is what separates the first two tabs,
+   * and it is read here — from the events — rather than counted in SQL, where it does
+   * not exist as a column.
+   */
+  const answeredOpen = openQuestions.filter((d) => Boolean(exchange(d).answered)).length
+  const unanswered = openQuestions.length - answeredOpen
+
+  const visibleRows =
+    active.key === 'pending'
+      ? rows.filter((r) => r.status !== 'NEEDS_REVIEW' || Boolean(r.answeredBy))
+      : active.key === 'questions'
+        ? rows.filter((r) => !r.answeredBy)
+        : rows
+
+  // Each tab counts exactly what it shows.
   const tabCount = (key: (typeof TABS)[number]['key']) =>
     key === 'pending'
-      ? counts.pending + counts.needsReview + handedCount
+      ? counts.pending + answeredOpen + handedCount
       : key === 'questions'
-        ? counts.needsReview
+        ? unanswered
         : counts.approvedUnpaid + counts.paid + counts.denied
 
   return (
@@ -251,11 +290,6 @@ export default async function ApprovalsPage({
           {active.blurb}
         </p>
       </header>
-
-      {/* Approving is the middle of a line, not the end of one — which is the thing an
-          approver most needs to see, because "I approved it, where does it go?" was
-          asked in the meeting this screen came out of. */}
-      <FlowStrip current="approve" role={session.role} />
 
       <PageHelp topic="approvals" />
 
@@ -312,13 +346,13 @@ export default async function ApprovalsPage({
       )}
 
       <ApprovalsBoard
-        bills={rows}
+        bills={visibleRows}
         emptyText={
           active.key === 'pending'
-            ? 'Nothing is waiting on you.'
+            ? 'Nothing is waiting on you. When a bill is cleared as a bill, it arrives here.'
             : active.key === 'questions'
-              ? 'You have no open questions.'
-              : 'You have not decided anything yet.'
+              ? 'You are not waiting on an answer from anybody.'
+              : 'You have not decided anything in the last 90 days.'
         }
         totalLabel={
           active.key === 'pending'
