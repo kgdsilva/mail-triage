@@ -6,12 +6,43 @@ import { BTN } from '@/lib/theme'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * Every failure Auth.js can hand this page, named.
+ *
+ * Four codes were listed and everything else fell through to "Sign-in failed. Try
+ * again." — which is what people were reporting, because the code they were actually
+ * getting was OAuthCallback and it was not one of the four. A message that says only
+ * "it failed" sends the person back to press the same button again, and then to message
+ * somebody; it is the reason this looked like a mystery for weeks rather than a setting.
+ *
+ * None of these leak anything: Auth.js has already decided to refuse, and the person is
+ * being told which of their own circumstances to change.
+ */
 const MESSAGES: Record<string, string> = {
   'not-invited':
     'That account is not a member of this workspace. Ask an admin to add your email, then try again.',
+  /*
+   * One sentence for an unknown email, a wrong password and a revoked membership, and
+   * deliberately so: `authorize` returns the same null for all three precisely so this
+   * page cannot be used to find out which addresses have accounts. Naming the cause here
+   * would undo that, and the people it would help are the ones an admin can tell
+   * directly.
+   */
   'bad-credentials': 'Wrong email or password.',
   OAuthAccountNotLinked: 'That email is already registered through a different sign-in method.',
   AccessDenied: 'Sign-in was refused for that account.',
+  // The state or PKCE cookie did not come back with the browser. Nearly always because
+  // the flow started on one address and Google returned it to another.
+  OAuthCallback:
+    'Google sent you back and this could not match the request. Open triage.mycolabhq.com directly and try again — a bookmark to the old address does this.',
+  OAuthCallbackError:
+    'Google sent you back and this could not match the request. Open triage.mycolabhq.com directly and try again.',
+  OAuthSignin: 'Google could not be reached. Try again in a moment.',
+  Callback: 'Something went wrong finishing the sign-in. Try again.',
+  Configuration:
+    'Sign-in is misconfigured on the server. This one is not yours to fix — tell an admin.',
+  Verification: 'That sign-in link has already been used, or has expired.',
+  SessionRequired: 'Sign in to open that page.',
 }
 
 export default async function SignInPage({
