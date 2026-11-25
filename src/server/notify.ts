@@ -114,6 +114,7 @@ export async function notifiableMembers(companyGroupId: string): Promise<Member[
       id: true,
       role: true,
       entityScope: true,
+      homePath: true,
       user: { select: { id: true, name: true, email: true, image: true } },
     },
   })
@@ -122,6 +123,7 @@ export async function notifiableMembers(companyGroupId: string): Promise<Member[
     membershipId: m.id,
     userId: m.user.id,
     companyGroupId,
+    homePath: m.homePath,
     role: m.role,
     entityScope: m.entityScope,
     companyGroupName: group.name,

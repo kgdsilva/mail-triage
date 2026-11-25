@@ -46,7 +46,7 @@ export default async function SignInPage({
               await signIn('credentials', {
                 email: String(formData.get('email') ?? ''),
                 password: String(formData.get('password') ?? ''),
-                redirectTo: '/',
+                redirectTo: '/home',
               })
             } catch (err) {
               // next-auth signals a successful redirect by throwing, so only a real
@@ -88,7 +88,7 @@ export default async function SignInPage({
         <form
           action={async () => {
             'use server'
-            await signIn('google', { redirectTo: '/' })
+            await signIn('google', { redirectTo: '/home' })
           }}
         >
           <button className={`w-full py-2.5 text-sm ${BTN.secondary}`}>

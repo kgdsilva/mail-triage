@@ -26,6 +26,11 @@ export type Session = {
    * remember to fetch is a boundary that one of them will forget.
    */
   entityScope: string[]
+  /**
+   * Where this person lands after signing in, when the role's own answer is wrong for
+   * them. Null means the role decides, which is right for almost everybody.
+   */
+  homePath: string | null
   /** The active workspace's name, for the switcher in the header. */
   companyGroupName: string
   userName: string
@@ -66,6 +71,7 @@ export const getRealSession = cache(async (): Promise<Session | null> => {
     companyGroupId: membership.companyGroupId,
     role: membership.role,
     entityScope: membership.entityScope,
+    homePath: membership.homePath,
     companyGroupName: membership.companyGroup.name,
     userName: membership.user.name ?? membership.user.email,
     userEmail: membership.user.email,
@@ -104,6 +110,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
       userId: true,
       role: true,
       entityScope: true,
+      homePath: true,
       user: { select: { name: true, email: true, image: true } },
     },
   })
@@ -114,6 +121,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
     userId: target.userId,
     role: target.role,
     entityScope: target.entityScope,
+    homePath: target.homePath,
     userName: target.user.name ?? target.user.email,
     userEmail: target.user.email,
     userImage: target.user.image,
@@ -341,21 +349,21 @@ export async function requireTriage(): Promise<Session> {
    * exactly that: "it disappeared and logged me out." `requireWorker` already sends
    * people to their own home for this reason; this one did not.
    */
-  if (!canTriage(session.role)) redirect(homeFor(session.role))
+  if (!canTriage(session.role)) redirect(homeOf(session))
   return session
 }
 
 /** Acting on an item that is already on the board. */
 export async function requireBillAdder(): Promise<Session> {
   const session = await requireSession()
-  if (!canAddBill(session.role)) redirect(homeFor(session.role))
+  if (!canAddBill(session.role)) redirect(homeOf(session))
   return session
 }
 
 /** The accountant's inbox, and nothing else. */
 export async function requirePaymentTriage(): Promise<Session> {
   const session = await requireSession()
-  if (!canTriagePayments(session.role)) redirect(homeFor(session.role))
+  if (!canTriagePayments(session.role)) redirect(homeOf(session))
   return session
 }
 
@@ -398,15 +406,46 @@ export async function requireWorker(): Promise<Session> {
 
   // Each narrow role has exactly one home. Sending them to a dead end, or to a screen
   // that redirects again, is how a person decides the tool is not for them.
-  redirect(homeFor(session.role))
+  redirect(homeOf(session))
 }
 
 /** Where a role's own work lives, and where every stray link should land. */
+/**
+ * Where somebody lands, by role.
+ *
+ * `homeOf` is what callers should use: it lets a person's own setting win, and falls
+ * back to this. Kept separate because the fallback is a property of the role and is
+ * needed on its own — the Members screen shows it as the default beside the override.
+ */
 export function homeFor(role: string) {
   if (role === 'UPLOADER') return '/upload'
   if (role === 'APPROVER') return '/approvals'
   if (role === 'ACCOUNTANT') return '/accounting'
   return '/'
+}
+
+/**
+ * Every screen a person can be sent home to.
+ *
+ * A closed list, because the value is written by an administrator and then handed to
+ * `redirect`: anything not on it is ignored and the role decides instead. An override
+ * pointing at a screen the person cannot open would recreate the bounce this whole
+ * change is meant to remove, so the Members screen only offers the ones their role can
+ * actually reach — and this list is the second guard behind that.
+ */
+export const HOME_CHOICES = [
+  { path: '/', label: 'Needs a decision', allowed: canWork },
+  { path: '/approvals', label: 'Bills to approve', allowed: canApprove },
+  { path: '/accounting', label: 'Accounting', allowed: canSettle },
+  { path: '/upload', label: 'Upload a batch', allowed: canUpload },
+  { path: '/health', label: 'Health', allowed: canConfigure },
+  { path: '/log', label: 'Master log', allowed: canSearchArchive },
+] as const
+
+/** Where this person lands: their own choice where they have a usable one, else the role's. */
+export function homeOf(session: Pick<Session, 'role' | 'homePath'>) {
+  const chosen = HOME_CHOICES.find((c) => c.path === session.homePath)
+  return chosen && chosen.allowed(session.role) ? chosen.path : homeFor(session.role)
 }
 
 export async function requireAdmin(): Promise<Session> {

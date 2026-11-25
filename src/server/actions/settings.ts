@@ -5,7 +5,7 @@ import { z } from 'zod'
 import type { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/server/db/client'
 import { normalizeEmail } from '@/auth'
-import { ROLES, requireAdmin } from '@/server/session'
+import { HOME_CHOICES, ROLES, requireAdmin } from '@/server/session'
 import { hashPassword, validatePassword } from '@/server/password'
 
 /**
@@ -403,6 +403,56 @@ export async function setMemberRole(membershipId: string, role: string): Promise
     await prisma.membership.update({
       where: { id: membership.id },
       data: { role: parsed.data },
+    })
+    revalidatePath('/settings/members')
+    return { ok: true }
+  } catch (err) {
+    return fault(err)
+  }
+}
+
+/**
+ * Which screen somebody lands on after signing in.
+ *
+ * An empty value means "let the role decide", which is right for almost everybody. The
+ * exception is two administrators who want opposite things: one runs the office and
+ * needs the shared board, the other owns the companies and wants to be told only when
+ * something is broken. Tying that to the role would have meant a ninth role to express
+ * a preference.
+ *
+ * Checked against the closed list and against what the person's role can actually open,
+ * because a home they cannot reach would send them straight back out again — which is
+ * the bounce this setting exists to remove, recreated by the setting itself.
+ */
+export async function setMemberHome(membershipId: string, path: string): Promise<Saved> {
+  try {
+    const session = await requireAdmin()
+
+    const membership = await prisma.membership.findFirst({
+      where: { id: membershipId, companyGroupId: session.companyGroupId },
+      select: { id: true, role: true },
+    })
+    if (!membership) return { ok: false, error: 'Member not found' }
+
+    const wanted = path.trim()
+    if (wanted === '') {
+      await prisma.membership.update({ where: { id: membership.id }, data: { homePath: null } })
+      revalidatePath('/settings/members')
+      return { ok: true }
+    }
+
+    const choice = HOME_CHOICES.find((c) => c.path === wanted)
+    if (!choice) return { ok: false, error: 'That is not a screen somebody can be sent to.' }
+    if (!choice.allowed(membership.role)) {
+      return {
+        ok: false,
+        error: `A ${membership.role.toLowerCase()} cannot open ${choice.label}, so they cannot start there.`,
+      }
+    }
+
+    await prisma.membership.update({
+      where: { id: membership.id },
+      data: { homePath: choice.path },
     })
     revalidatePath('/settings/members')
     return { ok: true }

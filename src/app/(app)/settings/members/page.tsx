@@ -1,10 +1,11 @@
 import { CircleSlash, Info, RotateCcw } from 'lucide-react'
 import { setMemberActive } from '@/server/actions/settings'
 import { prisma } from '@/server/db/client'
-import { ROLES as ALL_ROLES, requireAdmin, type Role } from '@/server/session'
+import { HOME_CHOICES, ROLES as ALL_ROLES, homeFor, requireAdmin, type Role } from '@/server/session'
 import { AddMemberForm } from '@/components/add-member-form'
 import { MemberPassword } from '@/components/member-password'
 import { MemberEntities } from '@/components/member-entities'
+import { MemberHome } from '@/components/member-home'
 import { MemberRole } from '@/components/member-role'
 import { BTN } from '@/lib/theme'
 
@@ -187,6 +188,23 @@ export default async function MembersPage() {
                       )}
                     </button>
                   </form>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line-soft pt-3">
+                  <span className="text-[12px] font-semibold uppercase tracking-wide text-subtle">
+                    Signs in to
+                  </span>
+                  <MemberHome
+                    membershipId={m.id}
+                    homePath={m.homePath}
+                    roleDefault={
+                      HOME_CHOICES.find((c) => c.path === homeFor(m.role))?.label ?? 'Needs a decision'
+                    }
+                    choices={HOME_CHOICES.filter((c) => c.allowed(m.role)).map((c) => ({
+                      path: c.path,
+                      label: c.label,
+                    }))}
+                  />
                 </div>
 
                 <div className="mt-3 border-t border-line-soft pt-3">

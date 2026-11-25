@@ -171,6 +171,15 @@ model Membership {
   /// filter a query string could carry, so it is a boundary rather than a default.
   entityScope String[] @map("entity_scope")
 
+  /// Where this person lands after signing in, when the role's own answer is wrong for
+  /// them. Null means the role decides, which is right for almost everybody.
+  ///
+  /// Two administrators can want opposite things. One runs the office and needs the
+  /// board; the other owns the companies and wants to be told only when something is
+  /// broken — "I don't want to think about this" is a requirement, not a preference, and
+  /// tying it to the role would have meant inventing a ninth role to express it.
+  homePath String? @map("home_path")
+
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
 

@@ -11,7 +11,7 @@ import { TURN_TONE, whoseTurn } from '@/lib/whose-turn'
 import { countByEntity, countByType, listDocuments } from '@/server/documents'
 import { deleteDocument, restoreDocument } from '@/server/actions/documents'
 import { redirect } from 'next/navigation'
-import { canSearchArchive, canSeeWholeLog, canTriage, homeFor, requireSession } from '@/server/session'
+import { canSearchArchive, canSeeWholeLog, canTriage, homeOf, requireSession } from '@/server/session'
 import { visibleEntityIds } from '@/server/scope'
 import { PeekRow } from '@/components/pdf-peek'
 import { CategoryCell } from '@/components/category-cell'
@@ -39,7 +39,7 @@ export default async function LogPage({
    * open this" and "whose documents are on it" have different answers here.
    */
   const session = await requireSession()
-  if (!canSearchArchive(session.role)) redirect(homeFor(session.role))
+  if (!canSearchArchive(session.role)) redirect(homeOf(session))
   const sp = new URLSearchParams()
   for (const [k, v] of Object.entries(await searchParams)) {
     if (typeof v === 'string') sp.set(k, v)

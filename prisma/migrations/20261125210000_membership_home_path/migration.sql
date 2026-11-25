@@ -1,0 +1,38 @@
+-- Where a person lands after signing in, when the role's own answer is wrong for them.
+--
+-- Additive only: one nullable column on membership. Nothing is dropped, renamed or
+-- rewritten, and every existing row keeps NULL, which means "let the role decide" —
+-- exactly what happens today.
+--
+-- Two administrators can want opposite things. One runs the office and needs the shared
+-- board; the other owns the companies and wants to be told only when something is
+-- broken. Tying that to the role would have meant inventing a ninth role to express a
+-- preference, and this system already has eight roles and five people.
+--
+-- Per membership rather than per user, because the answer belongs to the workspace: the
+-- same person is an owner here and may be something else elsewhere, and the screen they
+-- should land on follows the work, not the login.
+--
+-- ---------------------------------------------------------------------------
+-- Why this file is not what `prisma migrate dev` generated
+-- ---------------------------------------------------------------------------
+--
+-- Because what it generates also drops five indexes and a default:
+--
+--   DROP INDEX document_final_filename_trgm_idx;
+--   DROP INDEX document_original_filename_trgm_idx;
+--   DROP INDEX document_search_vector_idx;
+--   DROP INDEX entity_alias_text_trgm_idx;
+--   DROP INDEX vendor_name_trgm_idx;
+--   ALTER TABLE document ALTER COLUMN search_vector DROP DEFAULT;
+--
+-- Those are the Master log's search — the trigram indexes behind filename lookup and the
+-- GIN index behind full-text search — created by hand in SQL because Prisma's schema
+-- cannot express a generated tsvector column. Prisma does not know they exist, so every
+-- migration it writes proposes removing them. Applying one as generated would take the
+-- log's search out silently, on a change that is supposed to add a column.
+--
+-- All five were confirmed present in production on 17 November 2026. Read the next
+-- generated migration too.
+
+ALTER TABLE "membership" ADD COLUMN "home_path" TEXT;

@@ -4,7 +4,7 @@ import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/server/db/client'
 import { VIEW_AS_COOKIE } from '@/server/view-as'
-import { canConfigure, getRealSession, homeFor } from '@/server/session'
+import { canConfigure, getRealSession, homeOf } from '@/server/session'
 
 /**
  * Entering and leaving somebody else's view.
@@ -50,7 +50,8 @@ export async function viewAs(
 
   const target = await prisma.membership.findFirst({
     where: { userId, companyGroupId: real.companyGroupId, isActive: true },
-    select: { userId: true, role: true },
+    /* Their home too, so looking as somebody lands where they land. */
+    select: { userId: true, role: true, homePath: true },
   })
   if (!target) return { ok: false, error: 'That person is not an active member here.' }
 
@@ -73,7 +74,7 @@ export async function viewAs(
    * reach the browser when the render was triggered by an action rather than by a
    * navigation. The screen came back blank, which looks exactly like a broken feature.
    */
-  return { ok: true, href: homeFor(target.role) }
+  return { ok: true, href: homeOf(target) }
 }
 
 export async function stopViewingAs(): Promise<{ ok: true }> {
